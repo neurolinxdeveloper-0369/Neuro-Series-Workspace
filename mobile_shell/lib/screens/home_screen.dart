@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -69,7 +70,7 @@ class _HomeScreenState extends State<HomeScreen> {
       if (_useDevServer) {
         controller.loadRequest(Uri.parse(_devServerUrl));
       } else {
-        controller.loadFlutterAsset(_bundledAssetPath);
+        _loadLocalAssets();
       }
     } catch (_) {
       setState(() {
@@ -79,13 +80,21 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  void _loadLocalAssets({bool fallback = false}) {
+  Future<void> _loadLocalAssets({bool fallback = false}) async {
     setState(() {
       _useDevServer = false;
       _isLoading = true;
       _hasError = false;
     });
-    _webViewController?.loadFlutterAsset(_bundledAssetPath);
+    try {
+      final html = await rootBundle.loadString(_bundledAssetPath);
+      await _webViewController?.loadHtmlString(html, baseUrl: 'https://localhost');
+    } catch (_) {
+      setState(() {
+        _hasError = true;
+        _isLoading = false;
+      });
+    }
     if (fallback && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
