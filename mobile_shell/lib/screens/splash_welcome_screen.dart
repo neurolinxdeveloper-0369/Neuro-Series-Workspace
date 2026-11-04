@@ -66,46 +66,61 @@ class _SplashWelcomeScreenState extends State<SplashWelcomeScreen>
       body: Center(
         child: FadeTransition(
           opacity: _fadeAnimation,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 68,
-                height: 68,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.white.withAlpha(20),
-                  border: Border.all(
-                    color: Colors.white.withAlpha(40),
-                    width: 1.5,
+          child: ScaleTransition(
+            scale: Tween<double>(begin: 0.94, end: 1.0).animate(_fadeAnimation),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 72,
+                  height: 72,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: RadialGradient(
+                      colors: [
+                        Colors.blueAccent.withAlpha(50),
+                        Colors.white.withAlpha(15),
+                      ],
+                    ),
+                    border: Border.all(
+                      color: Colors.white.withAlpha(50),
+                      width: 1.5,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.blueAccent.withAlpha(40),
+                        blurRadius: 28,
+                        spreadRadius: 2,
+                      ),
+                    ],
+                  ),
+                  child: const Icon(
+                    Icons.bolt_rounded,
+                    color: Colors.white,
+                    size: 38,
                   ),
                 ),
-                child: const Icon(
-                  Icons.home_outlined,
-                  color: Colors.white,
-                  size: 34,
+                const SizedBox(height: 24),
+                const Text(
+                  'Welcome, User',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 26,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.4,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 24),
-              const Text(
-                'Welcome, User',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 26,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 0.5,
+                const SizedBox(height: 8),
+                Text(
+                  'Smart Home System',
+                  style: TextStyle(
+                    color: Colors.white.withAlpha(150),
+                    fontSize: 14,
+                    letterSpacing: 0.3,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Smart Home System',
-                style: TextStyle(
-                  color: Colors.white.withAlpha(140),
-                  fontSize: 14,
-                  letterSpacing: 0.3,
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
