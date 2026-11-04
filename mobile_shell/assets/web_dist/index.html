@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>react_ui</title>
+    <style>body{color:#fff;background-color:#000;margin:0;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif}#splash-loader{z-index:9999;background:#000;flex-direction:column;justify-content:center;align-items:center;transition:opacity .3s ease-out;display:flex;position:fixed;inset:0}.splash-icon{background:#ffffff14;border:1px solid #ffffff2e;border-radius:50%;justify-content:center;align-items:center;width:58px;height:58px;font-size:26px;animation:1.8s ease-in-out infinite pulse;display:flex;box-shadow:0 0 25px #3b82f640}.splash-text{letter-spacing:.5px;color:#fff;margin-top:18px;font-size:22px;font-weight:600}.splash-subtext{color:#ffffff80;margin-top:6px;font-size:13px}@keyframes pulse{0%,to{opacity:.9;transform:scale(1)}50%{opacity:1;transform:scale(1.05)}}</style>
+    <script type="module" crossorigin src="./assets/index-DdotELqA.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-DWu7A-oI.css">
+  </head>
+  <body>
+    <div id="splash-loader">
+      <div class="splash-icon">⚡</div>
+      <div class="splash-text">Welcome, User</div>
+      <div class="splash-subtext">Smart Home System</div>
+    </div>
+    <div id="root"></div>
+    <script>
+      // Automatically hide the splash loader after React mounts
+      window.addEventListener('DOMContentLoaded', () => {
+        setTimeout(() => {
+          const loader = document.getElementById('splash-loader');
+          if (loader) {
+            loader.style.opacity = '0';
+            setTimeout(() => loader.remove(), 300);
+          }
+        }, 500);
+      });
+    </script>
+  </body>
+</html>
