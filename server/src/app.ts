@@ -7,16 +7,24 @@ import { deviceRouter } from './modules/devices/device.controller.js';
 export const app = express();
 
 // Security & Parsing
-app.use(helmet());
-app.use(cors({
-  origin: '*',
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+app.use(helmet({
+  crossOriginResourcePolicy: false,
 }));
+
+app.use(cors({
+  origin: true,
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
+}));
+
+// Express preflight
+app.options('*', cors());
+
 app.use(express.json());
 
 // Health check endpoint
-app.get('/health', (_req, res) => {
+app.get(['/health', '/api/health', '/neuro-series/api/health'], (_req, res) => {
   res.json({
     status: 'healthy',
     timestamp: new Date().toISOString(),
@@ -24,9 +32,9 @@ app.get('/health', (_req, res) => {
   });
 });
 
-// API Routes
-app.use('/api/auth', authRouter);
-app.use('/api/devices', deviceRouter);
+// API Routes - support multiple prefix variants for reverse proxy flexibility
+app.use(['/neuro-series/api/auth', '/api/auth', '/auth'], authRouter);
+app.use(['/neuro-series/api/devices', '/api/devices', '/devices'], deviceRouter);
 
 // 404 Handler
 app.use((_req, res) => {

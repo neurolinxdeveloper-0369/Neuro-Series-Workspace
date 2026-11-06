@@ -47,6 +47,10 @@ declare global {
   }
 }
 
+// Singleton tracker to prevent multiple GSI initializations
+let isGsiInitialized = false;
+let gsiSuccessHandler: ((credential: string) => void) | null = null;
+
 interface SignInScreenProps {
   isOpen: boolean;
   onClose: () => void;
@@ -59,7 +63,35 @@ export const SignInScreen = ({ isOpen, onClose, onSignInSuccess }: SignInScreenP
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Initialize Google Identity Services
+  // Keep gsiSuccessHandler updated with current component state/props
+  useEffect(() => {
+    if (!isOpen) return;
+
+    gsiSuccessHandler = async (credential: string) => {
+      setIsLoading(true);
+      setErrorMessage(null);
+
+      try {
+        const [res] = await Promise.all([
+          authApi.loginWithGoogle({ idToken: credential }),
+          new Promise((resolve) => setTimeout(resolve, 1000)),
+        ]);
+        if (res.success && res.user) {
+          onSignInSuccess?.(res.user);
+          onClose();
+        } else {
+          setErrorMessage(res.error || 'Google Sign-In failed');
+        }
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : 'Google authentication failed';
+        setErrorMessage(msg);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+  }, [isOpen, onClose, onSignInSuccess]);
+
+  // Initialize Google Identity Services exactly once
   useEffect(() => {
     if (!isOpen) return;
 
@@ -68,36 +100,20 @@ export const SignInScreen = ({ isOpen, onClose, onSignInSuccess }: SignInScreenP
     const setupGoogle = () => {
       if (!window.google?.accounts?.id) return false;
 
-      try {
-        window.google.accounts.id.initialize({
-          client_id: GOOGLE_WEB_CLIENT_ID,
-          callback: async (response) => {
-            if (!response.credential) return;
-
-            setIsLoading(true);
-            setErrorMessage(null);
-
-            try {
-              const [res] = await Promise.all([
-                authApi.loginWithGoogle({ idToken: response.credential }),
-                new Promise((resolve) => setTimeout(resolve, 1000)),
-              ]);
-              if (res.success && res.user) {
-                onSignInSuccess?.(res.user);
-                onClose();
-              } else {
-                setErrorMessage(res.error || 'Google Sign-In failed');
+      if (!isGsiInitialized) {
+        try {
+          window.google.accounts.id.initialize({
+            client_id: GOOGLE_WEB_CLIENT_ID,
+            callback: (response) => {
+              if (response.credential && gsiSuccessHandler) {
+                gsiSuccessHandler(response.credential);
               }
-            } catch (err: unknown) {
-              const msg = err instanceof Error ? err.message : 'Google authentication failed';
-              setErrorMessage(msg);
-            } finally {
-              setIsLoading(false);
-            }
-          },
-        });
-      } catch (err) {
-        console.error('GIS initialization error:', err);
+            },
+          });
+          isGsiInitialized = true;
+        } catch (err) {
+          console.error('GIS initialization error:', err);
+        }
       }
 
       return true;
@@ -114,7 +130,7 @@ export const SignInScreen = ({ isOpen, onClose, onSignInSuccess }: SignInScreenP
     return () => {
       if (checkInterval) clearInterval(checkInterval);
     };
-  }, [isOpen, onClose, onSignInSuccess]);
+  }, [isOpen]);
 
   if (!isOpen) return null;
 

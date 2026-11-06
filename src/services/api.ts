@@ -14,7 +14,7 @@ const getApiBaseUrl = (): string => {
     return 'http://localhost:3056/api';
   }
   const basePath = (import.meta.env.BASE_URL || '/neuro-series/').replace(/\/+$/, '');
-  return typeof window !== 'undefined' ? `${window.location.origin}${basePath}/api` : `${basePath}/api`;
+  return `${basePath}/api`;
 };
 
 export const API_BASE_URL = getApiBaseUrl();
@@ -39,14 +39,16 @@ export const validateEndpointSecurity = (url: string): string => {
   const isProduction = import.meta.env.PROD;
   
   // Resolve relative endpoints to the API base URL
-  const fullUrl = url.startsWith('http') ? url : `${API_BASE_URL}${url.startsWith('/') ? '' : '/'}${url}`;
+  const fullUrl = (url.startsWith('http://') || url.startsWith('https://'))
+    ? url 
+    : `${API_BASE_URL}${url.startsWith('/') ? '' : '/'}${url}`;
 
   if (isProduction) {
     if (fullUrl.includes('localhost') || fullUrl.includes('127.0.0.1')) {
       throw new ApiSecurityError(`[Security Blocked] Insecure localhost API calls are forbidden in production: ${fullUrl}`);
     }
-    if (fullUrl.startsWith('http://') && !fullUrl.startsWith('http://localhost')) {
-      // Force HTTPS upgrade in production
+    if (fullUrl.startsWith('http://')) {
+      // Force HTTPS upgrade in production for external links
       return fullUrl.replace('http://', 'https://');
     }
   }
@@ -69,7 +71,6 @@ export async function secureApiCall<T>(endpoint: string, options: ApiRequestOpti
   const secureHeaders: Record<string, string> = {
     'Content-Type': 'application/json',
     'Accept': 'application/json',
-    'X-Requested-With': 'XMLHttpRequest',
     ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
     ...(options.headers as Record<string, string> || {}),
   };

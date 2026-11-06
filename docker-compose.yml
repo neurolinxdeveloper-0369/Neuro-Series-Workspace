@@ -15,7 +15,7 @@ services:
     environment:
       - NODE_ENV=production
       - VITE_BASE_PATH=/neuro-series/
-      - VITE_API_BASE_URL=https://neurolinx.in/neuro-series/api
+      - VITE_API_BASE_URL=/neuro-series/api
       - VITE_GOOGLE_CLIENT_ID=${GOOGLE_WEB_CLIENT_ID}
     logging:
       driver: "json-file"
