@@ -75,7 +75,6 @@ services:
     restart: unless-stopped
     ports:
       - "1887:1883"      # MQTT TCP on host port 1887
-      - "8087:8083"      # MQTT WebSocket port
       - "18087:18083"    # EMQX Dashboard Web UI
     environment:
       - EMQX_NODE__NAME=emqx@127.0.0.1
