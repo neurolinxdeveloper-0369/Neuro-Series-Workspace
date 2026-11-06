@@ -16,34 +16,67 @@ export class AuthService {
   }
 
   // Google OAuth Login / Registration
-  public async handleGoogleAuth(idToken: string) {
+  public async handleGoogleAuth(params: { idToken?: string; accessToken?: string }) {
+    const { idToken, accessToken } = params;
     const validAudiences = [
       ENV.GOOGLE_WEB_CLIENT_ID,
       ENV.GOOGLE_ANDROID_CLIENT_ID,
       ENV.GOOGLE_IOS_CLIENT_ID,
     ].filter(Boolean);
 
-    let payload;
-    try {
-      const ticket = await googleClient.verifyIdToken({
-        idToken,
-        audience: validAudiences.length > 0 ? validAudiences : undefined,
-      });
-      payload = ticket.getPayload();
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Invalid Google ID token';
-      console.error('Google token verification failed:', msg);
-      throw new Error(`Google ID token verification failed: ${msg}`);
-    }
+    let googleSub: string;
+    let email: string | null = null;
+    let fullName = 'Neuro Series User';
+    let avatarUrl: string | null = null;
 
-    if (!payload || !payload.sub) {
-      throw new Error('Invalid Google token payload');
+    if (idToken) {
+      try {
+        const ticket = await googleClient.verifyIdToken({
+          idToken,
+          audience: validAudiences.length > 0 ? validAudiences : undefined,
+        });
+        const payload = ticket.getPayload();
+        if (!payload || !payload.sub) {
+          throw new Error('Invalid Google token payload');
+        }
+        googleSub = payload.sub;
+        email = payload.email || null;
+        fullName = payload.name || 'Neuro Series User';
+        avatarUrl = payload.picture || null;
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : 'Invalid Google ID token';
+        console.error('Google ID token verification failed:', msg);
+        throw new Error(`Google ID token verification failed: ${msg}`);
+      }
+    } else if (accessToken) {
+      try {
+        const userInfoRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+        if (!userInfoRes.ok) {
+          throw new Error(`Google userinfo returned status ${userInfoRes.status}`);
+        }
+        const info = await userInfoRes.json() as {
+          sub: string;
+          email?: string;
+          name?: string;
+          picture?: string;
+        };
+        if (!info || !info.sub) {
+          throw new Error('Failed to retrieve user info from Google');
+        }
+        googleSub = info.sub;
+        email = info.email || null;
+        fullName = info.name || 'Neuro Series User';
+        avatarUrl = info.picture || null;
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : 'Invalid Google access token';
+        console.error('Google access token verification failed:', msg);
+        throw new Error(`Google access token verification failed: ${msg}`);
+      }
+    } else {
+      throw new Error('Either idToken or accessToken is required for Google Sign-In');
     }
-
-    const googleSub = payload.sub;
-    const email = payload.email || null;
-    const fullName = payload.name || 'Neuro Series User';
-    const avatarUrl = payload.picture || null;
 
     // Check if auth identity exists
     const client = await db.connect();

@@ -56,9 +56,10 @@ export const authStorage = {
 };
 
 export const authApi = {
-  // Submit Google ID token to backend for verification and Postgres registration
-  loginWithGoogle: async (idToken: string): Promise<AuthResponse> => {
-    const response = await api.post<AuthResponse>('/auth/google', { idToken });
+  // Submit Google token (idToken or accessToken) to backend for verification and Postgres registration
+  loginWithGoogle: async (payload: { idToken?: string; accessToken?: string } | string): Promise<AuthResponse> => {
+    const body = typeof payload === 'string' ? { idToken: payload } : payload;
+    const response = await api.post<AuthResponse>('/auth/google', body);
     if (response.success && response.token && response.user) {
       authStorage.setSession(response.token, response.user);
     }

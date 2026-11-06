@@ -28,6 +28,19 @@ declare global {
             }
           ) => void;
         };
+        oauth2: {
+          initTokenClient: (config: {
+            client_id: string;
+            scope: string;
+            callback: (response: {
+              access_token?: string;
+              error?: string;
+              error_description?: string;
+            }) => void;
+          }) => {
+            requestAccessToken: (options?: { prompt?: string }) => void;
+          };
+        };
       };
     };
   }
@@ -55,43 +68,47 @@ export const SignInScreen = ({ isOpen, onClose, onSignInSuccess }: SignInScreenP
     const setupGoogle = () => {
       if (!window.google?.accounts?.id) return false;
 
-      window.google.accounts.id.initialize({
-        client_id: GOOGLE_WEB_CLIENT_ID,
-        callback: async (response) => {
-          if (!response.credential) return;
+      try {
+        window.google.accounts.id.initialize({
+          client_id: GOOGLE_WEB_CLIENT_ID,
+          callback: async (response) => {
+            if (!response.credential) return;
 
-          setIsLoading(true);
-          setErrorMessage(null);
+            setIsLoading(true);
+            setErrorMessage(null);
 
-          try {
-            const res = await authApi.loginWithGoogle(response.credential);
-            if (res.success && res.user) {
-              onSignInSuccess?.(res.user);
-              onClose();
-            } else {
-              setErrorMessage(res.error || 'Google Sign-In failed');
+            try {
+              const res = await authApi.loginWithGoogle({ idToken: response.credential });
+              if (res.success && res.user) {
+                onSignInSuccess?.(res.user);
+                onClose();
+              } else {
+                setErrorMessage(res.error || 'Google Sign-In failed');
+              }
+            } catch (err: unknown) {
+              const msg = err instanceof Error ? err.message : 'Google authentication failed';
+              setErrorMessage(msg);
+            } finally {
+              setIsLoading(false);
             }
-          } catch (err: unknown) {
-            const msg = err instanceof Error ? err.message : 'Google authentication failed';
-            setErrorMessage(msg);
-          } finally {
-            setIsLoading(false);
-          }
-        },
-      });
-
-      // Render official Google button into container if mounted
-      if (googleBtnContainerRef.current) {
-        googleBtnContainerRef.current.innerHTML = '';
-        window.google.accounts.id.renderButton(googleBtnContainerRef.current, {
-          type: 'standard',
-          theme: 'outline',
-          size: 'large',
-          text: 'continue_with',
-          shape: 'pill',
-          logo_alignment: 'left',
-          width: 320,
+          },
         });
+
+        // Render official Google button into container if mounted
+        if (googleBtnContainerRef.current) {
+          googleBtnContainerRef.current.innerHTML = '';
+          window.google.accounts.id.renderButton(googleBtnContainerRef.current, {
+            type: 'standard',
+            theme: 'outline',
+            size: 'large',
+            text: 'continue_with',
+            shape: 'pill',
+            logo_alignment: 'left',
+            width: 320,
+          });
+        }
+      } catch (err) {
+        console.error('GIS initialization error:', err);
       }
 
       return true;
@@ -139,16 +156,54 @@ export const SignInScreen = ({ isOpen, onClose, onSignInSuccess }: SignInScreenP
     if (isLoading) return;
     setErrorMessage(null);
 
-    if (window.google?.accounts?.id) {
-      // Trigger Google One Tap or prompt
-      window.google.accounts.id.prompt();
-      // If the rendered button exists, simulate click for direct popup
-      const renderedBtn = googleBtnContainerRef.current?.querySelector('div[role="button"]') as HTMLElement | null;
-      if (renderedBtn) {
-        renderedBtn.click();
+    // 1. Preferred modern flow: Google OAuth2 popup dialog
+    if (window.google?.accounts?.oauth2) {
+      try {
+        const client = window.google.accounts.oauth2.initTokenClient({
+          client_id: GOOGLE_WEB_CLIENT_ID,
+          scope: 'https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email openid',
+          callback: async (tokenResponse) => {
+            if (tokenResponse.error) {
+              console.warn('Google OAuth response notice:', tokenResponse);
+              if (tokenResponse.error !== 'popup_closed_by_user') {
+                setErrorMessage(tokenResponse.error_description || tokenResponse.error || 'Google login cancelled');
+              }
+              return;
+            }
+
+            if (tokenResponse.access_token) {
+              setIsLoading(true);
+              try {
+                const res = await authApi.loginWithGoogle({ accessToken: tokenResponse.access_token });
+                if (res.success && res.user) {
+                  onSignInSuccess?.(res.user);
+                  onClose();
+                } else {
+                  setErrorMessage(res.error || 'Google login failed');
+                }
+              } catch (err: unknown) {
+                const msg = err instanceof Error ? err.message : 'Google authentication failed';
+                setErrorMessage(msg);
+              } finally {
+                setIsLoading(false);
+              }
+            }
+          },
+        });
+
+        // Request access token with account picker modal
+        client.requestAccessToken({ prompt: 'select_account' });
+        return;
+      } catch (err) {
+        console.warn('Could not launch OAuth2 token client:', err);
       }
+    }
+
+    // 2. Fallback: prompt Google One Tap
+    if (window.google?.accounts?.id) {
+      window.google.accounts.id.prompt();
     } else {
-      setErrorMessage('Google Sign-In service is still loading. Please check your internet connection and try again.');
+      setErrorMessage('Google Sign-In is initializing. Please wait a moment and try again.');
     }
   };
 
@@ -253,7 +308,7 @@ export const SignInScreen = ({ isOpen, onClose, onSignInSuccess }: SignInScreenP
               type="button"
               onClick={handleGoogleSignInClick}
               disabled={isLoading}
-              className="group w-full flex items-center justify-center gap-3 py-3 px-5 rounded-2xl bg-white/90 hover:bg-white border border-slate-200/90 shadow-xs hover:shadow-sm transition-all duration-200 cursor-pointer disabled:opacity-60"
+              className="group w-full flex items-center justify-center gap-3 py-3 px-5 rounded-2xl bg-white/90 hover:bg-white border border-slate-200/90 shadow-xs hover:shadow-sm transition-all duration-200 cursor-pointer disabled:opacity-60 active:scale-[0.99]"
             >
               <img 
                 src={getAssetUrl('google.svg')} 
@@ -266,7 +321,7 @@ export const SignInScreen = ({ isOpen, onClose, onSignInSuccess }: SignInScreenP
             </button>
           </div>
 
-          {/* Hidden/Offscreen Google GIS rendered button for official popup click */}
+          {/* Google GIS rendered button container */}
           <div 
             ref={googleBtnContainerRef} 
             className="flex justify-center pt-2 opacity-90 scale-95" 

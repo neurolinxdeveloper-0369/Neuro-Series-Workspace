@@ -7,12 +7,12 @@ export const authRouter = Router();
 // POST /api/auth/google
 authRouter.post('/google', async (req, res) => {
   try {
-    const { idToken } = req.body;
-    if (!idToken) {
-      return res.status(400).json({ success: false, error: 'idToken is required' });
+    const { idToken, accessToken } = req.body;
+    if (!idToken && !accessToken) {
+      return res.status(400).json({ success: false, error: 'idToken or accessToken is required' });
     }
 
-    const result = await authService.handleGoogleAuth(idToken);
+    const result = await authService.handleGoogleAuth({ idToken, accessToken });
     return res.json({ success: true, ...result });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Google authentication failed';
