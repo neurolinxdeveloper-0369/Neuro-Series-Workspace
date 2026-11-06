@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  smart-workspace:
+    container_name: smart-workspace
+    image: ghcr.io/neurolinxdeveloper-0369/neuro-series-workspace:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3055:80"
+    environment:
+      - NODE_ENV=production
+      - VITE_BASE_PATH=/neuro-series/
+      - VITE_API_BASE_URL=https://api.neurolinx.in
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
