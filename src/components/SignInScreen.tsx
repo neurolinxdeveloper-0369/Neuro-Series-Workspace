@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { ArrowLeft, X, Loader2, AlertCircle } from 'lucide-react';
 import { getAssetUrl } from '../utils/assets';
 import { authApi, GOOGLE_WEB_CLIENT_ID, type UserProfile } from '../services/auth';
+import { NeuroLoader } from './NeuroLoader';
 
 declare global {
   interface Window {
@@ -77,7 +78,10 @@ export const SignInScreen = ({ isOpen, onClose, onSignInSuccess }: SignInScreenP
             setErrorMessage(null);
 
             try {
-              const res = await authApi.loginWithGoogle({ idToken: response.credential });
+              const [res] = await Promise.all([
+                authApi.loginWithGoogle({ idToken: response.credential }),
+                new Promise((resolve) => setTimeout(resolve, 1000)),
+              ]);
               if (res.success && res.user) {
                 onSignInSuccess?.(res.user);
                 onClose();
@@ -122,7 +126,10 @@ export const SignInScreen = ({ isOpen, onClose, onSignInSuccess }: SignInScreenP
     setErrorMessage(null);
 
     try {
-      const res = await authApi.loginWithPhone(identifier.trim());
+      const [res] = await Promise.all([
+        authApi.loginWithPhone(identifier.trim()),
+        new Promise((resolve) => setTimeout(resolve, 1000)),
+      ]);
       if (res.success && res.user) {
         onSignInSuccess?.(res.user);
         onClose();
@@ -159,7 +166,10 @@ export const SignInScreen = ({ isOpen, onClose, onSignInSuccess }: SignInScreenP
             if (tokenResponse.access_token) {
               setIsLoading(true);
               try {
-                const res = await authApi.loginWithGoogle({ accessToken: tokenResponse.access_token });
+                const [res] = await Promise.all([
+                  authApi.loginWithGoogle({ accessToken: tokenResponse.access_token }),
+                  new Promise((resolve) => setTimeout(resolve, 1000)),
+                ]);
                 if (res.success && res.user) {
                   onSignInSuccess?.(res.user);
                   onClose();
@@ -203,6 +213,9 @@ export const SignInScreen = ({ isOpen, onClose, onSignInSuccess }: SignInScreenP
         `,
       }}
     >
+      {/* Real-time Neuro Series Glowing Light Blue Loader */}
+      {isLoading && <NeuroLoader message="Signing in..." />}
+
       {/* Top Header */}
       <header className="w-full flex items-center justify-between px-5 sm:px-10 py-5 sm:py-6">
         <div className="flex items-center gap-3">

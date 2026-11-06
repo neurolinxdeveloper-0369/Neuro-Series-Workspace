@@ -18,6 +18,7 @@ import { RoutinesMenuCard } from './components/RoutinesMenuCard';
 import { MenuTabContent } from './components/MenuTabContent';
 import { SignInScreen } from './components/SignInScreen';
 import { SettingsScreen } from './components/SettingsScreen';
+import { NeuroLoader } from './components/NeuroLoader';
 import { getAssetUrl } from './utils/assets';
 import { authStorage, authApi, type UserProfile } from './services/auth';
 
@@ -33,6 +34,27 @@ export function App() {
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(() => authStorage.getUser());
   const [isSignedIn, setIsSignedIn] = useState<boolean>(() => authStorage.isAuthenticated());
   const [isSignInOpen, setIsSignInOpen] = useState(false);
+  const [isInitializing, setIsInitializing] = useState(false);
+
+  // Sync profile on mount if authenticated with 1s interval
+  useEffect(() => {
+    if (authStorage.isAuthenticated()) {
+      setIsInitializing(true);
+      Promise.all([
+        authApi.getProfile(),
+        new Promise((resolve) => setTimeout(resolve, 1000)),
+      ])
+        .then(([profile]) => {
+          if (profile) {
+            setCurrentUser(profile);
+            setIsSignedIn(true);
+          }
+        })
+        .finally(() => {
+          setIsInitializing(false);
+        });
+    }
+  }, []);
 
   // Settings Screen State
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -434,6 +456,9 @@ export function App() {
           );
         })}
       </nav>
+
+      {/* Global Syncing Loader */}
+      {isInitializing && <NeuroLoader message="Syncing Smart Workspace..." />}
 
       {/* 8. Full-Screen Neuro Series Account Authentication */}
       <SignInScreen 

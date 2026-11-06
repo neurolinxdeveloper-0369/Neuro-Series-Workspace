@@ -546,3 +546,21 @@ input[type="range"].glass-slider::-webkit-slider-thumb:hover {
   stroke-linejoin: round !important;
 }
 
+/* Light Blue Glowing Circular Loader */
+.neuro-loader {
+  border: 4px solid #38bdf8;
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  border-right-color: transparent;
+  animation: neuroRot 1s linear infinite;
+  box-shadow: 0px 0px 20px #38bdf8 inset;
+}
+
+@keyframes neuroRot {
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+
