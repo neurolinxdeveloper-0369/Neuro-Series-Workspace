@@ -113,6 +113,15 @@ export function App() {
     { id: 'menu', label: 'Menu', icon: Menu },
   ] as const;
 
+  // Guard actions requiring user authentication
+  const handleProtectedAction = (action?: () => void) => {
+    if (!isSignedIn) {
+      setIsSignInOpen(true);
+    } else {
+      action?.();
+    }
+  };
+
   return (
     <div className="bg-app-container fixed inset-0 w-screen h-screen overflow-hidden select-none cursor-none font-sans">
       
@@ -290,14 +299,17 @@ export function App() {
           <>
             <ExploreCardSlider />
             <QuickDevicesCard 
-              onAddDevice={() => setActiveTab('devices')} 
-              onExplore={() => setActiveTab('explore')} 
+              onAddDevice={() => handleProtectedAction(() => setActiveTab('devices'))} 
+              onExplore={() => handleProtectedAction(() => setActiveTab('explore'))} 
             />
           </>
         )}
 
         {activeTab === 'devices' && (
-          <DevicesMenuCard />
+          <DevicesMenuCard 
+            onAddDevice={() => handleProtectedAction()}
+            onSupportedDevices={() => handleProtectedAction()}
+          />
         )}
 
         {activeTab === 'explore' && (
@@ -305,7 +317,10 @@ export function App() {
         )}
 
         {activeTab === 'routines' && (
-          <RoutinesMenuCard />
+          <RoutinesMenuCard 
+            onCreateRoutine={() => handleProtectedAction()}
+            onLearnRoutines={() => handleProtectedAction()}
+          />
         )}
 
         {activeTab === 'menu' && (
@@ -344,7 +359,13 @@ export function App() {
           return (
             <div key={item.id} className="relative flex items-center justify-center group flex-shrink-0">
               <button
-                onClick={() => setActiveTab(item.id)}
+                onClick={() => {
+                  if (!isSignedIn && (item.id === 'explore' || item.id === 'routines')) {
+                    setIsSignInOpen(true);
+                  } else {
+                    setActiveTab(item.id);
+                  }
+                }}
                 data-bg-light="true"
                 className={`
                   nav-item-btn relative z-10 flex flex-col items-center justify-center transition-all duration-200 active:scale-95
