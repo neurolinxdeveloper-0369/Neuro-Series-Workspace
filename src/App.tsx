@@ -346,7 +346,14 @@ export function App() {
         )}
 
         {activeTab === 'menu' && (
-          <MenuTabContent />
+          <MenuTabContent 
+            isSignedIn={isSignedIn}
+            onSignOut={() => {
+              authApi.logout();
+              setCurrentUser(null);
+              setIsSignedIn(false);
+            }}
+          />
         )}
       </main>
 

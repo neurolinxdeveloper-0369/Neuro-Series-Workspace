@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ArrowLeft, ChevronRight, X } from 'lucide-react';
+import { ArrowLeft, ChevronRight, X, LogOut } from 'lucide-react';
 
 interface SettingsScreenProps {
   isOpen: boolean;
@@ -293,6 +293,43 @@ export const SettingsScreen = ({
             </div>
           </div>
         </div>
+
+        {/* Card 4: Pure White Card - Sign out option (ONLY shown after login, hidden without login) */}
+        {isSignedIn && (
+          <div 
+            onClick={() => {
+              onSignOut?.();
+              onClose();
+            }}
+            className="group w-full rounded-3xl p-4 sm:p-5 shadow-md transition-all cursor-pointer hover:bg-rose-50/60 active:scale-[0.99] bg-white animate-in fade-in duration-200"
+            style={{
+              backgroundColor: '#ffffff',
+              border: '1px solid rgba(255, 255, 255, 0.95)',
+              boxShadow: '0 16px 36px -10px rgba(15, 23, 42, 0.08), 0 4px 12px rgba(0, 0, 0, 0.02)',
+            }}
+            role="button"
+            tabIndex={0}
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3.5">
+                <div className="w-9 h-9 rounded-2xl bg-rose-50 flex items-center justify-center flex-shrink-0 text-rose-600 group-hover:bg-rose-100 transition-colors">
+                  <LogOut className="w-4 h-4 text-rose-600" strokeWidth={2.3} />
+                </div>
+                <div className="flex flex-col text-left">
+                  <span className="text-sm sm:text-base font-bold text-rose-600 group-hover:text-rose-700 font-sans tracking-tight">
+                    Sign out
+                  </span>
+                  <span className="text-xs text-slate-500 font-normal font-sans">
+                    {currentUser?.email || currentUser?.phone_number || 'Sign out of your Neuro Series account'}
+                  </span>
+                </div>
+              </div>
+              <div className="w-6 h-6 flex items-center justify-center flex-shrink-0 text-slate-400 group-hover:text-rose-600 transition-colors">
+                <ChevronRight className="w-4 h-4" strokeWidth={2.2} />
+              </div>
+            </div>
+          </div>
+        )}
 
       </main>
     </div>

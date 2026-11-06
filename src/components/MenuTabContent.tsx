@@ -4,10 +4,16 @@ import {
   CircleQuestionMark, 
   UserCog, 
   CloudExclamationPoint,
-  ChevronRight 
+  ChevronRight,
+  LogOut 
 } from 'lucide-react';
 
-export const MenuTabContent = () => {
+interface MenuTabContentProps {
+  isSignedIn?: boolean;
+  onSignOut?: () => void;
+}
+
+export const MenuTabContent = ({ isSignedIn = false, onSignOut }: MenuTabContentProps) => {
   return (
     <div className="w-full flex flex-col items-center space-y-3.5 select-none pointer-events-auto">
       {/* Top Transparent Card: Supported Device */}
@@ -145,6 +151,35 @@ export const MenuTabContent = () => {
           </div>
         </div>
       </div>
+
+      {/* Card 3: Sign out option (ONLY shown after login, hidden without login) */}
+      {isSignedIn && (
+        <div 
+          onClick={onSignOut}
+          className="w-full max-w-sm sm:max-w-md md:max-w-lg rounded-3xl p-3.5 sm:p-4 shadow-md transition-all bg-white cursor-pointer hover:bg-rose-50/50 active:scale-[0.99] animate-in fade-in duration-200"
+          style={{
+            backgroundColor: '#ffffff',
+            border: '1px solid rgba(255, 255, 255, 0.95)',
+            boxShadow: '0 16px 36px -10px rgba(15, 23, 42, 0.08), 0 4px 12px rgba(0, 0, 0, 0.02)',
+          }}
+          role="button"
+          tabIndex={0}
+        >
+          <div className="group flex items-center justify-between p-2.5 rounded-2xl">
+            <div className="flex items-center gap-3">
+              <div className="w-6 h-6 flex items-center justify-center flex-shrink-0">
+                <LogOut className="w-5 h-5 text-rose-600" strokeWidth={2.2} />
+              </div>
+              <span className="text-xs sm:text-sm font-semibold text-rose-600 font-sans group-hover:text-rose-700 transition-colors">
+                Sign out
+              </span>
+            </div>
+            <div className="w-6 h-6 flex items-center justify-center flex-shrink-0 text-slate-400 group-hover:text-rose-600 transition-colors">
+              <ChevronRight className="w-4 h-4" strokeWidth={2.2} />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
