@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { ArrowLeft, X, Loader2, AlertCircle } from 'lucide-react';
 import { getAssetUrl } from '../utils/assets';
 import { authApi, GOOGLE_WEB_CLIENT_ID, type UserProfile } from '../services/auth';
@@ -57,7 +57,6 @@ export const SignInScreen = ({ isOpen, onClose, onSignInSuccess }: SignInScreenP
   const [rememberId, setRememberId] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const googleBtnContainerRef = useRef<HTMLDivElement>(null);
 
   // Initialize Google Identity Services
   useEffect(() => {
@@ -93,20 +92,6 @@ export const SignInScreen = ({ isOpen, onClose, onSignInSuccess }: SignInScreenP
             }
           },
         });
-
-        // Render official Google button into container if mounted
-        if (googleBtnContainerRef.current) {
-          googleBtnContainerRef.current.innerHTML = '';
-          window.google.accounts.id.renderButton(googleBtnContainerRef.current, {
-            type: 'standard',
-            theme: 'outline',
-            size: 'large',
-            text: 'continue_with',
-            shape: 'pill',
-            logo_alignment: 'left',
-            width: 320,
-          });
-        }
       } catch (err) {
         console.error('GIS initialization error:', err);
       }
@@ -320,12 +305,6 @@ export const SignInScreen = ({ isOpen, onClose, onSignInSuccess }: SignInScreenP
               </span>
             </button>
           </div>
-
-          {/* Google GIS rendered button container */}
-          <div 
-            ref={googleBtnContainerRef} 
-            className="flex justify-center pt-2 opacity-90 scale-95" 
-          />
         </form>
       </main>
 
