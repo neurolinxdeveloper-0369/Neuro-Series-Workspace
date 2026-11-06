@@ -81,12 +81,11 @@ jobs:
     name: Trigger Portainer Redeployment
     needs: docker-publish
     runs-on: ubuntu-latest
-    if: env.PORTAINER_WEBHOOK_URL != ''
     env:
-      PORTAINER_WEBHOOK_URL: ${{ secrets.PORTAINER_WEBHOOK_URL }}
+      PORTAINER_WEBHOOK_URL: ${{ secrets.PORTAINER_WEBHOOK_URL || 'https://portainer.neurolinx.in/api/stacks/webhooks/995f07b2-8d4f-4801-94f2-cde4005505ff' }}
 
     steps:
       - name: Call Portainer Stack Webhook
         run: |
           echo "Triggering Portainer stack redeployment..."
-          curl -k -X POST "${{ secrets.PORTAINER_WEBHOOK_URL }}" || echo "Webhook call finished."
+          curl -k -X POST "$PORTAINER_WEBHOOK_URL" || echo "Webhook trigger sent."
