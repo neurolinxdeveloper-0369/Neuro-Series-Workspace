@@ -10,10 +10,40 @@ services:
     restart: unless-stopped
     ports:
       - "127.0.0.1:3055:80"
+    depends_on:
+      - smart-workspace-api
     environment:
       - NODE_ENV=production
       - VITE_BASE_PATH=/neuro-series/
-      - VITE_API_BASE_URL=https://api.neurolinx.in
+      - VITE_API_BASE_URL=https://neurolinx.in/neuro-series/api
+      - VITE_GOOGLE_CLIENT_ID=${GOOGLE_WEB_CLIENT_ID}
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  smart-workspace-api:
+    container_name: smart-workspace-api
+    image: ghcr.io/neurolinxdeveloper-0369/neuro-series-workspace-api:latest
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3056:3056"
+    depends_on:
+      - smart-workspace-db
+      - smart-workspace-emqx
+    environment:
+      - NODE_ENV=production
+      - PORT=3056
+      - DATABASE_URL=postgresql://neurolinx_admin:${POSTGRES_PASSWORD:-NeuroSeriesSecure2026!}@smart-workspace-db:5432/neurolinx_smart_workspace
+      - JWT_SECRET=${JWT_SECRET}
+      - GOOGLE_WEB_CLIENT_ID=${GOOGLE_WEB_CLIENT_ID}
+      - GOOGLE_ANDROID_CLIENT_ID=${GOOGLE_ANDROID_CLIENT_ID}
+      - GOOGLE_IOS_CLIENT_ID=${GOOGLE_IOS_CLIENT_ID}
+      - MQTT_BROKER_URL=mqtt://smart-workspace-emqx:1883
     logging:
       driver: "json-file"
       options:
@@ -38,26 +68,22 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
-  smart-workspace-api:
-    container_name: smart-workspace-api
-    image: ghcr.io/neurolinxdeveloper-0369/neuro-series-workspace-api:latest
-    build:
-      context: ./server
-      dockerfile: Dockerfile
+
+  smart-workspace-emqx:
+    container_name: smart-workspace-emqx
+    image: emqx/emqx:5.8.5
     restart: unless-stopped
     ports:
-      - "127.0.0.1:3056:3056"
-    depends_on:
-      - smart-workspace-db
+      - "1887:1883"      # MQTT TCP on host port 1887
+      - "8087:8083"      # MQTT WebSocket port
+      - "18087:18083"    # EMQX Dashboard Web UI
     environment:
-      - NODE_ENV=production
-      - PORT=3056
-      - DATABASE_URL=postgresql://neurolinx_admin:${POSTGRES_PASSWORD:-NeuroSeriesSecure2026!}@smart-workspace-db:5432/neurolinx_smart_workspace
-      - JWT_SECRET=${JWT_SECRET}
-      - GOOGLE_WEB_CLIENT_ID=${GOOGLE_WEB_CLIENT_ID}
-      - GOOGLE_ANDROID_CLIENT_ID=${GOOGLE_ANDROID_CLIENT_ID}
-      - GOOGLE_IOS_CLIENT_ID=${GOOGLE_IOS_CLIENT_ID}
-      - MQTT_BROKER_URL=${MQTT_BROKER_URL:-mqtt://127.0.0.1:1883}
+      - EMQX_NODE__NAME=emqx@127.0.0.1
+      - EMQX_DASHBOARD__DEFAULT_USERNAME=admin
+      - EMQX_DASHBOARD__DEFAULT_PASSWORD=${EMQX_DASHBOARD_PASSWORD:-NeuroSeriesEmqx2026!}
+    volumes:
+      - emqx_data:/opt/emqx/data
+      - emqx_log:/opt/emqx/log
     logging:
       driver: "json-file"
       options:
@@ -67,4 +93,7 @@ services:
 volumes:
   postgres_data:
     driver: local
-
+  emqx_data:
+    driver: local
+  emqx_log:
+    driver: local

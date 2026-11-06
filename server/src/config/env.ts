@@ -14,7 +14,7 @@ export const ENV = {
   GOOGLE_IOS_CLIENT_ID: process.env.GOOGLE_IOS_CLIENT_ID || '',
 
   // EMQX MQTT Broker Configuration
-  MQTT_BROKER_URL: process.env.MQTT_BROKER_URL || 'mqtt://127.0.0.1:1883',
+  MQTT_BROKER_URL: process.env.MQTT_BROKER_URL || 'mqtt://127.0.0.1:1887',
   MQTT_CLIENT_ID: process.env.MQTT_CLIENT_ID || 'neuro-series-server-backend',
   MQTT_USERNAME: process.env.MQTT_USERNAME || '',
   MQTT_PASSWORD: process.env.MQTT_PASSWORD || '',
