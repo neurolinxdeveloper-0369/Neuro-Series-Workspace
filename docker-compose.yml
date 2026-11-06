@@ -38,7 +38,29 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+  smart-workspace-api:
+    container_name: smart-workspace-api
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3056:3056"
+    depends_on:
+      - smart-workspace-db
+    environment:
+      - NODE_ENV=production
+      - PORT=3056
+      - DATABASE_URL=postgresql://neurolinx_admin:${POSTGRES_PASSWORD:-NeuroSeriesSecure2026!}@smart-workspace-db:5432/neurolinx_smart_workspace
+      - JWT_SECRET=${JWT_SECRET:-neuro_series_jwt_secret_change_in_production_2026}
+      - MQTT_BROKER_URL=${MQTT_BROKER_URL:-mqtt://127.0.0.1:1883}
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 volumes:
   postgres_data:
     driver: local
+
