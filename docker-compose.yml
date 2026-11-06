@@ -40,6 +40,7 @@ services:
         max-file: "3"
   smart-workspace-api:
     container_name: smart-workspace-api
+    image: ghcr.io/neurolinxdeveloper-0369/neuro-series-workspace-api:latest
     build:
       context: ./server
       dockerfile: Dockerfile
@@ -52,7 +53,10 @@ services:
       - NODE_ENV=production
       - PORT=3056
       - DATABASE_URL=postgresql://neurolinx_admin:${POSTGRES_PASSWORD:-NeuroSeriesSecure2026!}@smart-workspace-db:5432/neurolinx_smart_workspace
-      - JWT_SECRET=${JWT_SECRET:-neuro_series_jwt_secret_change_in_production_2026}
+      - JWT_SECRET=${JWT_SECRET}
+      - GOOGLE_WEB_CLIENT_ID=${GOOGLE_WEB_CLIENT_ID}
+      - GOOGLE_ANDROID_CLIENT_ID=${GOOGLE_ANDROID_CLIENT_ID}
+      - GOOGLE_IOS_CLIENT_ID=${GOOGLE_IOS_CLIENT_ID}
       - MQTT_BROKER_URL=${MQTT_BROKER_URL:-mqtt://127.0.0.1:1883}
     logging:
       driver: "json-file"

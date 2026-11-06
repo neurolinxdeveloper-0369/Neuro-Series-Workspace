@@ -6,9 +6,24 @@ interface SettingsScreenProps {
   onClose: () => void;
   onOpenSignIn: () => void;
   isSignedIn?: boolean;
+  currentUser?: {
+    id?: string;
+    full_name?: string | null;
+    email?: string | null;
+    phone_number?: string | null;
+    avatar_url?: string | null;
+  } | null;
+  onSignOut?: () => void;
 }
 
-export const SettingsScreen = ({ isOpen, onClose, onOpenSignIn, isSignedIn = false }: SettingsScreenProps) => {
+export const SettingsScreen = ({ 
+  isOpen, 
+  onClose, 
+  onOpenSignIn, 
+  isSignedIn = false,
+  currentUser = null,
+  onSignOut,
+}: SettingsScreenProps) => {
   const [featureSuggestions, setFeatureSuggestions] = useState(true);
   const [biometricLock, setBiometricLock] = useState(false);
 
@@ -52,12 +67,14 @@ export const SettingsScreen = ({ isOpen, onClose, onOpenSignIn, isSignedIn = fal
       {/* Main Content: White Cards */}
       <main className="w-full max-w-sm sm:max-w-md md:max-w-lg mx-auto px-4 sm:px-6 py-2 pb-16 space-y-3.5 flex-1">
         
-        {/* Card 1: Pure White Card - Sign in heading, description & right arrow */}
+        {/* Card 1: Pure White Card - Sign in heading / User profile & right arrow */}
         <div 
           onClick={() => {
-            onOpenSignIn();
+            if (!isSignedIn) onOpenSignIn();
           }}
-          className="group w-full rounded-3xl p-5 shadow-md transition-all cursor-pointer hover:bg-slate-50 active:scale-[0.99]"
+          className={`group w-full rounded-3xl p-5 shadow-md transition-all ${
+            !isSignedIn ? 'cursor-pointer hover:bg-slate-50 active:scale-[0.99]' : ''
+          }`}
           style={{
             backgroundColor: '#ffffff',
             border: '1px solid rgba(255, 255, 255, 0.95)',
@@ -67,19 +84,44 @@ export const SettingsScreen = ({ isOpen, onClose, onOpenSignIn, isSignedIn = fal
           tabIndex={0}
         >
           <div className="flex items-center justify-between gap-3">
+            {isSignedIn && currentUser?.avatar_url ? (
+              <img 
+                src={currentUser.avatar_url} 
+                alt="Avatar" 
+                className="w-12 h-12 rounded-full object-cover border-2 border-sky-100 flex-shrink-0"
+              />
+            ) : isSignedIn ? (
+              <div className="w-12 h-12 rounded-full bg-[#0284c7] text-white font-bold flex items-center justify-center text-lg flex-shrink-0">
+                {(currentUser?.full_name || 'U')[0].toUpperCase()}
+              </div>
+            ) : null}
+
             <div className="flex-1 pr-2">
               <h3 className="text-base sm:text-lg font-bold text-slate-900 font-sans tracking-tight group-hover:text-[#0284c7] transition-colors">
-                {isSignedIn ? 'Neuro Series Account' : 'Sign in'}
+                {isSignedIn ? (currentUser?.full_name || 'Neuro Series Account') : 'Sign in'}
               </h3>
               <p className="text-xs sm:text-sm font-normal text-slate-600 leading-snug mt-1 font-sans">
                 {isSignedIn
-                  ? 'Your smart home is connected and active'
+                  ? (currentUser?.email || currentUser?.phone_number || 'Connected to Smart Workspace')
                   : 'Sign in to your neuro series account to make your home into smart'}
               </p>
             </div>
-            <div className="w-6 h-6 flex items-center justify-center flex-shrink-0 text-slate-400 group-hover:text-[#0284c7] transition-colors">
-              <ChevronRight className="w-5 h-5" strokeWidth={2.2} />
-            </div>
+
+            {isSignedIn ? (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSignOut?.();
+                }}
+                className="text-xs font-semibold px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-600 transition-colors cursor-pointer"
+              >
+                Sign out
+              </button>
+            ) : (
+              <div className="w-6 h-6 flex items-center justify-center flex-shrink-0 text-slate-400 group-hover:text-[#0284c7] transition-colors">
+                <ChevronRight className="w-5 h-5" strokeWidth={2.2} />
+              </div>
+            )}
           </div>
         </div>
 

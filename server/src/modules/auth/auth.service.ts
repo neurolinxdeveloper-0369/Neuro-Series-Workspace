@@ -3,7 +3,7 @@ import { OAuth2Client } from 'google-auth-library';
 import { db } from '../../config/database.js';
 import { ENV } from '../../config/env.js';
 
-const googleClient = new OAuth2Client(ENV.GOOGLE_CLIENT_ID);
+const googleClient = new OAuth2Client(ENV.GOOGLE_WEB_CLIENT_ID);
 
 export class AuthService {
   // Sign JWT token for user
@@ -17,16 +17,23 @@ export class AuthService {
 
   // Google OAuth Login / Registration
   public async handleGoogleAuth(idToken: string) {
+    const validAudiences = [
+      ENV.GOOGLE_WEB_CLIENT_ID,
+      ENV.GOOGLE_ANDROID_CLIENT_ID,
+      ENV.GOOGLE_IOS_CLIENT_ID,
+    ].filter(Boolean);
+
     let payload;
     try {
       const ticket = await googleClient.verifyIdToken({
         idToken,
-        audience: ENV.GOOGLE_CLIENT_ID || undefined,
+        audience: validAudiences.length > 0 ? validAudiences : undefined,
       });
       payload = ticket.getPayload();
-    } catch {
-      // In development / testing without valid Google Client ID, safely extract or validate
-      throw new Error('Invalid Google ID token');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Invalid Google ID token';
+      console.error('Google token verification failed:', msg);
+      throw new Error(`Google ID token verification failed: ${msg}`);
     }
 
     if (!payload || !payload.sub) {

@@ -19,6 +19,7 @@ import { MenuTabContent } from './components/MenuTabContent';
 import { SignInScreen } from './components/SignInScreen';
 import { SettingsScreen } from './components/SettingsScreen';
 import { getAssetUrl } from './utils/assets';
+import { authStorage, authApi, type UserProfile } from './services/auth';
 
 export function App() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -28,9 +29,10 @@ export function App() {
   const [isHoveringElement, setIsHoveringElement] = useState(false);
   const [isHoveringLight, setIsHoveringLight] = useState(false);
   
-  // Sign In Screen State
+  // Sign In & User Authentication State
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(() => authStorage.getUser());
+  const [isSignedIn, setIsSignedIn] = useState<boolean>(() => authStorage.isAuthenticated());
   const [isSignInOpen, setIsSignInOpen] = useState(false);
-  const [isSignedIn, setIsSignedIn] = useState(false);
 
   // Settings Screen State
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -234,10 +236,16 @@ export function App() {
             </button>
           ) : (
             <button
-              onClick={() => setIsSignInOpen(true)}
+              onClick={() => {
+                if (isSignedIn) {
+                  setIsSettingsOpen(true);
+                } else {
+                  setIsSignInOpen(true);
+                }
+              }}
               data-bg-light="true"
-              className="glass-signin-btn group flex items-center justify-center select-none rounded-full"
-              title={isSignedIn ? "Account Profile" : "Sign In"}
+              className="glass-signin-btn group flex items-center justify-center select-none rounded-full cursor-pointer"
+              title={isSignedIn ? (currentUser?.full_name || "Account Profile") : "Sign In"}
             >
               {/* Top Specular Glare Curve matching the Menu Bar */}
               <div 
@@ -249,9 +257,17 @@ export function App() {
               <div className="relative z-10 flex items-center gap-1.5 sm:gap-2 px-3 py-1.5 sm:px-4 sm:py-2">
                 {isSignedIn ? (
                   <>
-                    <UserCheck className="signin-icon w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#0284c7] sm:text-white transition-colors" strokeWidth={2.3} />
-                    <span className="signin-text text-xs sm:text-sm font-bold text-[#0284c7] sm:text-white tracking-wide font-sans select-none">
-                      Signed In
+                    {currentUser?.avatar_url ? (
+                      <img 
+                        src={currentUser.avatar_url} 
+                        alt="Profile" 
+                        className="w-4 h-4 sm:w-5 sm:h-5 rounded-full object-cover border border-white/60"
+                      />
+                    ) : (
+                      <UserCheck className="signin-icon w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#0284c7] sm:text-white transition-colors" strokeWidth={2.3} />
+                    )}
+                    <span className="signin-text text-xs sm:text-sm font-bold text-[#0284c7] sm:text-white tracking-wide font-sans select-none max-w-[100px] truncate">
+                      {currentUser?.full_name ? currentUser.full_name.split(' ')[0] : 'Profile'}
                     </span>
                   </>
                 ) : (
@@ -402,7 +418,10 @@ export function App() {
       <SignInScreen 
         isOpen={isSignInOpen} 
         onClose={() => setIsSignInOpen(false)} 
-        onSignInSuccess={() => setIsSignedIn(true)} 
+        onSignInSuccess={(user) => {
+          setCurrentUser(user);
+          setIsSignedIn(true);
+        }} 
       />
 
       {/* 9. Full-Screen Neuro Series Settings */}
@@ -410,6 +429,12 @@ export function App() {
         isOpen={isSettingsOpen} 
         onClose={() => setIsSettingsOpen(false)} 
         isSignedIn={isSignedIn}
+        currentUser={currentUser}
+        onSignOut={() => {
+          authApi.logout();
+          setCurrentUser(null);
+          setIsSignedIn(false);
+        }}
         onOpenSignIn={() => {
           setIsSettingsOpen(false);
           setIsSignInOpen(true);

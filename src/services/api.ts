@@ -10,7 +10,11 @@ const getApiBaseUrl = (): string => {
   if (envUrl) {
     return envUrl.replace(/\/+$/, '');
   }
-  return 'https://api.neurolinx.in';
+  if (import.meta.env.DEV) {
+    return 'http://localhost:3056/api';
+  }
+  const basePath = (import.meta.env.BASE_URL || '/neuro-series/').replace(/\/+$/, '');
+  return typeof window !== 'undefined' ? `${window.location.origin}${basePath}/api` : `${basePath}/api`;
 };
 
 export const API_BASE_URL = getApiBaseUrl();
