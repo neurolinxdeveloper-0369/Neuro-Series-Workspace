@@ -87,18 +87,21 @@ jobs:
       - name: Build iOS App Archive (Unsigned IPA)
         run: |
           cd ios/App
-          xcodebuild -workspace App.xcworkspace \
+          xcodebuild -project App.xcodeproj \
             -scheme App \
             -configuration Release \
             -destination 'generic/platform=iOS' \
-            -archivePath build/App.xcarchive \
+            -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
-            archive
+            CODE_SIGN_IDENTITY="" \
+            build
           
           # Package Payload into unsigned IPA for ad-hoc / AltStore / Sideloadly installation
           mkdir -p Payload
-          cp -r build/App.xcarchive/Products/Applications/App.app Payload/
+          APP_PATH=$(find build/Build/Products/Release-iphoneos -name "*.app" | head -n 1)
+          echo "Found compiled app bundle at: $APP_PATH"
+          cp -r "$APP_PATH" Payload/
           zip -qr ../../neuro-series-v1.2.4-unsigned.ipa Payload
 
       - name: Upload iOS IPA Artifact
