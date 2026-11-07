@@ -2,11 +2,11 @@ import { db } from '../../config/database.js';
 import { encryptSecret } from '../../utils/crypto.js';
 import jwt from 'jsonwebtoken';
 import { ENV } from '../../config/env.js';
-import type { Home, CreateHomeDTO, UpdateHomeDTO } from './home.types.js';
+import type { Home, CreateHomeDTO, UpdateHomeDTO, Room, HomeInvitation } from './home.types.js';
 
 export const homeService = {
   /**
-   * Ensures the homes table and indexes exist in PostgreSQL.
+   * Ensures the homes, rooms, and invitations tables exist in PostgreSQL.
    * Runs automatically at application boot.
    */
   ensureTableExists: async (): Promise<void> => {
@@ -28,12 +28,32 @@ export const homeService = {
           updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       );
       CREATE INDEX IF NOT EXISTS idx_homes_owner_id ON homes(owner_id);
+
+      CREATE TABLE IF NOT EXISTS rooms (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          home_id UUID NOT NULL REFERENCES homes(id) ON DELETE CASCADE,
+          name VARCHAR(100) NOT NULL,
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE INDEX IF NOT EXISTS idx_rooms_home_id ON rooms(home_id);
+
+      CREATE TABLE IF NOT EXISTS home_invitations (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          home_id UUID NOT NULL REFERENCES homes(id) ON DELETE CASCADE,
+          invited_by UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          email VARCHAR(255) NOT NULL,
+          access_level VARCHAR(50) DEFAULT 'Full access',
+          status VARCHAR(50) DEFAULT 'pending',
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+      CREATE INDEX IF NOT EXISTS idx_invitations_home_id ON home_invitations(home_id);
     `;
     try {
       await db.query(query);
-      console.log('✅ Homes table initialized and verified in PostgreSQL');
+      console.log('✅ Homes, Rooms & Invitations tables initialized in PostgreSQL');
     } catch (error) {
-      console.error('❌ Failed to verify homes table in PostgreSQL:', error);
+      console.error('❌ Failed to verify database tables in PostgreSQL:', error);
     }
   },
 
@@ -269,5 +289,67 @@ export const homeService = {
     });
 
     return { shareToken, qrData };
+  },
+
+  /**
+   * Get all rooms for a home
+   */
+  getRoomsByHome: async (homeId: string): Promise<Room[]> => {
+    const result = await db.query(
+      'SELECT id, home_id, name, created_at, updated_at FROM rooms WHERE home_id = $1 ORDER BY created_at ASC',
+      [homeId]
+    );
+    return result.rows;
+  },
+
+  /**
+   * Create a new room in a home
+   */
+  createRoom: async (homeId: string, name: string): Promise<Room> => {
+    const trimmed = name.trim();
+    if (!trimmed) throw new Error('Room name is required');
+    const result = await db.query(
+      'INSERT INTO rooms (home_id, name) VALUES ($1, $2) RETURNING id, home_id, name, created_at, updated_at',
+      [homeId, trimmed]
+    );
+    return result.rows[0];
+  },
+
+  /**
+   * Delete a room from a home
+   */
+  deleteRoom: async (homeId: string, roomId: string): Promise<boolean> => {
+    const result = await db.query(
+      'DELETE FROM rooms WHERE id = $1 AND home_id = $2',
+      [roomId, homeId]
+    );
+    return (result.rowCount ?? 0) > 0;
+  },
+
+  /**
+   * Record a member email invitation
+   */
+  sendInvitation: async (homeId: string, invitedBy: string, email: string, accessLevel: string = 'Full access'): Promise<HomeInvitation> => {
+    const trimmedEmail = email.trim().toLowerCase();
+    if (!trimmedEmail) throw new Error('Email address is required');
+
+    const result = await db.query(
+      `INSERT INTO home_invitations (home_id, invited_by, email, access_level, status)
+       VALUES ($1, $2, $3, $4, 'pending')
+       RETURNING id, home_id, invited_by, email, access_level, status, created_at`,
+      [homeId, invitedBy, trimmedEmail, accessLevel]
+    );
+    return result.rows[0];
+  },
+
+  /**
+   * List pending invitations for a home
+   */
+  getInvitations: async (homeId: string): Promise<HomeInvitation[]> => {
+    const result = await db.query(
+      'SELECT id, home_id, invited_by, email, access_level, status, created_at FROM home_invitations WHERE home_id = $1 ORDER BY created_at DESC',
+      [homeId]
+    );
+    return result.rows;
   },
 };

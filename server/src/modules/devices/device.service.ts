@@ -68,6 +68,24 @@ class DeviceService {
 
     return device;
   }
+
+  public addDevice(data: { name: string; room?: string; type?: SmartDevice['type']; homeId?: string }): SmartDevice {
+    const id = `dev_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const newDevice: SmartDevice = {
+      id,
+      name: data.name.trim(),
+      room: data.room?.trim() || 'Living room',
+      type: data.type || 'light',
+      state: {
+        power: false,
+        online: true,
+      },
+      lastSeen: new Date().toISOString(),
+    };
+    this.devices.set(id, newDevice);
+    socketManager.broadcastDeviceUpdate(id, newDevice.state);
+    return newDevice;
+  }
 }
 
 export const deviceService = new DeviceService();

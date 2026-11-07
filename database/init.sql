@@ -75,3 +75,27 @@ BEFORE UPDATE ON homes
 FOR EACH ROW
 EXECUTE FUNCTION update_users_updated_at();
 
+-- 7. Rooms Table
+CREATE TABLE IF NOT EXISTS rooms (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    home_id UUID NOT NULL REFERENCES homes(id) ON DELETE CASCADE,
+    name VARCHAR(100) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_rooms_home_id ON rooms(home_id);
+
+-- 8. Home Invitations Table
+CREATE TABLE IF NOT EXISTS home_invitations (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    home_id UUID NOT NULL REFERENCES homes(id) ON DELETE CASCADE,
+    invited_by UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    email VARCHAR(255) NOT NULL,
+    access_level VARCHAR(50) DEFAULT 'Full access',
+    status VARCHAR(50) DEFAULT 'pending',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_invitations_home_id ON home_invitations(home_id);
+

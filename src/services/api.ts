@@ -103,5 +103,7 @@ export const api = {
     secureApiCall<T>(url, { ...options, method: 'POST', body: data ? JSON.stringify(data) : undefined }),
   put: <T>(url: string, data?: unknown, options?: ApiRequestOptions) => 
     secureApiCall<T>(url, { ...options, method: 'PUT', body: data ? JSON.stringify(data) : undefined }),
+  patch: <T>(url: string, data?: unknown, options?: ApiRequestOptions) => 
+    secureApiCall<T>(url, { ...options, method: 'PATCH', body: data ? JSON.stringify(data) : undefined }),
   del: <T>(url: string, options?: ApiRequestOptions) => secureApiCall<T>(url, { ...options, method: 'DELETE' }),
 };

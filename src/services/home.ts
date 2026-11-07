@@ -32,6 +32,23 @@ export interface CreateHomeInput {
   wifi_password?: string;
 }
 
+export interface Room {
+  id: string;
+  home_id: string;
+  name: string;
+  created_at?: string;
+}
+
+export interface HomeInvitation {
+  id: string;
+  home_id: string;
+  invited_by: string;
+  email: string;
+  access_level: string;
+  status: string;
+  created_at?: string;
+}
+
 const ACTIVE_HOME_KEY = 'neuro_active_home_id';
 
 export const homeStorage = {
@@ -89,5 +106,44 @@ export const homeApi = {
       shareToken: res.shareToken,
       qrData: res.qrData,
     };
+  },
+
+  // Get all rooms for a home
+  getRooms: async (homeId: string): Promise<Room[]> => {
+    const res = await api.get<{ success: boolean; rooms: Room[] }>(`/homes/${homeId}/rooms`);
+    return res.success && Array.isArray(res.rooms) ? res.rooms : [];
+  },
+
+  // Create a new room
+  createRoom: async (homeId: string, name: string): Promise<Room> => {
+    const res = await api.post<{ success: boolean; room: Room }>(`/homes/${homeId}/rooms`, { name });
+    if (!res.success || !res.room) {
+      throw new Error('Failed to create room');
+    }
+    return res.room;
+  },
+
+  // Delete a room
+  deleteRoom: async (homeId: string, roomId: string): Promise<boolean> => {
+    const res = await api.del<{ success: boolean }>(`/homes/${homeId}/rooms/${roomId}`);
+    return res.success;
+  },
+
+  // Send an invitation email
+  sendInvitation: async (homeId: string, email: string, accessLevel: string = 'Full access'): Promise<HomeInvitation> => {
+    const res = await api.post<{ success: boolean; invitation: HomeInvitation }>(`/homes/${homeId}/invitations`, {
+      email,
+      accessLevel,
+    });
+    if (!res.success || !res.invitation) {
+      throw new Error('Failed to send invitation');
+    }
+    return res.invitation;
+  },
+
+  // Get list of invitations
+  getInvitations: async (homeId: string): Promise<HomeInvitation[]> => {
+    const res = await api.get<{ success: boolean; invitations: HomeInvitation[] }>(`/homes/${homeId}/invitations`);
+    return res.success && Array.isArray(res.invitations) ? res.invitations : [];
   },
 };

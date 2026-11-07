@@ -15,12 +15,8 @@ import {
   Plus,
   MoreVertical,
   Check,
-  UserPlus,
   SlidersHorizontal,
-  Layers,
-  Heart,
-  Sparkles,
-  Smartphone
+  Layers
 } from 'lucide-react';
 import { ExploreCardSlider } from './components/ExploreCardSlider';
 import { QuickDevicesCard } from './components/QuickDevicesCard';
@@ -31,10 +27,12 @@ import { SignInScreen } from './components/SignInScreen';
 import { SettingsScreen } from './components/SettingsScreen';
 import { SetupHomeScreen } from './components/SetupHomeScreen';
 import { LocationQrModal } from './components/LocationQrModal';
+import { InviteMemberModal } from './components/InviteMemberModal';
+import { AddDeviceScreen } from './components/AddDeviceScreen';
 import { NeuroLoader } from './components/NeuroLoader';
 import { getAssetUrl } from './utils/assets';
 import { authStorage, authApi, type UserProfile } from './services/auth';
-import { homeApi, homeStorage, type Home as UserHome } from './services/home';
+import { homeApi, homeStorage, type Home as UserHome, type Room } from './services/home';
 
 export function App() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -53,9 +51,12 @@ export function App() {
   // Home Properties State & Onboarding
   const [homes, setHomes] = useState<UserHome[]>([]);
   const [activeHome, setActiveHome] = useState<UserHome | null>(null);
+  const [rooms, setRooms] = useState<Room[]>([]);
   const [isSetupHomeOpen, setIsSetupHomeOpen] = useState(false);
   const [allowSetupHomeClose, setAllowSetupHomeClose] = useState(false);
   const [isQrModalOpen, setIsQrModalOpen] = useState(false);
+  const [isInviteMemberOpen, setIsInviteMemberOpen] = useState(false);
+  const [isAddDeviceOpen, setIsAddDeviceOpen] = useState(false);
 
   // Dropdown menus state (Reference 2 Header)
   const [isHomeDropdownOpen, setIsHomeDropdownOpen] = useState(false);
@@ -63,10 +64,28 @@ export function App() {
   const [isDotsMenuOpen, setIsDotsMenuOpen] = useState(false);
 
   // Room Sub-Tabs & Banner Dismiss
-  const [activeRoomTab, setActiveRoomTab] = useState<'all' | 'living' | 'go'>('all');
+  const [activeRoomTab, setActiveRoomTab] = useState<string>('all');
   const [isExploreDismissed, setIsExploreDismissed] = useState(() => {
     return typeof window !== 'undefined' && sessionStorage.getItem('neuro_explore_dismissed') === 'true';
   });
+
+  // Load rooms for a given home
+  const loadRooms = async (homeId: string) => {
+    try {
+      const homeRooms = await homeApi.getRooms(homeId);
+      setRooms(homeRooms);
+    } catch {
+      setRooms([]);
+    }
+  };
+
+  useEffect(() => {
+    if (activeHome) {
+      loadRooms(activeHome.id);
+    } else {
+      setRooms([]);
+    }
+  }, [activeHome?.id]);
 
   // Load user homes and trigger onboarding if 0 homes exist
   const loadHomes = async (openSetupIfEmpty = true) => {
@@ -400,34 +419,34 @@ export function App() {
                 <MoreVertical className="w-4 h-4 text-slate-800" strokeWidth={2.4} />
               </button>
 
-              {/* Plus Quick Actions Dropdown Menu */}
+              {/* Plus Quick Actions Dropdown Menu (Reference 2) */}
               {isPlusMenuOpen && (
                 <div 
                   onClick={(e) => e.stopPropagation()}
-                  className="absolute right-0 top-12 w-52 rounded-3xl bg-white shadow-xl border border-slate-100 p-2 z-50 animate-in fade-in zoom-in-95 duration-150"
+                  className="absolute right-0 top-12 w-56 rounded-[28px] bg-white shadow-2xl border border-slate-100/90 p-2 z-50 animate-in fade-in zoom-in-95 duration-150"
                   style={{
-                    boxShadow: '0 20px 45px -10px rgba(15, 23, 42, 0.16), 0 4px 12px rgba(0, 0, 0, 0.04)',
+                    boxShadow: '0 20px 48px -10px rgba(15, 23, 42, 0.18), 0 4px 16px rgba(0, 0, 0, 0.04)',
                   }}
                 >
                   <button
                     onClick={() => {
                       setIsPlusMenuOpen(false);
-                      setActiveTab('devices');
                     }}
-                    className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-2xl hover:bg-slate-50 text-slate-800 text-xs sm:text-sm font-semibold transition-colors cursor-pointer"
+                    className="w-full text-left px-4 py-2.5 rounded-2xl hover:bg-slate-50 text-slate-900 text-sm sm:text-base font-semibold transition-colors cursor-pointer"
                   >
-                    <Smartphone className="w-4 h-4 text-[#0284c7]" strokeWidth={2.2} />
-                    <span>Add Device</span>
+                    Add favorites
                   </button>
+
+                  <div className="h-px bg-slate-100 my-1 mx-2" />
 
                   <button
                     onClick={() => {
                       setIsPlusMenuOpen(false);
+                      setIsAddDeviceOpen(true);
                     }}
-                    className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-2xl hover:bg-slate-50 text-slate-800 text-xs sm:text-sm font-semibold transition-colors cursor-pointer"
+                    className="w-full text-left px-4 py-2.5 rounded-2xl hover:bg-slate-50 text-slate-900 text-sm sm:text-base font-semibold transition-colors cursor-pointer"
                   >
-                    <Heart className="w-4 h-4 text-rose-500" strokeWidth={2.2} />
-                    <span>Add Favorites</span>
+                    Add device
                   </button>
 
                   <button
@@ -435,23 +454,19 @@ export function App() {
                       setIsPlusMenuOpen(false);
                       setActiveTab('routines');
                     }}
-                    className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-2xl hover:bg-slate-50 text-slate-800 text-xs sm:text-sm font-semibold transition-colors cursor-pointer"
+                    className="w-full text-left px-4 py-2.5 rounded-2xl hover:bg-slate-50 text-slate-900 text-sm sm:text-base font-semibold transition-colors cursor-pointer"
                   >
-                    <Sparkles className="w-4 h-4 text-amber-500" strokeWidth={2.2} />
-                    <span>Create Routine</span>
+                    Create routine
                   </button>
-
-                  <div className="h-px bg-slate-100 my-1" />
 
                   <button
                     onClick={() => {
                       setIsPlusMenuOpen(false);
-                      setIsQrModalOpen(true);
+                      setIsInviteMemberOpen(true);
                     }}
-                    className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-2xl hover:bg-slate-50 text-slate-800 text-xs sm:text-sm font-semibold transition-colors cursor-pointer"
+                    className="w-full text-left px-4 py-2.5 rounded-2xl hover:bg-slate-50 text-slate-900 text-sm sm:text-base font-semibold transition-colors cursor-pointer"
                   >
-                    <UserPlus className="w-4 h-4 text-[#0284c7]" strokeWidth={2.2} />
-                    <span>Invite Member</span>
+                    Invite member
                   </button>
                 </div>
               )}
@@ -619,48 +634,50 @@ export function App() {
           <>
             {/* Reference 2 Room Sub-Tabs bar */}
             {isSignedIn && (
-              <div className="w-full max-w-sm sm:max-w-md md:max-w-lg flex items-center gap-4 px-2 py-0.5 select-none pointer-events-auto">
-                <button 
-                  onClick={() => {}}
-                  className="p-2 rounded-full hover:bg-white/40 text-slate-700 transition-colors cursor-pointer"
-                  aria-label="Search devices"
-                >
-                  <Search className="w-5 h-5 text-slate-800" strokeWidth={2.4} />
-                </button>
-
-                <div className="flex items-center gap-5 text-sm sm:text-base font-bold tracking-tight">
-                  <button
-                    onClick={() => setActiveRoomTab('all')}
-                    className={`transition-colors cursor-pointer pb-0.5 ${
-                      activeRoomTab === 'all' 
-                        ? 'text-slate-900 border-b-2 border-slate-900 font-extrabold' 
-                        : 'text-slate-400 hover:text-slate-600 font-medium'
-                    }`}
-                  >
-                    All devices
-                  </button>
-                  <button
-                    onClick={() => setActiveRoomTab('living')}
-                    className={`transition-colors cursor-pointer pb-0.5 ${
-                      activeRoomTab === 'living' 
-                        ? 'text-slate-900 border-b-2 border-slate-900 font-extrabold' 
-                        : 'text-slate-400 hover:text-slate-600 font-medium'
-                    }`}
-                  >
-                    Living room
-                  </button>
-                  <button
-                    onClick={() => setActiveRoomTab('go')}
-                    className={`transition-colors cursor-pointer pb-0.5 ${
-                      activeRoomTab === 'go' 
-                        ? 'text-slate-900 border-b-2 border-slate-900 font-extrabold' 
-                        : 'text-slate-400 hover:text-slate-600 font-medium'
-                    }`}
-                  >
-                    On the go
-                  </button>
+              rooms.length === 0 ? (
+                <div className="w-full max-w-sm sm:max-w-md md:max-w-lg px-2 py-1 select-none pointer-events-auto">
+                  <h2 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight font-sans">
+                    Devices
+                  </h2>
                 </div>
-              </div>
+              ) : (
+                <div className="w-full max-w-sm sm:max-w-md md:max-w-lg flex items-center gap-3.5 px-2 py-0.5 select-none pointer-events-auto overflow-x-auto no-scrollbar">
+                  <button 
+                    onClick={() => {}}
+                    className="p-1 rounded-full hover:bg-white/40 text-slate-700 transition-colors cursor-pointer flex-shrink-0"
+                    aria-label="Search devices"
+                  >
+                    <Search className="w-5 h-5 text-slate-800" strokeWidth={2.4} />
+                  </button>
+
+                  <div className="flex items-center gap-5 text-sm sm:text-base font-bold tracking-tight whitespace-nowrap">
+                    <button
+                      onClick={() => setActiveRoomTab('all')}
+                      className={`transition-colors cursor-pointer pb-0.5 ${
+                        activeRoomTab === 'all' 
+                          ? 'text-slate-900 border-b-2 border-slate-900 font-extrabold' 
+                          : 'text-slate-400 hover:text-slate-600 font-medium'
+                      }`}
+                    >
+                      All devices
+                    </button>
+
+                    {rooms.map((room) => (
+                      <button
+                        key={room.id}
+                        onClick={() => setActiveRoomTab(room.name)}
+                        className={`transition-colors cursor-pointer pb-0.5 ${
+                          activeRoomTab === room.name 
+                            ? 'text-slate-900 border-b-2 border-slate-900 font-extrabold' 
+                            : 'text-slate-400 hover:text-slate-600 font-medium'
+                        }`}
+                      >
+                        {room.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )
             )}
 
             {/* Dismissable Explore devices banner strictly on Home view */}
@@ -678,7 +695,7 @@ export function App() {
             {/* Reference 2 / Reference 1 White Device Card */}
             <QuickDevicesCard 
               isLoggedIn={isSignedIn}
-              onAddDevice={() => handleProtectedAction(() => setActiveTab('devices'))} 
+              onAddDevice={() => handleProtectedAction(() => setIsAddDeviceOpen(true))} 
               onExplore={() => handleProtectedAction(() => setActiveTab('explore'))} 
             />
           </>
@@ -686,7 +703,7 @@ export function App() {
 
         {activeTab === 'devices' && (
           <DevicesMenuCard 
-            onAddDevice={() => handleProtectedAction()}
+            onAddDevice={() => handleProtectedAction(() => setIsAddDeviceOpen(true))}
             onSupportedDevices={() => handleProtectedAction()}
           />
         )}
@@ -876,6 +893,35 @@ export function App() {
         isOpen={isQrModalOpen}
         onClose={() => setIsQrModalOpen(false)}
         home={activeHome}
+      />
+
+      {/* 12. Invite Member Flow (References 3, 4, 5) */}
+      <InviteMemberModal 
+        isOpen={isInviteMemberOpen}
+        onClose={() => setIsInviteMemberOpen(false)}
+        home={activeHome}
+        currentUserName={currentUser?.full_name || 'Home Owner'}
+        onOpenQrCode={() => setIsQrModalOpen(true)}
+      />
+
+      {/* 13. Add Device Screen Flow */}
+      <AddDeviceScreen 
+        isOpen={isAddDeviceOpen}
+        onClose={() => setIsAddDeviceOpen(false)}
+        homeId={activeHome?.id || null}
+        rooms={rooms}
+        onDeviceAdded={(roomName) => {
+          setActiveRoomTab(roomName);
+        }}
+        onRoomAdded={(newRoom) => {
+          setRooms((prev) => {
+            if (prev.some((r) => r.name.toLowerCase() === newRoom.name.toLowerCase())) {
+              return prev;
+            }
+            return [...prev, newRoom];
+          });
+          setActiveRoomTab(newRoom.name);
+        }}
       />
 
 

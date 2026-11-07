@@ -42,3 +42,21 @@ export interface UpdateHomeDTO {
   default_wifi_ssid?: string;
   wifi_password?: string;
 }
+
+export interface Room {
+  id: string;
+  home_id: string;
+  name: string;
+  created_at: string;
+  updated_at?: string;
+}
+
+export interface HomeInvitation {
+  id: string;
+  home_id: string;
+  invited_by: string;
+  email: string;
+  access_level: string;
+  status: string;
+  created_at: string;
+}
