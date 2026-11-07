@@ -1,5 +1,21 @@
 import { api } from './api';
 
+export interface Device {
+  id: string;
+  home_id: string;
+  room_id: string | null;
+  model_code: string;
+  mac_4: string;
+  custom_name: string;
+  device_id: string;
+  ip_address?: string;
+  firmware_version?: string;
+  is_online?: boolean;
+  endpoints?: any[];
+  created_at?: string;
+  updated_at?: string;
+}
+
 export interface SmartDevice {
   id: string;
   name: string;

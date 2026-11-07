@@ -122,7 +122,16 @@ export const InviteMemberModal = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 w-full h-full bg-[#f3f4f8] overflow-y-auto overflow-x-hidden flex flex-col font-sans select-none animate-in fade-in duration-200">
+    <div 
+      className="fixed inset-0 z-50 w-full h-full overflow-y-auto overflow-x-hidden flex flex-col font-sans select-none animate-in fade-in duration-200"
+      style={{
+        backgroundColor: '#d4edf4',
+        backgroundImage: `
+          radial-gradient(circle at 10% 10%, rgba(255, 255, 255, 0.95) 0%, transparent 50%),
+          radial-gradient(circle at 90% 90%, rgba(255, 255, 255, 0.90) 0%, transparent 50%)
+        `,
+      }}
+    >
       
       {/* ----------------- SCREEN 1: INVITE MEMBER (Full Screen Page) ----------------- */}
       {currentView === 'menu' && (

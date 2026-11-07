@@ -747,40 +747,45 @@ export function App() {
                   </div>
 
                   <div className="grid grid-cols-1 gap-2.5">
-                    {filtered.map((dev) => (
-                      <div
-                        key={dev.id}
-                        onClick={() => setSelectedDeviceForControl(dev)}
-                        className="bg-white rounded-3xl p-4 sm:p-4.5 shadow-sm border border-slate-100 hover:border-sky-300 transition-all cursor-pointer group"
-                      >
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-2xl bg-sky-50 text-[#0284c7] flex items-center justify-center font-bold font-mono text-xs sm:text-sm group-hover:scale-105 transition-transform">
-                              {dev.model_code}
-                            </div>
-                            <div>
-                              <h3 className="text-sm sm:text-base font-bold text-slate-900 group-hover:text-[#0284c7] transition-colors">
-                                {dev.custom_name}
-                              </h3>
-                              <p className="text-xs text-slate-400 font-mono">
-                                {dev.device_id || `NEURO-${dev.model_code}-${dev.mac_4}`}
-                              </p>
-                            </div>
-                          </div>
-                          <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-600 border border-emerald-100 flex items-center gap-1">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                            Online
-                          </span>
-                        </div>
+                    {filtered.map((dev) => {
+                      const devRoom = rooms.find(r => r.id === dev.room_id);
+                      const roomLabel = devRoom ? devRoom.name : 'Living room';
 
-                        <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
-                          <span>{dev.endpoints?.length || 0} Hardware Endpoints</span>
-                          <span className="text-[#0284c7] font-bold flex items-center gap-1 group-hover:translate-x-0.5 transition-transform">
-                            Open Dynamic UI &rarr;
-                          </span>
+                      return (
+                        <div
+                          key={dev.id}
+                          onClick={() => setSelectedDeviceForControl(dev)}
+                          className="bg-white rounded-3xl p-4 sm:p-4.5 shadow-sm border border-slate-100 hover:border-sky-300 transition-all cursor-pointer group active:scale-[0.99]"
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 rounded-2xl bg-sky-50 text-[#0284c7] flex items-center justify-center font-bold font-mono text-xs sm:text-sm group-hover:scale-105 transition-transform">
+                                {dev.model_code}
+                              </div>
+                              <div>
+                                <h3 className="text-sm sm:text-base font-bold text-slate-900 group-hover:text-[#0284c7] transition-colors">
+                                  {dev.custom_name}
+                                </h3>
+                                <p className="text-xs text-slate-500 font-sans">
+                                  {roomLabel} &bull; <span className="font-mono text-slate-400">{dev.device_id || `NEURO-${dev.model_code}-${dev.mac_4}`}</span>
+                                </p>
+                              </div>
+                            </div>
+                            <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-600 border border-emerald-100 flex items-center gap-1">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                              Online
+                            </span>
+                          </div>
+
+                          <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+                            <span>{dev.endpoints?.length || 0} Controls Available</span>
+                            <span className="text-[#0284c7] font-bold flex items-center gap-1 group-hover:translate-x-0.5 transition-transform">
+                              Tap to Open Layout &rarr;
+                            </span>
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               );
@@ -812,40 +817,45 @@ export function App() {
                 </div>
 
                 <div className="grid grid-cols-1 gap-2.5">
-                  {devices.map((dev) => (
-                    <div
-                      key={dev.id}
-                      onClick={() => setSelectedDeviceForControl(dev)}
-                      className="bg-white rounded-3xl p-4 sm:p-4.5 shadow-sm border border-slate-100 hover:border-sky-300 transition-all cursor-pointer group"
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-2xl bg-sky-50 text-[#0284c7] flex items-center justify-center font-bold font-mono text-xs sm:text-sm group-hover:scale-105 transition-transform">
-                            {dev.model_code}
-                          </div>
-                          <div>
-                            <h3 className="text-sm sm:text-base font-bold text-slate-900 group-hover:text-[#0284c7] transition-colors">
-                              {dev.custom_name}
-                            </h3>
-                            <p className="text-xs text-slate-400 font-mono">
-                              {dev.device_id || `NEURO-${dev.model_code}-${dev.mac_4}`}
-                            </p>
-                          </div>
-                        </div>
-                        <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-600 border border-emerald-100 flex items-center gap-1">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                          Online
-                        </span>
-                      </div>
+                  {devices.map((dev) => {
+                    const devRoom = rooms.find(r => r.id === dev.room_id);
+                    const roomLabel = devRoom ? devRoom.name : 'Living room';
 
-                      <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
-                        <span>{dev.endpoints?.length || 0} Hardware Endpoints</span>
-                        <span className="text-[#0284c7] font-bold flex items-center gap-1 group-hover:translate-x-0.5 transition-transform">
-                          Open Dynamic UI &rarr;
-                        </span>
+                    return (
+                      <div
+                        key={dev.id}
+                        onClick={() => setSelectedDeviceForControl(dev)}
+                        className="bg-white rounded-3xl p-4 sm:p-4.5 shadow-sm border border-slate-100 hover:border-sky-300 transition-all cursor-pointer group active:scale-[0.99]"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-2xl bg-sky-50 text-[#0284c7] flex items-center justify-center font-bold font-mono text-xs sm:text-sm group-hover:scale-105 transition-transform">
+                              {dev.model_code}
+                            </div>
+                            <div>
+                              <h3 className="text-sm sm:text-base font-bold text-slate-900 group-hover:text-[#0284c7] transition-colors">
+                                {dev.custom_name}
+                              </h3>
+                              <p className="text-xs text-slate-500 font-sans">
+                                {roomLabel} &bull; <span className="font-mono text-slate-400">{dev.device_id || `NEURO-${dev.model_code}-${dev.mac_4}`}</span>
+                              </p>
+                            </div>
+                          </div>
+                          <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-600 border border-emerald-100 flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                            Online
+                          </span>
+                        </div>
+
+                        <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+                          <span>{dev.endpoints?.length || 0} Controls Available</span>
+                          <span className="text-[#0284c7] font-bold flex items-center gap-1 group-hover:translate-x-0.5 transition-transform">
+                            Tap to Open Layout &rarr;
+                          </span>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -1058,11 +1068,19 @@ export function App() {
         isOpen={isAddDeviceOpen}
         onClose={() => setIsAddDeviceOpen(false)}
         homeId={activeHome?.id || null}
+        activeHome={activeHome}
         defaultWifiSsid={activeHome?.default_wifi_ssid || ''}
         rooms={rooms}
-        onDeviceAdded={(roomName) => {
+        onDeviceAdded={(roomName, newDevice) => {
           if (activeHome) loadDevices(activeHome.id);
+          if (newDevice) {
+            setDevices((prev) => {
+              const exists = prev.some((d) => d.id === newDevice.id || (d.mac_4 === newDevice.mac_4 && d.model_code === newDevice.model_code));
+              return exists ? prev : [newDevice, ...prev];
+            });
+          }
           setActiveRoomTab(roomName);
+          setActiveTab('devices');
         }}
         onRoomAdded={(newRoom) => {
           setRooms((prev) => {
@@ -1075,23 +1093,32 @@ export function App() {
         }}
       />
 
-      {/* 14. Dynamic Hardware Controller Modal */}
+      {/* 14. Dynamic Hardware Controller Modal with Consistent Background */}
       {selectedDeviceForControl && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in select-none pointer-events-auto">
-          <div className="bg-[#0f172a] w-full max-w-lg rounded-t-[32px] sm:rounded-3xl p-5 sm:p-6 shadow-2xl border border-slate-800 text-white max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-800">
+          <div 
+            className="w-full max-w-lg rounded-t-[32px] sm:rounded-3xl p-5 sm:p-6 shadow-2xl border border-white/80 max-h-[92vh] overflow-y-auto"
+            style={{
+              backgroundColor: '#d4edf4',
+              backgroundImage: `
+                radial-gradient(circle at 10% 10%, rgba(255, 255, 255, 0.95) 0%, transparent 50%),
+                radial-gradient(circle at 90% 90%, rgba(255, 255, 255, 0.90) 0%, transparent 50%)
+              `,
+            }}
+          >
+            <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-200/80">
               <div>
-                <h2 className="text-base sm:text-lg font-bold text-white">
+                <h2 className="text-base sm:text-lg font-bold text-slate-900">
                   {selectedDeviceForControl.custom_name}
                 </h2>
-                <p className="text-xs text-slate-400 font-mono">
+                <p className="text-xs text-slate-500 font-mono">
                   {selectedDeviceForControl.device_id} &bull; Model: {selectedDeviceForControl.model_code}
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => setSelectedDeviceForControl(null)}
-                className="w-8 h-8 rounded-full bg-slate-800 hover:bg-slate-700 flex items-center justify-center text-slate-300 cursor-pointer"
+                className="w-8 h-8 rounded-full bg-white hover:bg-slate-100 flex items-center justify-center text-slate-700 shadow-xs cursor-pointer border border-slate-200"
               >
                 <X className="w-4 h-4" />
               </button>

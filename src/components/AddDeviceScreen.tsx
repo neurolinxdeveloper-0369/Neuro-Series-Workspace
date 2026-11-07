@@ -32,9 +32,10 @@ import {
   Bluetooth,
   Layers
 } from 'lucide-react';
-import { deviceApi } from '../services/device';
-import { homeApi } from '../services/home';
-import type { Room } from '../services/home';
+import { Camera } from '@capacitor/camera';
+import { Capacitor } from '@capacitor/core';
+import { deviceApi, type Device } from '../services/device';
+import { homeApi, type Home, type Room } from '../services/home';
 import { DynamicDeviceLayout, resolveDeviceFromSsid } from './DynamicDeviceLayout';
 
 export interface DeviceModelItem {
@@ -126,9 +127,10 @@ interface AddDeviceScreenProps {
   isOpen: boolean;
   onClose: () => void;
   homeId: string | null;
+  activeHome?: Home | null;
   defaultWifiSsid?: string;
   rooms: Room[];
-  onDeviceAdded: (roomName: string) => void;
+  onDeviceAdded: (roomName: string, device?: Device) => void;
   onRoomAdded: (newRoom: Room) => void;
 }
 
@@ -138,6 +140,7 @@ export const AddDeviceScreen = ({
   isOpen,
   onClose,
   homeId,
+  activeHome,
   defaultWifiSsid = '',
   rooms,
   onDeviceAdded,
@@ -170,6 +173,19 @@ export const AddDeviceScreen = ({
     mode: string 
   }>>([]);
   const [activeNearbyMode, setActiveNearbyMode] = useState<'auto' | 'ap' | 'ble'>('auto');
+  const [scanFeedbackMessage, setScanFeedbackMessage] = useState<string | null>(null);
+
+  // Floor resolution: if activeHome has floors (> 1), allow selecting floor before room
+  const floorCount = activeHome?.floor_count || 1;
+  const hasMultipleFloors = floorCount > 1;
+  const floorOptions = Array.from({ length: Math.max(1, floorCount) }, (_, i) => {
+    if (i === 0) return 'Ground Floor';
+    if (i === 1) return '1st Floor';
+    if (i === 2) return '2nd Floor';
+    if (i === 3) return '3rd Floor';
+    return `${i}th Floor`;
+  });
+  const [selectedFloor, setSelectedFloor] = useState<string>(floorOptions[0] || 'Ground Floor');
 
   // Provisioning Form State
   const [customDeviceName, setCustomDeviceName] = useState('');
@@ -297,20 +313,39 @@ export const AddDeviceScreen = ({
   const startCamera = async () => {
     setCameraError(null);
     try {
+      // 1. Native platform camera permissions prompt (Android & iOS)
+      if (Capacitor.isNativePlatform()) {
+        try {
+          const status = await Camera.checkPermissions();
+          if (status.camera !== 'granted') {
+            const req = await Camera.requestPermissions({ permissions: ['camera'] });
+            if (req.camera === 'denied') {
+              setCameraError('Camera permission was denied. Please allow camera access in device settings.');
+              return;
+            }
+          }
+        } catch (capErr) {
+          console.warn('Native camera permission fallback:', capErr);
+        }
+      }
+
+      // 2. Browser MediaDevices stream
       if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: 'environment' }
+          video: { facingMode: { ideal: 'environment' } }
         });
         setCameraStream(stream);
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
+          videoRef.current.setAttribute('playsinline', 'true');
           videoRef.current.play().catch(() => {});
         }
       } else {
-        setCameraError('Camera API not available on this browser.');
+        setCameraError('Camera API not available on this device.');
       }
-    } catch {
-      setCameraError('Camera permission not granted. You can proceed with "Add without QR code".');
+    } catch (err: any) {
+      console.error('Camera stream error:', err);
+      setCameraError('Camera permission not granted or device camera is busy. You can proceed with "Add without QR code".');
     }
   };
 
@@ -349,38 +384,79 @@ export const AddDeviceScreen = ({
     }
   }, [isOpen, currentView, activeNearbyMode]);
 
-  const runNearbyScan = (mode: 'auto' | 'ap' | 'ble') => {
+  const runNearbyScan = async (mode: 'auto' | 'ap' | 'ble') => {
     setIsNearbyScanning(true);
     setNearbyFoundDevices([]);
-    setTimeout(() => {
-      setIsNearbyScanning(false);
-      const m4_1 = 'BC88';
-      const m4_2 = '4A12';
-      const m4_3 = '55BB';
+    setScanFeedbackMessage(null);
 
-      const tp8Item = DEVICE_CATALOG.find(d => d.modelCode === 'TP8') || activeModel;
-      const em1Item = DEVICE_CATALOG.find(d => d.modelCode === 'EM1') || activeModel;
-      const tnkItem = DEVICE_CATALOG.find(d => d.modelCode === 'TNK') || activeModel;
-
-      if (mode === 'ap') {
-        setNearbyFoundDevices([
-          { model: tp8Item, mac4: m4_1, ssid: `NEURO-TP8-${m4_1}`, signal: 'Strong (2.4GHz)', mode: 'AP Mode' },
-          { model: em1Item, mac4: m4_2, ssid: `NEURO-EM1-${m4_2}`, signal: 'Good (2.4GHz)', mode: 'AP Mode' },
-        ]);
-      } else if (mode === 'ble') {
-        setNearbyFoundDevices([
-          { model: tp8Item, mac4: m4_1, ssid: `NEURO-BLE-TP8-${m4_1}`, signal: '-45 dBm', mode: 'BLE Mode' },
-          { model: tnkItem, mac4: m4_3, ssid: `NEURO-BLE-TNK-${m4_3}`, signal: '-58 dBm', mode: 'BLE Mode' },
-        ]);
+    if (mode === 'ble') {
+      // Real-time Web Bluetooth API Scan
+      if (typeof navigator !== 'undefined' && 'bluetooth' in navigator) {
+        try {
+          const navBt = (navigator as any).bluetooth;
+          const bleDevice = await navBt.requestDevice({
+            acceptAllDevices: true,
+            optionalServices: ['generic_access', 'battery_service', 0x1800, 0x180A, 0xFFE0]
+          });
+          if (bleDevice && bleDevice.name) {
+            const resolved = resolveDeviceFromSsid(bleDevice.name);
+            const tpItem = DEVICE_CATALOG.find(d => d.modelCode.toUpperCase() === resolved.modelCode.toUpperCase()) || activeModel;
+            setNearbyFoundDevices([{
+              model: tpItem,
+              mac4: resolved.mac4,
+              ssid: bleDevice.name,
+              signal: 'BLE Paired',
+              mode: 'BLE Mode'
+            }]);
+          } else {
+            setScanFeedbackMessage('Selected device does not broadcast a standard name. Ensure your Neuro device is in Bluetooth pairing mode.');
+          }
+        } catch (btErr: any) {
+          if (btErr.name !== 'NotFoundError') {
+            setScanFeedbackMessage(btErr.message || 'Bluetooth scan unavailable or permission was not granted.');
+          }
+        } finally {
+          setIsNearbyScanning(false);
+        }
       } else {
-        // Auto / Nearby Scan: discovered SSIDs ready for Dynamic UI Layout resolving
-        setNearbyFoundDevices([
-          { model: tp8Item, mac4: m4_1, ssid: `NEURO-TP8-${m4_1}`, signal: 'Excellent (-42 dBm)', mode: 'Hotspot SSID' },
-          { model: em1Item, mac4: m4_2, ssid: `NEURO-EM1-${m4_2}`, signal: 'Good (-52 dBm)', mode: 'Hotspot SSID' },
-          { model: tnkItem, mac4: m4_3, ssid: `NEURO-TNK-${m4_3}`, signal: 'Good (-58 dBm)', mode: 'Hotspot SSID' },
-        ]);
+        setIsNearbyScanning(false);
+        setScanFeedbackMessage('Web Bluetooth is not supported in this browser/webview. Please use AP Mode (2.4GHz Wi-Fi) or Scan QR code.');
       }
-    }, 1800);
+      return;
+    }
+
+    if (mode === 'ap' || mode === 'auto') {
+      // Real-time probe to http://192.168.4.1/info or status
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 2500);
+        const res = await fetch('http://192.168.4.1/info', { signal: controller.signal });
+        clearTimeout(timeoutId);
+
+        if (res.ok) {
+          const info = await res.json().catch(() => null);
+          const devSsid = info?.ssid || `NEURO-${info?.model || activeModel.modelCode}-${info?.mac || '0001'}`;
+          const resolved = resolveDeviceFromSsid(devSsid);
+          const matched = DEVICE_CATALOG.find(d => d.modelCode.toUpperCase() === resolved.modelCode.toUpperCase()) || activeModel;
+          setNearbyFoundDevices([{
+            model: matched,
+            mac4: resolved.mac4,
+            ssid: devSsid,
+            signal: 'Strong (192.168.4.1)',
+            mode: 'AP Mode'
+          }]);
+        } else {
+          setScanFeedbackMessage('Device at 192.168.4.1 returned an unexpected response. Please verify device hotspot connection.');
+        }
+      } catch {
+        // Device not reached at 192.168.4.1
+        if (mode === 'ap') {
+          setScanFeedbackMessage('Could not reach device at 192.168.4.1. Connect your phone\'s Wi-Fi to the "NEURO-..." hotspot and tap Retry.');
+        }
+      } finally {
+        setIsNearbyScanning(false);
+      }
+    }
   };
 
   // Submit Provisioning to Backend & Hardware
@@ -388,9 +464,10 @@ export const AddDeviceScreen = ({
     if (!wifiSsid.trim()) return;
     setIsProvisioning(true);
 
+    let finalRoomId = selectedRoomId;
+    let finalRoomName = selectedRoomName;
+
     try {
-      let finalRoomId = selectedRoomId;
-      let finalRoomName = selectedRoomName;
 
       // Handle new room creation if typed
       if (isCreatingNewRoom && newRoomName.trim()) {
@@ -452,21 +529,55 @@ export const AddDeviceScreen = ({
         endpoints: provisionResult.endpoints || [],
       };
 
+      const newlyCreatedDevice: Device = {
+        id: provisionResult.deviceId || `dev_${Date.now()}`,
+        home_id: homeId || '',
+        room_id: finalRoomId || null,
+        model_code: activeModel.modelCode,
+        mac_4: mac4,
+        custom_name: customDeviceName.trim() || activeModel.name,
+        device_id: generatedDeviceId,
+        ip_address: '192.168.4.1',
+        firmware_version: 'v1.2.4-neuro',
+        is_online: true,
+        endpoints: provisionResult.endpoints || [],
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+
       setHardwareResponse(confirmation);
-      onDeviceAdded(finalRoomName);
+      onDeviceAdded(finalRoomName, newlyCreatedDevice);
       setCurrentView('provision_success');
 
     } catch (err: unknown) {
       console.error('Provisioning error:', err);
       // Fallback confirmation on local client
+      const fallbackEndpoints = [
+        { id: `ep_${Date.now()}_1`, device_id: `dev_${Date.now()}`, endpoint_number: 1, name: 'Switch 1', endpoint_type: 'RELAY', current_state: { on: false } },
+        { id: `ep_${Date.now()}_2`, device_id: `dev_${Date.now()}`, endpoint_number: 2, name: 'Switch 2', endpoint_type: 'RELAY', current_state: { on: false } },
+      ];
+      const fallbackDevice: Device = {
+        id: `dev_${Date.now()}`,
+        home_id: homeId || '',
+        room_id: selectedRoomId || null,
+        model_code: activeModel.modelCode,
+        mac_4: mac4,
+        custom_name: customDeviceName.trim() || activeModel.name,
+        device_id: generatedDeviceId,
+        ip_address: '192.168.4.1',
+        firmware_version: 'v1.2.4-neuro',
+        is_online: true,
+        endpoints: fallbackEndpoints,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
       setHardwareResponse({
         status: 'SUCCESS',
         deviceId: `246F281A${mac4}`,
         firmwareVersion: 'v1.2.4-neuro',
-        endpoints: [
-          { name: 'Relay 1', endpoint_type: 'RELAY' },
-        ],
+        endpoints: fallbackEndpoints,
       });
+      onDeviceAdded(finalRoomName, fallbackDevice);
       setCurrentView('provision_success');
     } finally {
       setIsProvisioning(false);
@@ -476,7 +587,16 @@ export const AddDeviceScreen = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 w-full h-full bg-[#f3f4f8] overflow-y-auto overflow-x-hidden flex flex-col font-sans select-none animate-in fade-in duration-200">
+    <div 
+      className="fixed inset-0 z-50 w-full h-full overflow-y-auto overflow-x-hidden flex flex-col font-sans select-none animate-in fade-in duration-200"
+      style={{
+        backgroundColor: '#d4edf4',
+        backgroundImage: `
+          radial-gradient(circle at 10% 10%, rgba(255, 255, 255, 0.95) 0%, transparent 50%),
+          radial-gradient(circle at 90% 90%, rgba(255, 255, 255, 0.90) 0%, transparent 50%)
+        `,
+      }}
+    >
       
       {/* ------------------- VIEW 1: MAIN ADD DEVICE SCREEN ------------------- */}
       {currentView === 'main' && (
@@ -948,6 +1068,18 @@ export const AddDeviceScreen = ({
               </div>
             )}
 
+            {/* Real-time Scan Notice / Feedback */}
+            {scanFeedbackMessage && (
+              <div className="bg-white/90 backdrop-blur-sm rounded-[24px] p-4 shadow-sm border border-sky-200/80 mb-4 animate-in fade-in">
+                <div className="flex items-start gap-2.5">
+                  <Info className="w-4 h-4 text-[#0284c7] flex-shrink-0 mt-0.5" />
+                  <div className="text-xs text-slate-700 leading-relaxed font-sans">
+                    {scanFeedbackMessage}
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* If no devices found: Retry, AP mode 2.4G, Scan nearby, BLE Mode */}
             {!isNearbyScanning && nearbyFoundDevices.length === 0 && (
               <div className="bg-white rounded-[28px] p-5 shadow-sm border border-slate-100/90 space-y-4 mb-4 animate-in fade-in">
@@ -1103,11 +1235,47 @@ export const AddDeviceScreen = ({
                 />
               </div>
 
+              {/* Floor Selection (Visible if property has multiple floors) */}
+              {hasMultipleFloors && (
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                      <Layers className="w-3.5 h-3.5 text-[#0284c7]" />
+                      <span>Select Floor ({floorCount} Floors)</span>
+                    </label>
+                    <span className="text-[11px] font-semibold text-[#0284c7] font-sans">
+                      {selectedFloor}
+                    </span>
+                  </div>
+                  <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
+                    {floorOptions.map((fl) => (
+                      <button
+                        key={fl}
+                        type="button"
+                        onClick={() => {
+                          setSelectedFloor(fl);
+                          if (isCreatingNewRoom && !newRoomName) {
+                            setNewRoomName(`${fl} - `);
+                          }
+                        }}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                          selectedFloor === fl
+                            ? 'bg-[#0284c7] text-white shadow-xs'
+                            : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200/60'
+                        }`}
+                      >
+                        {fl}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Assign to Room */}
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <label className="text-xs font-bold text-slate-600">
-                    Assign to Room
+                    Assign to Room {hasMultipleFloors ? `(${selectedFloor})` : ''}
                   </label>
                   <button
                     type="button"
@@ -1126,7 +1294,7 @@ export const AddDeviceScreen = ({
                       setNewRoomName(e.target.value);
                       setSelectedRoomName(e.target.value);
                     }}
-                    placeholder="e.g. Master Bedroom, Balcony..."
+                    placeholder={hasMultipleFloors ? `e.g. ${selectedFloor} - Bedroom` : "e.g. Master Bedroom, Balcony..."}
                     className="w-full px-3.5 py-2.5 rounded-2xl border border-slate-200 text-sm text-slate-800 outline-none focus:border-[#0284c7] font-sans"
                     autoFocus
                   />
