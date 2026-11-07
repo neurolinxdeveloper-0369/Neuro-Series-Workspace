@@ -36,6 +36,8 @@ jobs:
 
       - name: Build Web Production Bundle
         run: npm run build
+        env:
+          VITE_BASE_PATH: ./
 
       - name: Sync Capacitor Android
         run: npx cap sync android
@@ -80,6 +82,8 @@ jobs:
 
       - name: Build Web Production Bundle
         run: npm run build
+        env:
+          VITE_BASE_PATH: ./
 
       - name: Sync Capacitor iOS
         run: npx cap sync ios

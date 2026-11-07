@@ -49,7 +49,7 @@ export function App() {
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(() => authStorage.getUser());
   const [isSignedIn, setIsSignedIn] = useState<boolean>(() => authStorage.isAuthenticated());
   const [isSignInOpen, setIsSignInOpen] = useState(false);
-  const [isInitializing, setIsInitializing] = useState(false);
+  const [isInitializing, setIsInitializing] = useState<boolean>(() => authStorage.isAuthenticated());
 
   // Home Properties State & Onboarding
   const [homes, setHomes] = useState<UserHome[]>([]);
