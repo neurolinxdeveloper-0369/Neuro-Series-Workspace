@@ -19,10 +19,54 @@ export interface SmartDevice {
   lastSeen?: string;
 }
 
+export interface ProvisionInput {
+  homeId: string;
+  roomId?: string | null;
+  modelCode: string;
+  mac4: string;
+  customName: string;
+  wifiSsid: string;
+  wifiPassword?: string;
+  firmwareVersion?: string;
+  ipAddress?: string;
+}
+
+export interface ProvisionResult {
+  success: boolean;
+  deviceId: string;
+  mqttHost: string;
+  mqttPort: number;
+  mqttUsername: string;
+  mqttPassword: string;
+  device: {
+    id: string;
+    device_id: string;
+    custom_name: string;
+    model_code: string;
+    mac_4: string;
+    wifi_ssid: string;
+    firmware_version: string;
+  };
+  endpoints: Array<{
+    id: string;
+    endpoint_index: number;
+    name: string;
+    endpoint_type: string;
+  }>;
+}
+
 export const deviceApi = {
   getDevices: async (): Promise<SmartDevice[]> => {
     const res = await api.get<{ success: boolean; devices: SmartDevice[] }>('/devices');
     return res.success && Array.isArray(res.devices) ? res.devices : [];
+  },
+
+  provisionDevice: async (input: ProvisionInput): Promise<ProvisionResult> => {
+    const res = await api.post<ProvisionResult>('/devices/provision', input);
+    if (!res.success || !res.deviceId) {
+      throw new Error('Failed to provision device');
+    }
+    return res;
   },
 
   addDevice: async (input: { name: string; room?: string; type?: SmartDevice['type']; homeId?: string }): Promise<SmartDevice> => {

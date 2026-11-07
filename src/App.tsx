@@ -909,6 +909,7 @@ export function App() {
         isOpen={isAddDeviceOpen}
         onClose={() => setIsAddDeviceOpen(false)}
         homeId={activeHome?.id || null}
+        defaultWifiSsid={activeHome?.default_wifi_ssid || ''}
         rooms={rooms}
         onDeviceAdded={(roomName) => {
           setActiveRoomTab(roomName);

@@ -9,6 +9,48 @@ deviceRouter.get('/', (_req, res) => {
   return res.json({ success: true, devices });
 });
 
+// POST /api/devices/provision - Provision physical device with parent and child endpoints
+deviceRouter.post('/provision', async (req, res) => {
+  try {
+    const { homeId, roomId, modelCode, mac4, customName, wifiSsid, wifiPassword, firmwareVersion, ipAddress } = req.body;
+    if (!homeId || !modelCode || !customName || !wifiSsid) {
+      return res.status(400).json({ success: false, error: 'homeId, modelCode, customName and wifiSsid are required' });
+    }
+
+    const result = await deviceService.provisionDevice({
+      homeId,
+      roomId,
+      modelCode,
+      mac4: mac4 || 'BC88',
+      customName,
+      wifiSsid,
+      wifiPassword,
+      firmwareVersion: firmwareVersion || 'v1.2.4-neuro',
+      ipAddress: ipAddress || '192.168.4.1',
+    });
+
+    return res.status(201).json({
+      success: true,
+      ...result,
+    });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Provisioning failed';
+    return res.status(500).json({ success: false, error: message });
+  }
+});
+
+// GET /api/devices/home/:homeId - Get all devices with endpoints for a home
+deviceRouter.get('/home/:homeId', async (req, res) => {
+  try {
+    const homeId = Array.isArray(req.params.homeId) ? req.params.homeId[0] : req.params.homeId;
+    const devices = await deviceService.getDevicesByHome(homeId);
+    return res.json({ success: true, devices });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Failed to fetch home devices';
+    return res.status(500).json({ success: false, error: message });
+  }
+});
+
 // POST /api/devices - Add a new device
 deviceRouter.post('/', (req, res) => {
   try {

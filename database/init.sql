@@ -99,3 +99,40 @@ CREATE TABLE IF NOT EXISTS home_invitations (
 
 CREATE INDEX IF NOT EXISTS idx_invitations_home_id ON home_invitations(home_id);
 
+-- 9. Physical Devices Table
+CREATE TABLE IF NOT EXISTS devices (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    home_id UUID NOT NULL REFERENCES homes(id) ON DELETE CASCADE,
+    room_id UUID REFERENCES rooms(id) ON DELETE SET NULL,     -- Assigns physical board to room
+    device_id VARCHAR(64) NOT NULL UNIQUE,                    -- e.g., 'nt8k-BC88-TP8'
+    mac_4 VARCHAR(4) NOT NULL,
+    model_code VARCHAR(30) NOT NULL,
+    custom_name VARCHAR(100) NOT NULL,
+    wifi_ssid VARCHAR(64) NOT NULL,                           -- Connected Wi-Fi SSID
+    rssi INT DEFAULT NULL,                                    -- Signal strength in dBm (NULL until polled)
+    ip_address VARCHAR(45),
+    firmware_version VARCHAR(30),
+    is_online BOOLEAN DEFAULT FALSE,
+    last_seen_at TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_devices_room_id ON devices(room_id);
+CREATE INDEX IF NOT EXISTS idx_devices_home_id ON devices(home_id);
+
+-- 10. Device Endpoints Table (Child Table)
+CREATE TABLE IF NOT EXISTS device_endpoints (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    device_id VARCHAR(64) NOT NULL REFERENCES devices(device_id) ON DELETE CASCADE,
+    endpoint_index INT NOT NULL,                              -- 1 to N
+    name VARCHAR(100) NOT NULL,                               -- "Switch 1", "Phase R", "Tank Level"
+    endpoint_type VARCHAR(20) NOT NULL CHECK (endpoint_type IN ('RELAY', 'PHASE', 'SENSOR')),
+    state JSONB DEFAULT '{"status": "OFF"}',
+    is_favorite BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(device_id, endpoint_index)
+);
+
+CREATE INDEX IF NOT EXISTS idx_endpoints_device_id ON device_endpoints(device_id);
+

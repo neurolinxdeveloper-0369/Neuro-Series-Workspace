@@ -5,12 +5,16 @@ import { authRouter } from './modules/auth/auth.controller.js';
 import { deviceRouter } from './modules/devices/device.controller.js';
 import { homeRouter } from './modules/homes/home.controller.js';
 import { homeService } from './modules/homes/home.service.js';
+import { deviceService } from './modules/devices/device.service.js';
 
 export const app = express();
 
 // Initialize tables on boot
 homeService.ensureTableExists().catch((err) => {
   console.error('Error verifying tables on boot:', err);
+});
+deviceService.ensureTablesExist().catch((err) => {
+  console.error('Error verifying device tables on boot:', err);
 });
 
 // Security & Parsing
