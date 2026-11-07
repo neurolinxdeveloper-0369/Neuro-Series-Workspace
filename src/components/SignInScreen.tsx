@@ -4,6 +4,8 @@ import { getAssetUrl } from '../utils/assets';
 import { authStorage, authApi, GOOGLE_WEB_CLIENT_ID, type UserProfile } from '../services/auth';
 import { NeuroLoader } from './NeuroLoader';
 import { Capacitor } from '@capacitor/core';
+import { Browser } from '@capacitor/browser';
+import { App as CapApp } from '@capacitor/app';
 
 declare global {
   interface Window {
@@ -134,19 +136,55 @@ export const SignInScreen = ({ isOpen, onClose, onSignInSuccess }: SignInScreenP
   }, [isOpen]);
 
   // Listen for authentication event from hosted auth popup (auth-mobile.html)
+  // Supports both web postMessage AND native iOS/Android deep linking (in.neurolinx.neuroseries://auth)
   useEffect(() => {
     if (!isOpen) return;
 
+    // 1. Web message listener (for multi-window popups)
     const handleAuthMessage = (e: MessageEvent) => {
       if (e.data?.type === 'NEURO_AUTH_SUCCESS' && e.data?.token && e.data?.user) {
         authStorage.setSession(e.data.token, e.data.user);
+        Browser.close().catch(() => {});
         onSignInSuccess?.(e.data.user);
         onClose();
       }
     };
-
     window.addEventListener('message', handleAuthMessage);
-    return () => window.removeEventListener('message', handleAuthMessage);
+
+    // 2. Native deep link listener (for iOS SFSafariViewController & Android deep link)
+    let removeListener: (() => void) | null = null;
+    CapApp.addListener('appUrlOpen', async (event) => {
+      if (event.url && event.url.startsWith('in.neurolinx.neuroseries://auth')) {
+        try {
+          const urlObj = new URL(event.url);
+          const token = urlObj.searchParams.get('token');
+          const userParam = urlObj.searchParams.get('user');
+          if (token) {
+            const user = userParam ? JSON.parse(decodeURIComponent(userParam)) : null;
+            if (user) {
+              authStorage.setSession(token, user);
+              onSignInSuccess?.(user);
+            } else {
+              // Fetch fresh profile with the received token
+              localStorage.setItem('neuro_auth_token', token);
+              const profile = await authApi.getProfile();
+              if (profile) onSignInSuccess?.(profile);
+            }
+            await Browser.close().catch(() => {});
+            onClose();
+          }
+        } catch (err) {
+          console.error('Deep link auth parsing error:', err);
+        }
+      }
+    }).then(handler => {
+      removeListener = () => handler.remove();
+    }).catch(() => {});
+
+    return () => {
+      window.removeEventListener('message', handleAuthMessage);
+      if (removeListener) removeListener();
+    };
   }, [isOpen, onClose, onSignInSuccess]);
 
   if (!isOpen) return null;
@@ -177,7 +215,7 @@ export const SignInScreen = ({ isOpen, onClose, onSignInSuccess }: SignInScreenP
     }
   };
 
-  const handleGoogleSignInClick = () => {
+  const handleGoogleSignInClick = async () => {
     if (isLoading) return;
     setErrorMessage(null);
 
@@ -186,9 +224,15 @@ export const SignInScreen = ({ isOpen, onClose, onSignInSuccess }: SignInScreenP
       (window.location.hostname === 'localhost' && !import.meta.env.DEV);
 
     // On mobile devices, launch the hosted auth-mobile.html bridge on neurolinx.in
+    // via native SFSafariViewController on iOS / Chrome Custom Tabs on Android
     // to guarantee 100% Google origin verification and eliminate Error 400 origin_mismatch
     if (isNativeMobile) {
-      window.open('https://neurolinx.in/neuro-series/auth-mobile.html', '_blank');
+      const authUrl = 'https://neurolinx.in/neuro-series/auth-mobile.html';
+      try {
+        await Browser.open({ url: authUrl, presentationStyle: 'popover' });
+      } catch {
+        window.open(authUrl, '_blank');
+      }
       return;
     }
 

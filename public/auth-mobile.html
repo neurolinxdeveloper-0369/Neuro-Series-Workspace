@@ -157,18 +157,26 @@
       .then(res => res.json())
       .then(data => {
         if (data.success && data.token && data.user) {
-          // Send auth payload to parent opener window
+          // 1. Send postMessage to opener window (for multi-window popups)
           if (window.opener) {
-            window.opener.postMessage({
-              type: 'NEURO_AUTH_SUCCESS',
-              token: data.token,
-              user: data.user
-            }, '*');
-            setTimeout(() => { window.close(); }, 300);
-          } else {
-            // Direct URL redirect fallback for in-app browser
-            window.location.href = 'in.neurolinx.neuroseries://auth?token=' + encodeURIComponent(data.token);
+            try {
+              window.opener.postMessage({
+                type: 'NEURO_AUTH_SUCCESS',
+                token: data.token,
+                user: data.user
+              }, '*');
+            } catch (e) {}
           }
+
+          // 2. Trigger native app custom URL scheme deep link (for iOS SFSafariViewController & Android)
+          const deepLink = 'in.neurolinx.neuroseries://auth?token=' + encodeURIComponent(data.token) + 
+            '&user=' + encodeURIComponent(JSON.stringify(data.user));
+          
+          window.location.href = deepLink;
+
+          setTimeout(() => {
+            try { window.close(); } catch (e) {}
+          }, 600);
         } else {
           showError(data.error || 'Backend authentication failed.');
         }
