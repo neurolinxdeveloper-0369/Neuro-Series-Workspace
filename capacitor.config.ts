@@ -10,8 +10,10 @@ const config: CapacitorConfig = {
     cleartext: true,
     allowNavigation: [
       'neurolinx.in',
-      'api.neurolinx.in',
+      '*.neurolinx.in',
       'accounts.google.com',
+      '*.google.com',
+      '*.googleapis.com',
       '192.168.4.1'
     ]
   },

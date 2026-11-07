@@ -1,18 +1,33 @@
+import { Capacitor } from '@capacitor/core';
+
 /**
  * Strict Production API Client
  * - Enforces HTTPS and blocks accidental localhost calls in production
+ * - Automatically routes to https://neurolinx.in/neuro-series/api on native mobile (APK/IPA)
  * - Enforces strict security headers and bearer token authentication
  * - Handles error normalization and request timeouts
  */
 
 const getApiBaseUrl = (): string => {
   const envUrl = import.meta.env.VITE_API_BASE_URL;
-  if (envUrl) {
+  if (envUrl && !envUrl.startsWith('/')) {
     return envUrl.replace(/\/+$/, '');
   }
+
+  // When running inside Capacitor native mobile container (Android/iOS)
+  if (typeof window !== 'undefined') {
+    const isNative = Capacitor.isNativePlatform() || 
+      window.location.protocol === 'capacitor:' || 
+      (window.location.hostname === 'localhost' && !import.meta.env.DEV);
+    if (isNative) {
+      return 'https://neurolinx.in/neuro-series/api';
+    }
+  }
+
   if (import.meta.env.DEV) {
     return 'http://localhost:3056/api';
   }
+
   const basePath = (import.meta.env.BASE_URL || '/neuro-series/').replace(/\/+$/, '');
   return `${basePath}/api`;
 };
@@ -33,7 +48,7 @@ export class ApiSecurityError extends Error {
 
 /**
  * Validates target URL against strict production security standards.
- * Rejects insecure HTTP and localhost calls when in production.
+ * Rejects insecure HTTP and localhost calls when in production (except AP 192.168.4.1).
  */
 export const validateEndpointSecurity = (url: string): string => {
   const isProduction = import.meta.env.PROD;
@@ -44,10 +59,11 @@ export const validateEndpointSecurity = (url: string): string => {
     : `${API_BASE_URL}${url.startsWith('/') ? '' : '/'}${url}`;
 
   if (isProduction) {
-    if (fullUrl.includes('localhost') || fullUrl.includes('127.0.0.1')) {
+    // Only block localhost if not on native platform or explicitly calling local server
+    if (!Capacitor.isNativePlatform() && (fullUrl.includes('localhost:') || fullUrl.includes('127.0.0.1:'))) {
       throw new ApiSecurityError(`[Security Blocked] Insecure localhost API calls are forbidden in production: ${fullUrl}`);
     }
-    if (fullUrl.startsWith('http://')) {
+    if (fullUrl.startsWith('http://') && !fullUrl.includes('192.168.4.1')) {
       // Force HTTPS upgrade in production for external links
       return fullUrl.replace('http://', 'https://');
     }
