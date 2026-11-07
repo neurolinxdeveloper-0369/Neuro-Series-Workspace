@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { ArrowLeft, X, Loader2, AlertCircle } from 'lucide-react';
 import { getAssetUrl } from '../utils/assets';
-import { authApi, GOOGLE_WEB_CLIENT_ID, type UserProfile } from '../services/auth';
+import { authStorage, authApi, GOOGLE_WEB_CLIENT_ID, type UserProfile } from '../services/auth';
 import { NeuroLoader } from './NeuroLoader';
+import { Capacitor } from '@capacitor/core';
 
 declare global {
   interface Window {
@@ -132,6 +133,22 @@ export const SignInScreen = ({ isOpen, onClose, onSignInSuccess }: SignInScreenP
     };
   }, [isOpen]);
 
+  // Listen for authentication event from hosted auth popup (auth-mobile.html)
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleAuthMessage = (e: MessageEvent) => {
+      if (e.data?.type === 'NEURO_AUTH_SUCCESS' && e.data?.token && e.data?.user) {
+        authStorage.setSession(e.data.token, e.data.user);
+        onSignInSuccess?.(e.data.user);
+        onClose();
+      }
+    };
+
+    window.addEventListener('message', handleAuthMessage);
+    return () => window.removeEventListener('message', handleAuthMessage);
+  }, [isOpen, onClose, onSignInSuccess]);
+
   if (!isOpen) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -163,6 +180,17 @@ export const SignInScreen = ({ isOpen, onClose, onSignInSuccess }: SignInScreenP
   const handleGoogleSignInClick = () => {
     if (isLoading) return;
     setErrorMessage(null);
+
+    const isNativeMobile = Capacitor.isNativePlatform() || 
+      window.location.protocol === 'capacitor:' || 
+      (window.location.hostname === 'localhost' && !import.meta.env.DEV);
+
+    // On mobile devices, launch the hosted auth-mobile.html bridge on neurolinx.in
+    // to guarantee 100% Google origin verification and eliminate Error 400 origin_mismatch
+    if (isNativeMobile) {
+      window.open('https://neurolinx.in/neuro-series/auth-mobile.html', '_blank');
+      return;
+    }
 
     // 1. Preferred modern flow: Google OAuth2 popup dialog
     if (window.google?.accounts?.oauth2) {
