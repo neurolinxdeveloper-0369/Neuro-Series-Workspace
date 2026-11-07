@@ -9,11 +9,106 @@ import {
   Loader2,
   Sparkles,
   Wifi,
-  X
+  X,
+  ChevronRight,
+  Sliders,
+  ToggleRight,
+  Cast,
+  Gauge,
+  Activity,
+  Droplets,
+  Power,
+  Blinds,
+  Waves,
+  Router,
+  Lightbulb,
+  Cpu
 } from 'lucide-react';
 import { deviceApi } from '../services/device';
 import { homeApi } from '../services/home';
 import type { Room } from '../services/home';
+
+interface DeviceItem {
+  id: string;
+  name: string;
+  category: string;
+  type: 'switch' | 'light' | 'thermostat' | 'fan' | 'sensor';
+  icon: typeof Sliders;
+}
+
+const CATEGORIES = [
+  'All',
+  'Touch switches',
+  'Smart Switches',
+  'IR Blasters',
+  'Energy Meters',
+  'Sensors',
+  'Industry & Agriculture',
+  'Heavy Duty Plugs',
+  'Curtains',
+  'Smart Water Tank',
+  'Hubs / Connectivity',
+  'Lighting',
+  'Others',
+] as const;
+
+type CategoryType = typeof CATEGORIES[number];
+
+const DEVICE_CATALOG: DeviceItem[] = [
+  // Touch switches
+  { id: 'ts_socket_node', name: 'Socket Node', category: 'Touch switches', type: 'switch', icon: Sliders },
+  { id: 'ts_plain_node', name: 'Plain node', category: 'Touch switches', type: 'switch', icon: Sliders },
+  { id: 'ts_touch_panel', name: 'Touch Panel (Acrylic)', category: 'Touch switches', type: 'switch', icon: Sliders },
+
+  // Smart Switches
+  { id: 'ss_4_gang', name: '4 gang', category: 'Smart Switches', type: 'switch', icon: ToggleRight },
+  { id: 'ss_6_gang', name: '6 gang', category: 'Smart Switches', type: 'switch', icon: ToggleRight },
+  { id: 'ss_8_gang', name: '8 gang', category: 'Smart Switches', type: 'switch', icon: ToggleRight },
+  { id: 'ss_12_gang', name: '12 gang', category: 'Smart Switches', type: 'switch', icon: ToggleRight },
+
+  // IR Blasters
+  { id: 'ir_smart_ir', name: 'Smart IR', category: 'IR Blasters', type: 'switch', icon: Cast },
+  { id: 'ir_blaster_plus', name: 'IR Blaster Plus', category: 'IR Blasters', type: 'switch', icon: Cast },
+
+  // Energy Meters
+  { id: 'em_three_phase_1', name: 'Three phase 1energy meter', category: 'Energy Meters', type: 'sensor', icon: Gauge },
+  { id: 'em_three_phase_sw', name: 'Three phase energy meter with 1 Switch', category: 'Energy Meters', type: 'sensor', icon: Gauge },
+  { id: 'em_single_phase', name: 'Single phase energy meter', category: 'Energy Meters', type: 'sensor', icon: Gauge },
+  { id: 'em_single_phase_sw', name: '1 switch single phase energy meter', category: 'Energy Meters', type: 'sensor', icon: Gauge },
+
+  // Sensors
+  { id: 'sn_sensor_hub', name: 'Sensor Hub (temperature)', category: 'Sensors', type: 'sensor', icon: Activity },
+  { id: 'sn_motion', name: 'Motion Sensor', category: 'Sensors', type: 'sensor', icon: Activity },
+
+  // Industry & Agriculture
+  { id: 'ia_motor_controller', name: 'Motor Controller', category: 'Industry & Agriculture', type: 'switch', icon: Droplets },
+  { id: 'ia_aqua_smart', name: 'Aqua Smart', category: 'Industry & Agriculture', type: 'switch', icon: Droplets },
+
+  // Heavy Duty Plugs
+  { id: 'hdp_smart_heavy_plug', name: 'Smart Heavy Plug', category: 'Heavy Duty Plugs', type: 'switch', icon: Power },
+  { id: 'hdp_hi_amp_1_load', name: 'Hi Amp 1 load', category: 'Heavy Duty Plugs', type: 'switch', icon: Power },
+
+  // Curtains
+  { id: 'ct_curtain_driver', name: 'Curtain driver', category: 'Curtains', type: 'switch', icon: Blinds },
+  { id: 'ct_touch_curtain_driver', name: 'Touch Curtain driver', category: 'Curtains', type: 'switch', icon: Blinds },
+
+  // Smart Water Tank
+  { id: 'swt_tank_control_basic', name: 'Smart tank control (basic)', category: 'Smart Water Tank', type: 'sensor', icon: Waves },
+  { id: 'swt_tank_control_pro', name: 'Smart tank control pro', category: 'Smart Water Tank', type: 'sensor', icon: Waves },
+
+  // Hubs / Connectivity
+  { id: 'hc_smart_hub', name: 'Smart Hub', category: 'Hubs / Connectivity', type: 'switch', icon: Router },
+  { id: 'hc_smart_home_adapter', name: 'Smart Home Adapter', category: 'Hubs / Connectivity', type: 'switch', icon: Router },
+
+  // Lighting
+  { id: 'lt_ceiling_lights', name: 'Ceiling Lights', category: 'Lighting', type: 'light', icon: Lightbulb },
+  { id: 'lt_rgb_lights', name: 'RGB lights', category: 'Lighting', type: 'light', icon: Lightbulb },
+  { id: 'lt_tri_color_theme_lights', name: 'Tri-color theme lights', category: 'Lighting', type: 'light', icon: Lightbulb },
+
+  // Others
+  { id: 'ot_home_console', name: 'Home Console', category: 'Others', type: 'switch', icon: Cpu },
+  { id: 'ot_custom_iot_apps', name: 'Custom IoT Applications', category: 'Others', type: 'switch', icon: Cpu },
+];
 
 interface AddDeviceScreenProps {
   isOpen: boolean;
@@ -32,6 +127,13 @@ export const AddDeviceScreen = ({
   onDeviceAdded,
   onRoomAdded,
 }: AddDeviceScreenProps) => {
+  // Navigation between Main "Add device" screen and "What kind of device?" screen
+  const [currentView, setCurrentView] = useState<'main' | 'catalog'>('main');
+  const [selectedCategory, setSelectedCategory] = useState<CategoryType>('All');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isSearchActive, setIsSearchActive] = useState(false);
+
+  // Scanning states
   const [isScanning, setIsScanning] = useState(false);
   const [scanType, setScanType] = useState<'nearby' | 'qr' | null>(null);
   const [foundDevices, setFoundDevices] = useState<Array<{ name: string; type: 'light' | 'switch' | 'fan' | 'thermostat' | 'sensor'; signal: string }>>([]);
@@ -40,7 +142,7 @@ export const AddDeviceScreen = ({
   const [isSetupDialogOpen, setIsSetupDialogOpen] = useState(false);
   const [deviceBrandTitle, setDeviceBrandTitle] = useState('Neuro Series Device');
   const [deviceName, setDeviceName] = useState('');
-  const [deviceType, setDeviceType] = useState<'light' | 'switch' | 'fan' | 'thermostat' | 'sensor'>('light');
+  const [deviceType, setDeviceType] = useState<'light' | 'switch' | 'fan' | 'thermostat' | 'sensor'>('switch');
   const [selectedRoom, setSelectedRoom] = useState<string>('');
   const [newRoomName, setNewRoomName] = useState('');
   const [isCreatingNewRoom, setIsCreatingNewRoom] = useState(false);
@@ -56,9 +158,9 @@ export const AddDeviceScreen = ({
     setTimeout(() => {
       setIsScanning(false);
       setFoundDevices([
-        { name: 'Neuro Series Smart Bulb Pro', type: 'light', signal: '-42 dBm' },
-        { name: 'Neuro Dual Relay Switch', type: 'switch', signal: '-58 dBm' },
-        { name: 'Matter Climate Sensor', type: 'sensor', signal: '-50 dBm' },
+        { name: 'Neuro Series Socket Node', type: 'switch', signal: '-42 dBm' },
+        { name: '4 gang Smart Switch', type: 'switch', signal: '-58 dBm' },
+        { name: 'Sensor Hub (temperature)', type: 'sensor', signal: '-50 dBm' },
       ]);
     }, 2200);
   };
@@ -68,8 +170,8 @@ export const AddDeviceScreen = ({
     setIsScanning(true);
     setTimeout(() => {
       setIsScanning(false);
-      setDeviceBrandTitle('Matter QR Paired Device');
-      setDeviceName('Matter Smart Socket');
+      setDeviceBrandTitle('QR Paired Device');
+      setDeviceName('Smart Heavy Plug');
       setDeviceType('switch');
       setIsSetupDialogOpen(true);
     }, 1800);
@@ -128,6 +230,7 @@ export const AddDeviceScreen = ({
       setTimeout(() => {
         setIsSetupDialogOpen(false);
         setSuccessToast('');
+        setCurrentView('main');
         onClose();
       }, 1200);
     } catch {
@@ -137,185 +240,273 @@ export const AddDeviceScreen = ({
     }
   };
 
+  // Filter device catalog by selected category and search query
+  const filteredCatalog = DEVICE_CATALOG.filter((item) => {
+    const matchesCategory = selectedCategory === 'All' || item.category === selectedCategory;
+    const matchesSearch = searchQuery.trim() === '' || 
+      item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      item.category.toLowerCase().includes(searchQuery.toLowerCase());
+    return matchesCategory && matchesSearch;
+  });
+
   return (
     <div className="fixed inset-0 z-50 w-full h-full bg-[#f3f4f8] overflow-y-auto overflow-x-hidden flex flex-col font-sans select-none animate-in fade-in duration-200">
       
-      {/* Centered Max-Width Mobile/Tablet Container */}
-      <div className="w-full max-w-md mx-auto min-h-screen flex flex-col justify-between p-5 sm:p-6 pb-8">
-        
-        {/* Top Section */}
-        <div>
-          {/* Header matching Reference (media_1794028553859.jpg) */}
-          <div className="relative flex items-center justify-between mb-6 pt-2">
-            
-            {/* Left: Circular Back Button */}
-            <button
-              onClick={onClose}
-              className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-slate-800 shadow-sm hover:bg-slate-100 transition-colors cursor-pointer"
-              aria-label="Back"
-            >
-              <ChevronLeft className="w-6 h-6" strokeWidth={2.5} />
-            </button>
-
-            {/* Center: Title */}
-            <h1 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">
-              Add device
-            </h1>
-
-            {/* Right: Search & More Capsule Button */}
-            <div className="flex items-center bg-white rounded-full shadow-sm border border-slate-100 px-3 py-1.5 gap-2">
-              <button 
-                onClick={() => {}}
-                className="text-slate-800 hover:text-slate-600 transition-colors cursor-pointer"
-                aria-label="Search"
-              >
-                <Search className="w-4 h-4" strokeWidth={2.4} />
-              </button>
-              <div className="w-px h-3.5 bg-slate-200" />
-              <button 
-                onClick={() => {}}
-                className="text-slate-800 hover:text-slate-600 transition-colors cursor-pointer"
-                aria-label="Options"
-              >
-                <MoreVertical className="w-4 h-4" strokeWidth={2.4} />
-              </button>
-            </div>
-          </div>
-
-          {/* Toast Notification */}
-          {successToast && (
-            <div className="bg-emerald-500 text-white font-semibold text-sm px-4 py-3 rounded-2xl shadow-lg flex items-center gap-2 mb-4 animate-in fade-in slide-in-from-top-2">
-              <Check className="w-5 h-5 flex-shrink-0" />
-              <span>{successToast}</span>
-            </div>
-          )}
-
-          {/* 1. Neuro Series devices Card (Reference Image Card 1) */}
-          <div className="bg-white rounded-[28px] p-5 sm:p-6 shadow-sm border border-slate-100/90 mb-4">
-            <h2 className="text-sm sm:text-base font-bold text-slate-900 mb-6 font-sans">
-              Neuro Series devices
-            </h2>
-
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-lg sm:text-xl font-extrabold text-slate-900 tracking-wider font-sans">
-                  NEURO SERIES
-                </div>
-                <div className="text-xs sm:text-sm font-semibold text-slate-400 tracking-wide font-sans mt-0.5">
-                  neurolinx
-                </div>
-              </div>
-
+      {/* ------------------- VIEW 1: MAIN ADD DEVICE SCREEN (Partner removed) ------------------- */}
+      {currentView === 'main' && (
+        <div className="w-full max-w-md mx-auto min-h-screen flex flex-col justify-between p-5 sm:p-6 pb-8">
+          
+          <div>
+            {/* Header */}
+            <div className="relative flex items-center justify-between mb-6 pt-2">
               <button
-                onClick={() => openAddSetup('Neuro Series Device', 'Neuro Series Ceiling Light', 'light')}
-                className="px-6 py-2 rounded-full bg-[#0284c7] hover:bg-[#0369a1] text-white font-bold text-sm shadow-md shadow-sky-500/20 active:scale-95 transition-all cursor-pointer"
+                onClick={onClose}
+                className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-slate-800 shadow-sm hover:bg-slate-100 transition-colors cursor-pointer"
+                aria-label="Back"
               >
-                Add
+                <ChevronLeft className="w-6 h-6" strokeWidth={2.5} />
               </button>
-            </div>
-          </div>
 
-          {/* 2. Partner devices Card (Reference Image Card 2) */}
-          <div className="bg-white rounded-[28px] p-5 sm:p-6 shadow-sm border border-slate-100/90 mb-6">
-            <h2 className="text-sm sm:text-base font-bold text-slate-900 mb-5 font-sans">
-              Partner devices
-            </h2>
+              <h1 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">
+                Add device
+              </h1>
 
-            <div className="flex items-center justify-between">
-              <div className="space-y-1">
-                <div className="text-base font-extrabold text-slate-800 tracking-tight font-sans">
-                  harman
-                </div>
-                <div className="text-xs text-slate-500 font-medium">
-                  Works with <span className="font-bold text-slate-700">Neuro Series</span>
-                </div>
-                <div className="flex items-center gap-1.5 text-xs text-slate-700 font-bold pt-1">
-                  <span className="text-sm text-slate-900">❉</span>
-                  <span>matter</span>
-                </div>
-              </div>
-
-              <button
-                onClick={() => openAddSetup('Partner Device', 'Matter Smart Plug', 'switch')}
-                className="px-6 py-2 rounded-full bg-[#0284c7] hover:bg-[#0369a1] text-white font-bold text-sm shadow-md shadow-sky-500/20 active:scale-95 transition-all cursor-pointer"
-              >
-                Add
-              </button>
-            </div>
-          </div>
-
-          {/* Scanning Status / Found Devices Section */}
-          {isScanning && (
-            <div className="bg-white rounded-3xl p-5 border border-sky-100 shadow-sm flex items-center justify-center gap-3 mb-4 animate-in fade-in">
-              <Radar className="w-5 h-5 text-[#0284c7] animate-spin" />
-              <span className="text-sm font-bold text-slate-800">
-                {scanType === 'qr' ? 'Scanning QR code with camera...' : 'Searching nearby Wi-Fi, BLE & Matter...'}
-              </span>
-            </div>
-          )}
-
-          {foundDevices.length > 0 && (
-            <div className="bg-white rounded-3xl p-5 border border-sky-100 shadow-sm space-y-3 mb-4">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-700 tracking-wide uppercase flex items-center gap-1.5">
-                  <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-                  Found ({foundDevices.length}) Devices Nearby
-                </span>
+              <div className="flex items-center bg-white rounded-full shadow-sm border border-slate-100 px-3 py-1.5 gap-2">
                 <button 
-                  onClick={handleStartScanNearby}
-                  className="text-xs text-[#0284c7] font-semibold hover:underline"
+                  onClick={() => setCurrentView('catalog')}
+                  className="text-slate-800 hover:text-slate-600 transition-colors cursor-pointer"
+                  aria-label="Search"
                 >
-                  Rescan
+                  <Search className="w-4 h-4" strokeWidth={2.4} />
+                </button>
+                <div className="w-px h-3.5 bg-slate-200" />
+                <button 
+                  onClick={() => {}}
+                  className="text-slate-800 hover:text-slate-600 transition-colors cursor-pointer"
+                  aria-label="Options"
+                >
+                  <MoreVertical className="w-4 h-4" strokeWidth={2.4} />
                 </button>
               </div>
+            </div>
 
-              <div className="divide-y divide-slate-100">
-                {foundDevices.map((dev, idx) => (
-                  <div key={idx} className="py-2.5 flex items-center justify-between first:pt-1 last:pb-1">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-xl bg-sky-50 flex items-center justify-center text-[#0284c7]">
-                        <Wifi className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <div className="text-xs sm:text-sm font-bold text-slate-900">{dev.name}</div>
-                        <div className="text-[11px] text-slate-400">Signal: {dev.signal}</div>
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => openAddSetup(dev.name, dev.name, dev.type)}
-                      className="px-3.5 py-1.5 rounded-full bg-[#0284c7] text-white text-xs font-bold hover:bg-[#0369a1] transition-colors cursor-pointer"
-                    >
-                      Connect
-                    </button>
+            {/* Toast Notification */}
+            {successToast && (
+              <div className="bg-emerald-500 text-white font-semibold text-sm px-4 py-3 rounded-2xl shadow-lg flex items-center gap-2 mb-4 animate-in fade-in slide-in-from-top-2">
+                <Check className="w-5 h-5 flex-shrink-0" />
+                <span>{successToast}</span>
+              </div>
+            )}
+
+            {/* 1. Neuro Series devices Card (Partner devices removed as requested) */}
+            <div className="bg-white rounded-[28px] p-5 sm:p-6 shadow-sm border border-slate-100/90 mb-5">
+              <h2 className="text-sm sm:text-base font-bold text-slate-900 mb-6 font-sans">
+                Neuro Series devices
+              </h2>
+
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-lg sm:text-xl font-extrabold text-slate-900 tracking-wider font-sans">
+                    NEURO SERIES
                   </div>
-                ))}
+                  <div className="text-xs sm:text-sm font-semibold text-slate-400 tracking-wide font-sans mt-0.5">
+                    neurolinx
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => setCurrentView('catalog')}
+                  className="px-6 py-2 rounded-full bg-[#0284c7] hover:bg-[#0369a1] text-white font-bold text-sm shadow-md shadow-sky-500/20 active:scale-95 transition-all cursor-pointer"
+                >
+                  Add
+                </button>
               </div>
             </div>
-          )}
+
+            {/* Scanning Status / Found Devices Section */}
+            {isScanning && (
+              <div className="bg-white rounded-3xl p-5 border border-sky-100 shadow-sm flex items-center justify-center gap-3 mb-4 animate-in fade-in">
+                <Radar className="w-5 h-5 text-[#0284c7] animate-spin" />
+                <span className="text-sm font-bold text-slate-800">
+                  {scanType === 'qr' ? 'Scanning QR code with camera...' : 'Searching nearby Wi-Fi, BLE & Matter...'}
+                </span>
+              </div>
+            )}
+
+            {foundDevices.length > 0 && (
+              <div className="bg-white rounded-3xl p-5 border border-sky-100 shadow-sm space-y-3 mb-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-700 tracking-wide uppercase flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                    Found ({foundDevices.length}) Devices Nearby
+                  </span>
+                  <button 
+                    onClick={handleStartScanNearby}
+                    className="text-xs text-[#0284c7] font-semibold hover:underline"
+                  >
+                    Rescan
+                  </button>
+                </div>
+
+                <div className="divide-y divide-slate-100">
+                  {foundDevices.map((dev, idx) => (
+                    <div key={idx} className="py-2.5 flex items-center justify-between first:pt-1 last:pb-1">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-xl bg-sky-50 flex items-center justify-center text-[#0284c7]">
+                          <Wifi className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <div className="text-xs sm:text-sm font-bold text-slate-900">{dev.name}</div>
+                          <div className="text-[11px] text-slate-400">Signal: {dev.signal}</div>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => openAddSetup(dev.name, dev.name, dev.type)}
+                        className="px-3.5 py-1.5 rounded-full bg-[#0284c7] text-white text-xs font-bold hover:bg-[#0369a1] transition-colors cursor-pointer"
+                      >
+                        Connect
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Bottom Action Buttons */}
+          <div className="space-y-3 pt-6 mt-auto">
+            <button
+              onClick={handleStartScanQr}
+              className="w-full py-4 rounded-full bg-slate-200/90 hover:bg-slate-300 text-slate-900 font-bold text-sm sm:text-base transition-all active:scale-[0.99] cursor-pointer flex items-center justify-center gap-2"
+            >
+              <QrCode className="w-4 h-4 text-slate-800" />
+              <span>Scan QR code</span>
+            </button>
+
+            <button
+              onClick={handleStartScanNearby}
+              className="w-full py-4 rounded-full bg-slate-200/90 hover:bg-slate-300 text-slate-900 font-bold text-sm sm:text-base transition-all active:scale-[0.99] cursor-pointer flex items-center justify-center gap-2"
+            >
+              <Radar className="w-4 h-4 text-slate-800" />
+              <span>Scan nearby</span>
+            </button>
+          </div>
         </div>
+      )}
 
-        {/* Bottom Action Buttons matching Reference (media_1794028553859.jpg) */}
-        <div className="space-y-3 pt-6 mt-auto">
-          {/* Scan QR code */}
-          <button
-            onClick={handleStartScanQr}
-            className="w-full py-4 rounded-full bg-slate-200/90 hover:bg-slate-300 text-slate-900 font-bold text-sm sm:text-base transition-all active:scale-[0.99] cursor-pointer flex items-center justify-center gap-2"
-          >
-            <QrCode className="w-4 h-4 text-slate-800" />
-            <span>Scan QR code</span>
-          </button>
+      {/* ------------------- VIEW 2: "What kind of device?" (Reference media_1794029651020.jpg) ------------------- */}
+      {currentView === 'catalog' && (
+        <div className="w-full max-w-md mx-auto min-h-screen flex flex-col justify-between p-4 sm:p-6 pb-8">
+          <div>
+            {/* Header */}
+            <div className="relative flex items-center justify-between mb-4 pt-2">
+              <button
+                onClick={() => setCurrentView('main')}
+                className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-slate-800 shadow-sm hover:bg-slate-100 transition-colors cursor-pointer"
+                aria-label="Back"
+              >
+                <ChevronLeft className="w-6 h-6" strokeWidth={2.5} />
+              </button>
 
-          {/* Scan nearby */}
-          <button
-            onClick={handleStartScanNearby}
-            className="w-full py-4 rounded-full bg-slate-200/90 hover:bg-slate-300 text-slate-900 font-bold text-sm sm:text-base transition-all active:scale-[0.99] cursor-pointer flex items-center justify-center gap-2"
-          >
-            <Radar className="w-4 h-4 text-slate-800" />
-            <span>Scan nearby</span>
-          </button>
+              <h1 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">
+                What kind of device?
+              </h1>
+
+              <button
+                onClick={() => setIsSearchActive(!isSearchActive)}
+                className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-slate-800 shadow-sm hover:bg-slate-100 transition-colors cursor-pointer"
+                aria-label="Search"
+              >
+                <Search className="w-5 h-5 text-slate-800" strokeWidth={2.2} />
+              </button>
+            </div>
+
+            {/* Interactive Search Bar if active */}
+            {isSearchActive && (
+              <div className="mb-4 bg-white rounded-2xl p-2.5 flex items-center gap-2 shadow-sm border border-slate-100 animate-in fade-in slide-in-from-top-2">
+                <Search className="w-4 h-4 text-slate-400 ml-1" />
+                <input 
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search devices..."
+                  className="w-full text-sm outline-none bg-transparent text-slate-800 placeholder-slate-400"
+                  autoFocus
+                />
+                {searchQuery && (
+                  <button onClick={() => setSearchQuery('')} className="p-1 text-slate-400 hover:text-slate-600">
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Horizontally Scrollable Category Tabs matching Reference Image */}
+            <div className="flex items-center gap-3 overflow-x-auto no-scrollbar pb-3 mb-3 select-none">
+              {CATEGORIES.map((cat) => {
+                const isSelected = selectedCategory === cat;
+                return (
+                  <button
+                    key={cat}
+                    onClick={() => {
+                      setSelectedCategory(cat);
+                      setSearchQuery('');
+                    }}
+                    className={`px-3 py-1 text-sm font-semibold tracking-tight whitespace-nowrap transition-colors cursor-pointer ${
+                      isSelected
+                        ? 'text-slate-900 font-extrabold border-b-2 border-slate-900 pb-0.5'
+                        : 'text-slate-400 hover:text-slate-600 font-medium'
+                    }`}
+                  >
+                    {cat}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Device List Card matching Reference Image */}
+            <div className="bg-white rounded-[28px] shadow-sm border border-slate-100/90 divide-y divide-slate-100 overflow-hidden mb-6">
+              {filteredCatalog.length === 0 ? (
+                <div className="p-8 text-center text-slate-400 text-sm">
+                  No devices found in "{selectedCategory}".
+                </div>
+              ) : (
+                filteredCatalog.map((item) => {
+                  const Icon = item.icon;
+                  return (
+                    <div
+                      key={item.id}
+                      onClick={() => openAddSetup(item.name, item.name, item.type)}
+                      className="group flex items-center justify-between p-4 sm:p-4.5 hover:bg-slate-50/80 transition-colors cursor-pointer"
+                    >
+                      <div className="flex items-center gap-4">
+                        {/* Device Icon stylized box matching reference */}
+                        <div className="w-9 h-9 rounded-xl bg-slate-100/90 flex items-center justify-center text-slate-700 flex-shrink-0 group-hover:scale-105 transition-transform">
+                          <Icon className="w-5 h-5 text-slate-700" strokeWidth={2.1} />
+                        </div>
+                        <span className="font-semibold text-slate-900 text-sm sm:text-base">
+                          {item.name}
+                        </span>
+                      </div>
+                      <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-slate-600 transition-colors" strokeWidth={2.2} />
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* "Can't find your device?" Link at bottom */}
+            <div className="text-center pb-6">
+              <button
+                onClick={() => openAddSetup('Custom Device', 'My Smart Device', 'switch')}
+                className="text-sm font-bold text-[#0284c7] hover:underline cursor-pointer"
+              >
+                Can't find your device?
+              </button>
+            </div>
+          </div>
         </div>
-
-      </div>
+      )}
 
       {/* Setup & Connect Dialog Sheet */}
       {isSetupDialogOpen && (
@@ -348,7 +539,7 @@ export const AddDeviceScreen = ({
                 type="text"
                 value={deviceName}
                 onChange={(e) => setDeviceName(e.target.value)}
-                placeholder="e.g. Living Room Chandelier"
+                placeholder="e.g. Socket Node"
                 className="w-full px-3.5 py-2.5 rounded-2xl border border-slate-200 text-sm text-slate-800 outline-none focus:border-[#0284c7] font-sans"
               />
             </div>
@@ -363,11 +554,11 @@ export const AddDeviceScreen = ({
                 onChange={(e) => setDeviceType(e.target.value as any)}
                 className="w-full px-3.5 py-2.5 rounded-2xl border border-slate-200 text-sm text-slate-800 outline-none focus:border-[#0284c7] bg-white cursor-pointer font-sans"
               >
+                <option value="switch">Switch / Socket / Relay</option>
                 <option value="light">Lighting / Bulb</option>
-                <option value="switch">Switch / Outlet / Socket</option>
-                <option value="fan">Ceiling / Exhaust Fan</option>
-                <option value="thermostat">Air Conditioner / Thermostat</option>
-                <option value="sensor">Smart Sensor</option>
+                <option value="fan">Fan</option>
+                <option value="thermostat">AC / Climate Control</option>
+                <option value="sensor">Sensor / Meter / Tank Control</option>
               </select>
             </div>
 
