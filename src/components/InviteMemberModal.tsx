@@ -45,7 +45,7 @@ export const InviteMemberModal = ({
     }
   }, [isOpen, currentView, home?.id]);
 
-  // Reset state when modal opens/closes
+  // Reset state when screen opens/closes
   useEffect(() => {
     if (isOpen) {
       setCurrentView('menu');
@@ -64,7 +64,6 @@ export const InviteMemberModal = ({
       const url = `https://neurolinx.in/neuro-series/join/${data.shareToken.substring(0, 10)}`;
       setShareLink(url);
     } catch {
-      // Fallback link
       const randomCode = Math.random().toString(36).substring(2, 10);
       setShareLink(`https://neurolinx.in/neuro-series/join/${randomCode}`);
     } finally {
@@ -123,45 +122,37 @@ export const InviteMemberModal = ({
   if (!isOpen) return null;
 
   return (
-    <div 
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200"
-      onClick={onClose}
-    >
-      <div 
-        onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-md bg-[#f3f4f8] rounded-[36px] overflow-hidden shadow-2xl border border-white/60 flex flex-col max-h-[92vh] animate-in zoom-in-95 duration-200"
-        style={{
-          boxShadow: '0 25px 60px -15px rgba(15, 23, 42, 0.25), 0 0 0 1px rgba(255, 255, 255, 0.7) inset'
-        }}
-      >
-
-        {/* ----------------- SCREEN 1: INVITE MEMBER (Reference 3) ----------------- */}
-        {currentView === 'menu' && (
-          <div className="flex flex-col h-full p-6 sm:p-7 overflow-y-auto">
+    <div className="fixed inset-0 z-50 w-full h-full bg-[#f3f4f8] overflow-y-auto overflow-x-hidden flex flex-col font-sans select-none animate-in fade-in duration-200">
+      
+      {/* ----------------- SCREEN 1: INVITE MEMBER (Full Screen Page) ----------------- */}
+      {currentView === 'menu' && (
+        <div className="w-full max-w-md mx-auto min-h-screen flex flex-col justify-between p-5 sm:p-6 pb-8">
+          <div>
             {/* Header */}
-            <div className="relative flex items-center justify-center mb-6">
+            <div className="relative flex items-center justify-between mb-6 pt-2">
               <button
                 onClick={onClose}
-                className="absolute left-0 w-10 h-10 rounded-full bg-white flex items-center justify-center text-slate-800 shadow-sm hover:bg-slate-100 transition-colors cursor-pointer"
+                className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-slate-800 shadow-sm hover:bg-slate-100 transition-colors cursor-pointer"
                 aria-label="Back"
               >
                 <ChevronLeft className="w-6 h-6" strokeWidth={2.5} />
               </button>
-              <h1 className="text-xl font-bold text-slate-900 font-sans tracking-tight">
+              <h1 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">
                 Invite member
               </h1>
+              <div className="w-10" />
             </div>
 
             {/* Description Text */}
-            <div className="text-slate-500 text-xs sm:text-sm leading-relaxed mb-6 font-medium">
+            <div className="text-slate-500 text-xs sm:text-sm leading-relaxed mb-6 font-medium px-1">
               <p>Invite a friend or family member to control your Neuro Series devices.</p>
               <p className="mt-0.5">
                 Choose how to invite someone to <span className="font-semibold text-slate-700">{home?.name || 'Home'}</span>.
               </p>
             </div>
 
-            {/* Options Card */}
-            <div className="bg-white rounded-3xl shadow-sm border border-slate-100 divide-y divide-slate-100 overflow-hidden mb-6">
+            {/* Options Card matching Reference 3 */}
+            <div className="bg-white rounded-[28px] shadow-sm border border-slate-100/90 divide-y divide-slate-100 overflow-hidden mb-6">
               {/* Option 1: QR Code */}
               <button
                 onClick={() => {
@@ -229,23 +220,26 @@ export const InviteMemberModal = ({
               </button>
             </div>
           </div>
-        )}
+        </div>
+      )}
 
-        {/* ----------------- SCREEN 2: SEND AN INVITATION (Reference 4) ----------------- */}
-        {currentView === 'email' && (
-          <div className="flex flex-col h-full p-6 sm:p-7 overflow-y-auto">
+      {/* ----------------- SCREEN 2: SEND AN INVITATION (Full Screen Page) ----------------- */}
+      {currentView === 'email' && (
+        <div className="w-full max-w-md mx-auto min-h-screen flex flex-col justify-between p-5 sm:p-6 pb-8">
+          <div>
             {/* Header */}
-            <div className="relative flex items-center justify-center mb-6">
+            <div className="relative flex items-center justify-between mb-6 pt-2">
               <button
                 onClick={() => setCurrentView('menu')}
-                className="absolute left-0 w-10 h-10 rounded-full bg-white flex items-center justify-center text-slate-800 shadow-sm hover:bg-slate-100 transition-colors cursor-pointer"
+                className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-slate-800 shadow-sm hover:bg-slate-100 transition-colors cursor-pointer"
                 aria-label="Back"
               >
                 <ChevronLeft className="w-6 h-6" strokeWidth={2.5} />
               </button>
-              <h1 className="text-xl font-bold text-slate-900 font-sans tracking-tight">
+              <h1 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">
                 Send an invitation
               </h1>
+              <div className="w-10" />
             </div>
 
             {/* Prompt */}
@@ -254,7 +248,7 @@ export const InviteMemberModal = ({
             </p>
 
             {/* Input Card matching Reference 4 */}
-            <div className="bg-white rounded-3xl p-5 shadow-sm border border-slate-100 mb-4">
+            <div className="bg-white rounded-[28px] p-5 sm:p-6 shadow-sm border border-slate-100/90 mb-4">
               <input
                 type="email"
                 value={email}
@@ -284,56 +278,59 @@ export const InviteMemberModal = ({
             )}
 
             {sendSuccess && (
-              <div className="bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs sm:text-sm p-3 rounded-2xl mb-3 flex items-center gap-2">
+              <div className="bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs sm:text-sm p-3.5 rounded-2xl mb-3 flex items-center gap-2">
                 <Check className="w-4 h-4 text-emerald-600 flex-shrink-0" />
                 <span>Invitation sent successfully to {email}!</span>
               </div>
             )}
 
             {/* Helper Text matching Reference 4 */}
-            <p className="text-slate-400 text-xs leading-relaxed px-1 mb-8">
+            <p className="text-slate-400 text-xs leading-relaxed px-1 mb-6">
               After the person you invite accepts the invitation, they'll appear in the member list. You can also cancel invitations on the member list.
             </p>
-
-            <div className="mt-auto pt-4">
-              <button
-                onClick={handleSendEmailInvite}
-                disabled={isSending || sendSuccess}
-                className="w-full py-4 rounded-full bg-[#0284c7] hover:bg-[#0369a1] text-white font-bold text-base shadow-lg shadow-sky-500/25 transition-all active:scale-[0.99] disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer"
-              >
-                {isSending ? (
-                  <>
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                    <span>Sending...</span>
-                  </>
-                ) : sendSuccess ? (
-                  <>
-                    <Check className="w-5 h-5" />
-                    <span>Sent!</span>
-                  </>
-                ) : (
-                  <span>Send</span>
-                )}
-              </button>
-            </div>
           </div>
-        )}
 
-        {/* ----------------- SCREEN 3: SHARE LINK (Reference 5) ----------------- */}
-        {currentView === 'link' && (
-          <div className="flex flex-col h-full p-6 sm:p-7 overflow-y-auto">
+          <div className="pt-4 mt-auto">
+            <button
+              onClick={handleSendEmailInvite}
+              disabled={isSending || sendSuccess}
+              className="w-full py-4 rounded-full bg-[#0284c7] hover:bg-[#0369a1] text-white font-bold text-base shadow-lg shadow-sky-500/25 transition-all active:scale-[0.99] disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer"
+            >
+              {isSending ? (
+                <>
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                  <span>Sending...</span>
+                </>
+              ) : sendSuccess ? (
+                <>
+                  <Check className="w-5 h-5" />
+                  <span>Sent!</span>
+                </>
+              ) : (
+                <span>Send</span>
+              )}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ----------------- SCREEN 3: SHARE LINK (Full Screen Page) ----------------- */}
+      {currentView === 'link' && (
+        <div className="w-full max-w-md mx-auto min-h-screen flex flex-col justify-between p-5 sm:p-6 pb-8">
+          <div>
             {/* Header */}
-            <div className="relative flex items-center justify-center mb-6">
+            <div className="relative flex items-center justify-between mb-6 pt-2">
               <button
                 onClick={() => setCurrentView('menu')}
-                className="absolute left-0 w-10 h-10 rounded-full bg-white flex items-center justify-center text-slate-800 shadow-sm hover:bg-slate-100 transition-colors cursor-pointer"
+                className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-slate-800 shadow-sm hover:bg-slate-100 transition-colors cursor-pointer"
                 aria-label="Back"
               >
                 <ChevronLeft className="w-6 h-6" strokeWidth={2.5} />
               </button>
-              <h1 className="text-xl font-bold text-slate-900 font-sans tracking-tight">
+              <h1 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">
                 Share link
               </h1>
+              <div className="w-10" />
             </div>
 
             {/* Prompt */}
@@ -342,7 +339,7 @@ export const InviteMemberModal = ({
             </p>
 
             {/* White Illustration Card matching Reference 5 */}
-            <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100 mb-4 flex flex-col items-center text-center">
+            <div className="bg-white rounded-[28px] p-6 shadow-sm border border-slate-100/90 mb-4 flex flex-col items-center text-center">
               
               {/* People & Home Vector Art matching Reference 5 */}
               <div className="w-full max-w-[240px] h-32 flex items-center justify-center mb-4 relative">
@@ -350,7 +347,6 @@ export const InviteMemberModal = ({
                   {/* Home Silhouette Backdrop */}
                   <path d="M150 20 L240 90 L240 150 L60 150 L60 90 Z" fill="#e0f2fe" opacity="0.8" />
                   
-                  {/* People Characters Art */}
                   {/* Person 1 Left */}
                   <circle cx="95" cy="65" r="10" fill="#334155" />
                   <rect x="87" y="77" width="16" height="35" rx="5" fill="#38bdf8" />
@@ -400,7 +396,7 @@ export const InviteMemberModal = ({
                   className="p-1.5 rounded-xl bg-white shadow-sm border border-slate-100 text-[#0284c7] hover:bg-sky-50 transition-colors cursor-pointer flex-shrink-0"
                   title="Copy link"
                 >
-                  {isCopied ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
+                  {isCopied ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4 text-slate-600" />}
                 </button>
               </div>
 
@@ -422,29 +418,29 @@ export const InviteMemberModal = ({
                 Anyone who visits this link can request to join your location. You can cancel a link that you've already shared by creating a new link.
               </p>
             </div>
-
-            {/* Bottom Actions matching Reference 5 */}
-            <div className="mt-auto space-y-3 pt-2">
-              <button
-                onClick={handleNativeShare}
-                className="w-full py-4 rounded-full bg-[#0284c7] hover:bg-[#0369a1] text-white font-bold text-base shadow-lg shadow-sky-500/25 transition-all active:scale-[0.99] cursor-pointer"
-              >
-                Send
-              </button>
-
-              <button
-                onClick={generateNewShareLink}
-                disabled={isGeneratingLink}
-                className="w-full py-4 rounded-full bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold text-base transition-all active:scale-[0.99] disabled:opacity-50 cursor-pointer flex items-center justify-center gap-2"
-              >
-                {isGeneratingLink && <Loader2 className="w-4 h-4 animate-spin text-slate-600" />}
-                <span>Create new link</span>
-              </button>
-            </div>
           </div>
-        )}
 
-      </div>
+          {/* Bottom Actions matching Reference 5 */}
+          <div className="space-y-3 pt-2 mt-auto">
+            <button
+              onClick={handleNativeShare}
+              className="w-full py-4 rounded-full bg-[#0284c7] hover:bg-[#0369a1] text-white font-bold text-base shadow-lg shadow-sky-500/25 transition-all active:scale-[0.99] cursor-pointer"
+            >
+              Send
+            </button>
+
+            <button
+              onClick={generateNewShareLink}
+              disabled={isGeneratingLink}
+              className="w-full py-4 rounded-full bg-slate-200/90 hover:bg-slate-300 text-slate-800 font-bold text-base transition-all active:scale-[0.99] disabled:opacity-50 cursor-pointer flex items-center justify-center gap-2"
+            >
+              {isGeneratingLink && <Loader2 className="w-4 h-4 animate-spin text-slate-600" />}
+              <span>Create new link</span>
+            </button>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };
