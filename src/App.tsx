@@ -9,7 +9,18 @@ import {
   X,
   LogIn,
   UserCheck,
-  Settings
+  Settings,
+  QrCode,
+  ChevronDown,
+  Plus,
+  MoreVertical,
+  Check,
+  UserPlus,
+  SlidersHorizontal,
+  Layers,
+  Heart,
+  Sparkles,
+  Smartphone
 } from 'lucide-react';
 import { ExploreCardSlider } from './components/ExploreCardSlider';
 import { QuickDevicesCard } from './components/QuickDevicesCard';
@@ -18,9 +29,12 @@ import { RoutinesMenuCard } from './components/RoutinesMenuCard';
 import { MenuTabContent } from './components/MenuTabContent';
 import { SignInScreen } from './components/SignInScreen';
 import { SettingsScreen } from './components/SettingsScreen';
+import { SetupHomeScreen } from './components/SetupHomeScreen';
+import { LocationQrModal } from './components/LocationQrModal';
 import { NeuroLoader } from './components/NeuroLoader';
 import { getAssetUrl } from './utils/assets';
 import { authStorage, authApi, type UserProfile } from './services/auth';
+import { homeApi, homeStorage, type Home as UserHome } from './services/home';
 
 export function App() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -36,24 +50,93 @@ export function App() {
   const [isSignInOpen, setIsSignInOpen] = useState(false);
   const [isInitializing, setIsInitializing] = useState(false);
 
-  // Sync profile on mount if authenticated with 1s interval
+  // Home Properties State & Onboarding
+  const [homes, setHomes] = useState<UserHome[]>([]);
+  const [activeHome, setActiveHome] = useState<UserHome | null>(null);
+  const [isSetupHomeOpen, setIsSetupHomeOpen] = useState(false);
+  const [allowSetupHomeClose, setAllowSetupHomeClose] = useState(false);
+  const [isQrModalOpen, setIsQrModalOpen] = useState(false);
+
+  // Dropdown menus state (Reference 2 Header)
+  const [isHomeDropdownOpen, setIsHomeDropdownOpen] = useState(false);
+  const [isPlusMenuOpen, setIsPlusMenuOpen] = useState(false);
+  const [isDotsMenuOpen, setIsDotsMenuOpen] = useState(false);
+
+  // Room Sub-Tabs & Banner Dismiss
+  const [activeRoomTab, setActiveRoomTab] = useState<'all' | 'living' | 'go'>('all');
+  const [isExploreDismissed, setIsExploreDismissed] = useState(() => {
+    return typeof window !== 'undefined' && sessionStorage.getItem('neuro_explore_dismissed') === 'true';
+  });
+
+  // Load user homes and trigger onboarding if 0 homes exist
+  const loadHomes = async (openSetupIfEmpty = true) => {
+    try {
+      const userHomes = await homeApi.getHomes();
+      setHomes(userHomes);
+      if (userHomes.length === 0) {
+        if (openSetupIfEmpty) {
+          setIsSetupHomeOpen(true);
+          setAllowSetupHomeClose(false);
+        }
+      } else {
+        const storedId = homeStorage.getActiveHomeId();
+        const found = userHomes.find((h) => h.id === storedId);
+        const active = found || userHomes[0];
+        setActiveHome(active);
+        homeStorage.setActiveHomeId(active.id);
+        setIsSetupHomeOpen(false);
+      }
+    } catch (err) {
+      console.error('Failed to load homes:', err);
+    }
+  };
+
+  // Sync profile & homes on mount if authenticated with 1s interval
   useEffect(() => {
     if (authStorage.isAuthenticated()) {
       setIsInitializing(true);
       Promise.all([
         authApi.getProfile(),
+        homeApi.getHomes().catch(() => []),
         new Promise((resolve) => setTimeout(resolve, 1000)),
       ])
-        .then(([profile]) => {
+        .then(([profile, userHomes]) => {
           if (profile) {
             setCurrentUser(profile);
             setIsSignedIn(true);
+          }
+          if (Array.isArray(userHomes)) {
+            setHomes(userHomes);
+            if (userHomes.length === 0) {
+              setIsSetupHomeOpen(true);
+              setAllowSetupHomeClose(false);
+            } else {
+              const storedId = homeStorage.getActiveHomeId();
+              const found = userHomes.find((h) => h.id === storedId);
+              const active = found || userHomes[0];
+              setActiveHome(active);
+              homeStorage.setActiveHomeId(active.id);
+            }
           }
         })
         .finally(() => {
           setIsInitializing(false);
         });
     }
+  }, []);
+
+  // Close dropdown menus when clicking outside
+  useEffect(() => {
+    const handleGlobalClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (!target?.closest('[data-dropdown]')) {
+        setIsHomeDropdownOpen(false);
+        setIsPlusMenuOpen(false);
+        setIsDotsMenuOpen(false);
+      }
+    };
+    window.addEventListener('click', handleGlobalClick);
+    return () => window.removeEventListener('click', handleGlobalClick);
   }, []);
 
   // Settings Screen State
@@ -195,132 +278,406 @@ export function App() {
         />
       </div>
 
-      {/* 3. Unified Responsive Header: Brand (Left) + Search (Center) */}
-      <header className="fixed top-4 sm:top-5 inset-x-0 z-30 flex items-center justify-between px-4 sm:px-6 md:px-8 pointer-events-none">
-        
-        {/* Left Brand: Recolored Logo + "Neuro Series" */}
-        <div className="flex items-center gap-2 sm:gap-2.5 select-none pointer-events-auto flex-shrink-0">
-          {/* Logo Icon: Hidden on small mobile screens (< 640px), visible on tablets and desktop */}
-          <div className="hidden sm:flex items-center justify-center w-8 h-8 md:w-9 md:h-9 flex-shrink-0 transition-transform hover:scale-105">
-            <img 
-              src={getAssetUrl('logo.png')} 
-              alt="Neuro Series Logo" 
-              className="w-full h-full object-contain drop-shadow-[0_2px_8px_rgba(56,189,248,0.45)]"
-            />
-          </div>
-
-          {/* Brand Name: Always visible across all screens, dot removed */}
-          <span className="brand-text-responsive font-extrabold text-base sm:text-lg md:text-xl tracking-wider font-sans select-none whitespace-nowrap">
-            Neuro Series
-          </span>
-        </div>
-
-        {/* Center Search Bar: Hidden on small mobile screens (< 640px) and hidden in Menu option */}
-        {activeTab !== 'menu' && (
-          <div className="hidden sm:flex items-center justify-center flex-1 max-w-xs md:max-w-sm lg:max-w-md mx-3 md:mx-6 pointer-events-auto">
-            <div 
-              className="search-container-responsive w-full flex items-center rounded-full transition-all duration-300 focus-within:ring-2 focus-within:ring-sky-400/40"
+      {/* 3. Unified Responsive Header */}
+      {isSignedIn && activeTab === 'home' ? (
+        /* Reference 2 Logged-In Header */
+        <header className="fixed top-4 sm:top-5 inset-x-0 z-30 flex items-center justify-between px-4 sm:px-6 md:px-8 pointer-events-none">
+          {/* Top-Left: QR Code Button + Home Selector Dropdown */}
+          <div className="flex items-center gap-2 sm:gap-3 pointer-events-auto select-none">
+            {/* QR Code Icon Button */}
+            <button
+              onClick={() => setIsQrModalOpen(true)}
+              className="w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-white/90 hover:bg-white text-slate-800 flex items-center justify-center transition-all duration-200 hover:scale-105 active:scale-95 shadow-sm border border-white/80 cursor-pointer"
+              title="Location QR code"
             >
-              <Search className="search-icon-responsive w-4 h-4 ml-4 mr-2.5 flex-shrink-0" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search devices, routines, scenes..."
-                className="search-input-responsive bg-transparent text-sm outline-none w-full py-2.5 font-sans"
-              />
-              {searchQuery ? (
-                <button
-                  onClick={() => setSearchQuery('')}
-                  className="mr-3 p-1 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-white transition-colors"
+              <QrCode className="w-5 h-5 text-slate-800" strokeWidth={2.3} />
+            </button>
+
+            {/* Home Selector Dropdown Capsule */}
+            <div className="relative" data-dropdown>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsHomeDropdownOpen(!isHomeDropdownOpen);
+                  setIsPlusMenuOpen(false);
+                  setIsDotsMenuOpen(false);
+                }}
+                className="h-10 sm:h-11 px-4 sm:px-5 rounded-full bg-white/90 hover:bg-white text-slate-900 font-bold text-sm sm:text-base font-sans flex items-center gap-2 transition-all shadow-sm border border-white/80 cursor-pointer max-w-[170px] sm:max-w-xs"
+              >
+                <span className="truncate">
+                  {activeHome?.name || (currentUser?.full_name ? `${currentUser.full_name.split(' ')[0]} Home` : 'My Home')}
+                </span>
+                <ChevronDown className={`w-4 h-4 text-slate-600 flex-shrink-0 transition-transform ${isHomeDropdownOpen ? 'rotate-180' : ''}`} strokeWidth={2.4} />
+              </button>
+
+              {/* Locations Dropdown Menu */}
+              {isHomeDropdownOpen && (
+                <div 
+                  onClick={(e) => e.stopPropagation()}
+                  className="absolute left-0 mt-2 w-64 rounded-3xl bg-white shadow-xl border border-slate-100 p-2.5 z-50 animate-in fade-in zoom-in-95 duration-150"
+                  style={{
+                    boxShadow: '0 20px 45px -10px rgba(15, 23, 42, 0.16), 0 4px 12px rgba(0, 0, 0, 0.04)',
+                  }}
                 >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              ) : (
-                <kbd className="search-kbd-responsive mr-3 px-2 py-0.5 rounded-lg border text-[10px] font-mono pointer-events-none select-none">
-                  ⌘K
-                </kbd>
+                  <div className="px-3 py-1.5 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                    My Locations
+                  </div>
+                  <div className="max-h-52 overflow-y-auto space-y-1">
+                    {homes.map((h) => {
+                      const isSelected = activeHome?.id === h.id;
+                      return (
+                        <button
+                          key={h.id}
+                          onClick={() => {
+                            setActiveHome(h);
+                            homeStorage.setActiveHomeId(h.id);
+                            setIsHomeDropdownOpen(false);
+                          }}
+                          className={`w-full flex items-center justify-between px-3 py-2.5 rounded-2xl text-left text-xs sm:text-sm font-semibold transition-colors cursor-pointer ${
+                            isSelected ? 'bg-sky-50 text-[#0284c7]' : 'hover:bg-slate-50 text-slate-800'
+                          }`}
+                        >
+                          <div className="flex flex-col truncate pr-2">
+                            <span className="truncate">{h.name}</span>
+                            <span className="text-[10px] text-slate-400 font-normal">{h.property_type}</span>
+                          </div>
+                          {isSelected && <Check className="w-4 h-4 text-[#0284c7] flex-shrink-0" strokeWidth={2.4} />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  
+                  <div className="h-px bg-slate-100 my-1.5" />
+
+                  <button
+                    onClick={() => {
+                      setIsHomeDropdownOpen(false);
+                      setAllowSetupHomeClose(true);
+                      setIsSetupHomeOpen(true);
+                    }}
+                    className="w-full flex items-center gap-2 px-3 py-2.5 rounded-2xl text-left text-xs sm:text-sm font-bold text-[#0284c7] hover:bg-sky-50 transition-colors cursor-pointer"
+                  >
+                    <Plus className="w-4 h-4" strokeWidth={2.4} />
+                    <span>+ Add Another Location</span>
+                  </button>
+                </div>
               )}
             </div>
           </div>
-        )}
 
-        {/* Right Side at Top: In Menu Option = Settings Icon + Settings text, Otherwise = Sign In Button */}
-        <div className="flex items-center justify-end pointer-events-auto flex-shrink-0">
-          {activeTab === 'menu' ? (
-            <button
-              onClick={() => setIsSettingsOpen(true)}
-              data-bg-light="true"
-              className="glass-signin-btn group flex items-center justify-center select-none rounded-full w-9 h-9 sm:w-10 sm:h-10 cursor-pointer"
-              title="Settings"
-            >
-              {/* Top Specular Glare Curve matching the Menu Bar */}
-              <div 
-                className="absolute inset-0 rounded-full pointer-events-none"
-                style={{
-                  background: 'linear-gradient(180deg, rgba(255, 255, 255, 0.45) 0%, rgba(255, 255, 255, 0.05) 50%, transparent 100%)'
+          {/* Top-Right: Plus and Three-Dots Action Capsule */}
+          <div className="flex items-center pointer-events-auto select-none">
+            <div className="relative flex items-center h-10 sm:h-11 rounded-full bg-white/90 hover:bg-white border border-white/80 shadow-sm px-1.5" data-dropdown>
+              
+              {/* Plus Button */}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsPlusMenuOpen(!isPlusMenuOpen);
+                  setIsDotsMenuOpen(false);
+                  setIsHomeDropdownOpen(false);
                 }}
-              />
-              <div className="relative z-10 flex items-center justify-center">
-                <Settings className="signin-icon w-4 h-4 sm:w-5 sm:h-5 text-[#0284c7] sm:text-white transition-transform group-hover:rotate-45" strokeWidth={2.3} />
-              </div>
-            </button>
-          ) : (
-            <button
-              onClick={() => {
-                if (isSignedIn) {
-                  setIsSettingsOpen(true);
-                } else {
-                  setIsSignInOpen(true);
-                }
-              }}
-              data-bg-light="true"
-              className="glass-signin-btn group flex items-center justify-center select-none rounded-full cursor-pointer"
-              title={isSignedIn ? (currentUser?.full_name || "Account Profile") : "Sign In"}
-            >
-              {/* Top Specular Glare Curve matching the Menu Bar */}
-              <div 
-                className="absolute inset-0 rounded-full pointer-events-none"
-                style={{
-                  background: 'linear-gradient(180deg, rgba(255, 255, 255, 0.45) 0%, rgba(255, 255, 255, 0.05) 50%, transparent 100%)'
+                className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-slate-100 text-slate-800 transition-colors cursor-pointer"
+                title="Add actions"
+              >
+                <Plus className="w-5 h-5 text-slate-800" strokeWidth={2.4} />
+              </button>
+
+              {/* Vertical divider */}
+              <div className="w-px h-4 bg-slate-200 mx-1" />
+
+              {/* Three Dots Button */}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsDotsMenuOpen(!isDotsMenuOpen);
+                  setIsPlusMenuOpen(false);
+                  setIsHomeDropdownOpen(false);
                 }}
+                className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-slate-100 text-slate-800 transition-colors cursor-pointer"
+                title="Options"
+              >
+                <MoreVertical className="w-4 h-4 text-slate-800" strokeWidth={2.4} />
+              </button>
+
+              {/* Plus Quick Actions Dropdown Menu */}
+              {isPlusMenuOpen && (
+                <div 
+                  onClick={(e) => e.stopPropagation()}
+                  className="absolute right-0 top-12 w-52 rounded-3xl bg-white shadow-xl border border-slate-100 p-2 z-50 animate-in fade-in zoom-in-95 duration-150"
+                  style={{
+                    boxShadow: '0 20px 45px -10px rgba(15, 23, 42, 0.16), 0 4px 12px rgba(0, 0, 0, 0.04)',
+                  }}
+                >
+                  <button
+                    onClick={() => {
+                      setIsPlusMenuOpen(false);
+                      setActiveTab('devices');
+                    }}
+                    className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-2xl hover:bg-slate-50 text-slate-800 text-xs sm:text-sm font-semibold transition-colors cursor-pointer"
+                  >
+                    <Smartphone className="w-4 h-4 text-[#0284c7]" strokeWidth={2.2} />
+                    <span>Add Device</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setIsPlusMenuOpen(false);
+                    }}
+                    className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-2xl hover:bg-slate-50 text-slate-800 text-xs sm:text-sm font-semibold transition-colors cursor-pointer"
+                  >
+                    <Heart className="w-4 h-4 text-rose-500" strokeWidth={2.2} />
+                    <span>Add Favorites</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setIsPlusMenuOpen(false);
+                      setActiveTab('routines');
+                    }}
+                    className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-2xl hover:bg-slate-50 text-slate-800 text-xs sm:text-sm font-semibold transition-colors cursor-pointer"
+                  >
+                    <Sparkles className="w-4 h-4 text-amber-500" strokeWidth={2.2} />
+                    <span>Create Routine</span>
+                  </button>
+
+                  <div className="h-px bg-slate-100 my-1" />
+
+                  <button
+                    onClick={() => {
+                      setIsPlusMenuOpen(false);
+                      setIsQrModalOpen(true);
+                    }}
+                    className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-2xl hover:bg-slate-50 text-slate-800 text-xs sm:text-sm font-semibold transition-colors cursor-pointer"
+                  >
+                    <UserPlus className="w-4 h-4 text-[#0284c7]" strokeWidth={2.2} />
+                    <span>Invite Member</span>
+                  </button>
+                </div>
+              )}
+
+              {/* Three Dots Context Dropdown Menu */}
+              {isDotsMenuOpen && (
+                <div 
+                  onClick={(e) => e.stopPropagation()}
+                  className="absolute right-0 top-12 w-48 rounded-3xl bg-white shadow-xl border border-slate-100 p-2 z-50 animate-in fade-in zoom-in-95 duration-150"
+                  style={{
+                    boxShadow: '0 20px 45px -10px rgba(15, 23, 42, 0.16), 0 4px 12px rgba(0, 0, 0, 0.04)',
+                  }}
+                >
+                  <button
+                    onClick={() => {
+                      setIsDotsMenuOpen(false);
+                      setIsSettingsOpen(true);
+                    }}
+                    className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-2xl hover:bg-slate-50 text-slate-800 text-xs sm:text-sm font-semibold transition-colors cursor-pointer"
+                  >
+                    <SlidersHorizontal className="w-4 h-4 text-slate-600" strokeWidth={2.2} />
+                    <span>Location Settings</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setIsDotsMenuOpen(false);
+                    }}
+                    className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-2xl hover:bg-slate-50 text-slate-800 text-xs sm:text-sm font-semibold transition-colors cursor-pointer"
+                  >
+                    <Layers className="w-4 h-4 text-slate-600" strokeWidth={2.2} />
+                    <span>Edit Home Tab</span>
+                  </button>
+                </div>
+              )}
+
+            </div>
+          </div>
+        </header>
+      ) : (
+        /* Default Header for Guest & Other Tabs */
+        <header className="fixed top-4 sm:top-5 inset-x-0 z-30 flex items-center justify-between px-4 sm:px-6 md:px-8 pointer-events-none">
+          
+          {/* Left Brand: Recolored Logo + "Neuro Series" */}
+          <div className="flex items-center gap-2 sm:gap-2.5 select-none pointer-events-auto flex-shrink-0">
+            {/* Logo Icon: Hidden on small mobile screens (< 640px), visible on tablets and desktop */}
+            <div className="hidden sm:flex items-center justify-center w-8 h-8 md:w-9 md:h-9 flex-shrink-0 transition-transform hover:scale-105">
+              <img 
+                src={getAssetUrl('logo.png')} 
+                alt="Neuro Series Logo" 
+                className="w-full h-full object-contain drop-shadow-[0_2px_8px_rgba(56,189,248,0.45)]"
               />
-              <div className="relative z-10 flex items-center gap-1.5 sm:gap-2 px-3 py-1.5 sm:px-4 sm:py-2">
-                {isSignedIn ? (
-                  <>
-                    {currentUser?.avatar_url ? (
-                      <img 
-                        src={currentUser.avatar_url} 
-                        alt="Profile" 
-                        className="w-4 h-4 sm:w-5 sm:h-5 rounded-full object-cover border border-white/60"
-                      />
-                    ) : (
-                      <UserCheck className="signin-icon w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#0284c7] sm:text-white transition-colors" strokeWidth={2.3} />
-                    )}
-                    <span className="signin-text text-xs sm:text-sm font-bold text-[#0284c7] sm:text-white tracking-wide font-sans select-none max-w-[100px] truncate">
-                      {currentUser?.full_name ? currentUser.full_name.split(' ')[0] : 'Profile'}
-                    </span>
-                  </>
+            </div>
+
+            {/* Brand Name: Always visible across all screens, dot removed */}
+            <span className="brand-text-responsive font-extrabold text-base sm:text-lg md:text-xl tracking-wider font-sans select-none whitespace-nowrap">
+              Neuro Series
+            </span>
+          </div>
+
+          {/* Center Search Bar: Hidden on small mobile screens (< 640px) and hidden in Menu option */}
+          {activeTab !== 'menu' && (
+            <div className="hidden sm:flex items-center justify-center flex-1 max-w-xs md:max-w-sm lg:max-w-md mx-3 md:mx-6 pointer-events-auto">
+              <div 
+                className="search-container-responsive w-full flex items-center rounded-full transition-all duration-300 focus-within:ring-2 focus-within:ring-sky-400/40"
+              >
+                <Search className="search-icon-responsive w-4 h-4 ml-4 mr-2.5 flex-shrink-0" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search devices, routines, scenes..."
+                  className="search-input-responsive bg-transparent text-sm outline-none w-full py-2.5 font-sans"
+                />
+                {searchQuery ? (
+                  <button
+                    onClick={() => setSearchQuery('')}
+                    className="mr-3 p-1 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-white transition-colors"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
                 ) : (
-                  <>
-                    <LogIn className="signin-icon w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#0284c7] sm:text-white transition-colors group-hover:scale-110" strokeWidth={2.3} />
-                    <span className="signin-text text-xs sm:text-sm font-bold text-[#0284c7] sm:text-white tracking-wide font-sans select-none">
-                      Sign In
-                    </span>
-                  </>
+                  <kbd className="search-kbd-responsive mr-3 px-2 py-0.5 rounded-lg border text-[10px] font-mono pointer-events-none select-none">
+                    ⌘K
+                  </kbd>
                 )}
               </div>
-            </button>
+            </div>
           )}
-        </div>
-      </header>
+
+          {/* Right Side at Top: In Menu Option = Settings Icon + Settings text, Otherwise = Sign In Button */}
+          <div className="flex items-center justify-end pointer-events-auto flex-shrink-0">
+            {activeTab === 'menu' ? (
+              <button
+                onClick={() => setIsSettingsOpen(true)}
+                data-bg-light="true"
+                className="glass-signin-btn group flex items-center justify-center select-none rounded-full w-9 h-9 sm:w-10 sm:h-10 cursor-pointer"
+                title="Settings"
+              >
+                {/* Top Specular Glare Curve matching the Menu Bar */}
+                <div 
+                  className="absolute inset-0 rounded-full pointer-events-none"
+                  style={{
+                    background: 'linear-gradient(180deg, rgba(255, 255, 255, 0.45) 0%, rgba(255, 255, 255, 0.05) 50%, transparent 100%)'
+                  }}
+                />
+                <div className="relative z-10 flex items-center justify-center">
+                  <Settings className="signin-icon w-4 h-4 sm:w-5 sm:h-5 text-[#0284c7] sm:text-white transition-transform group-hover:rotate-45" strokeWidth={2.3} />
+                </div>
+              </button>
+            ) : (
+              <button
+                onClick={() => {
+                  if (isSignedIn) {
+                    setIsSettingsOpen(true);
+                  } else {
+                    setIsSignInOpen(true);
+                  }
+                }}
+                data-bg-light="true"
+                className="glass-signin-btn group flex items-center justify-center select-none rounded-full cursor-pointer"
+                title={isSignedIn ? (currentUser?.full_name || "Account Profile") : "Sign In"}
+              >
+                {/* Top Specular Glare Curve matching the Menu Bar */}
+                <div 
+                  className="absolute inset-0 rounded-full pointer-events-none"
+                  style={{
+                    background: 'linear-gradient(180deg, rgba(255, 255, 255, 0.45) 0%, rgba(255, 255, 255, 0.05) 50%, transparent 100%)'
+                  }}
+                />
+                <div className="relative z-10 flex items-center gap-1.5 sm:gap-2 px-3 py-1.5 sm:px-4 sm:py-2">
+                  {isSignedIn ? (
+                    <>
+                      {currentUser?.avatar_url ? (
+                        <img 
+                          src={currentUser.avatar_url} 
+                          alt="Profile" 
+                          className="w-4 h-4 sm:w-5 sm:h-5 rounded-full object-cover border border-white/60"
+                        />
+                      ) : (
+                        <UserCheck className="signin-icon w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#0284c7] sm:text-white transition-colors" strokeWidth={2.3} />
+                      )}
+                      <span className="signin-text text-xs sm:text-sm font-bold text-[#0284c7] sm:text-white tracking-wide font-sans select-none max-w-[100px] truncate">
+                        {currentUser?.full_name ? currentUser.full_name.split(' ')[0] : 'Profile'}
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <LogIn className="signin-icon w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#0284c7] sm:text-white transition-colors group-hover:scale-110" strokeWidth={2.3} />
+                      <span className="signin-text text-xs sm:text-sm font-bold text-[#0284c7] sm:text-white tracking-wide font-sans select-none">
+                        Sign In
+                      </span>
+                    </>
+                  )}
+                </div>
+              </button>
+            )}
+          </div>
+        </header>
+      )}
 
       {/* 4. Mobile & Tablet Content (Explore Slider + Pure White Cards based on activeTab; Menu has all content cleared) */}
       <main className="explore-slider-wrapper fixed inset-x-0 top-[4.5rem] sm:top-20 bottom-20 sm:bottom-6 overflow-y-auto overflow-x-hidden flex flex-col items-center justify-start pointer-events-none z-20 px-4 sm:px-6 sm:pl-24 pb-8 space-y-3.5">
         {activeTab === 'home' && (
           <>
-            <ExploreCardSlider />
+            {/* Reference 2 Room Sub-Tabs bar */}
+            {isSignedIn && (
+              <div className="w-full max-w-sm sm:max-w-md md:max-w-lg flex items-center gap-4 px-2 py-0.5 select-none pointer-events-auto">
+                <button 
+                  onClick={() => {}}
+                  className="p-2 rounded-full hover:bg-white/40 text-slate-700 transition-colors cursor-pointer"
+                  aria-label="Search devices"
+                >
+                  <Search className="w-5 h-5 text-slate-800" strokeWidth={2.4} />
+                </button>
+
+                <div className="flex items-center gap-5 text-sm sm:text-base font-bold tracking-tight">
+                  <button
+                    onClick={() => setActiveRoomTab('all')}
+                    className={`transition-colors cursor-pointer pb-0.5 ${
+                      activeRoomTab === 'all' 
+                        ? 'text-slate-900 border-b-2 border-slate-900 font-extrabold' 
+                        : 'text-slate-400 hover:text-slate-600 font-medium'
+                    }`}
+                  >
+                    All devices
+                  </button>
+                  <button
+                    onClick={() => setActiveRoomTab('living')}
+                    className={`transition-colors cursor-pointer pb-0.5 ${
+                      activeRoomTab === 'living' 
+                        ? 'text-slate-900 border-b-2 border-slate-900 font-extrabold' 
+                        : 'text-slate-400 hover:text-slate-600 font-medium'
+                    }`}
+                  >
+                    Living room
+                  </button>
+                  <button
+                    onClick={() => setActiveRoomTab('go')}
+                    className={`transition-colors cursor-pointer pb-0.5 ${
+                      activeRoomTab === 'go' 
+                        ? 'text-slate-900 border-b-2 border-slate-900 font-extrabold' 
+                        : 'text-slate-400 hover:text-slate-600 font-medium'
+                    }`}
+                  >
+                    On the go
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Dismissable Explore devices banner strictly on Home view */}
+            {!isExploreDismissed && (
+              <ExploreCardSlider 
+                onDismiss={() => {
+                  setIsExploreDismissed(true);
+                  if (typeof window !== 'undefined') {
+                    sessionStorage.setItem('neuro_explore_dismissed', 'true');
+                  }
+                }} 
+              />
+            )}
+
+            {/* Reference 2 / Reference 1 White Device Card */}
             <QuickDevicesCard 
+              isLoggedIn={isSignedIn}
               onAddDevice={() => handleProtectedAction(() => setActiveTab('devices'))} 
               onExplore={() => handleProtectedAction(() => setActiveTab('explore'))} 
             />
@@ -352,6 +709,9 @@ export function App() {
               authApi.logout();
               setCurrentUser(null);
               setIsSignedIn(false);
+              setHomes([]);
+              setActiveHome(null);
+              homeStorage.clearActiveHomeId();
             }}
           />
         )}
@@ -474,6 +834,7 @@ export function App() {
         onSignInSuccess={(user) => {
           setCurrentUser(user);
           setIsSignedIn(true);
+          loadHomes(true);
         }} 
       />
 
@@ -487,11 +848,34 @@ export function App() {
           authApi.logout();
           setCurrentUser(null);
           setIsSignedIn(false);
+          setHomes([]);
+          setActiveHome(null);
+          homeStorage.clearActiveHomeId();
         }}
         onOpenSignIn={() => {
           setIsSettingsOpen(false);
           setIsSignInOpen(true);
         }} 
+      />
+
+      {/* 10. Dedicated Setup Your Home Onboarding Screen */}
+      <SetupHomeScreen 
+        isOpen={isSetupHomeOpen}
+        allowClose={allowSetupHomeClose}
+        onClose={() => setIsSetupHomeOpen(false)}
+        onSuccess={(createdHome) => {
+          setHomes((prev) => [...prev, createdHome]);
+          setActiveHome(createdHome);
+          homeStorage.setActiveHomeId(createdHome.id);
+          setIsSetupHomeOpen(false);
+        }}
+      />
+
+      {/* 11. Location QR Code Sharing Modal (Reference 3) */}
+      <LocationQrModal 
+        isOpen={isQrModalOpen}
+        onClose={() => setIsQrModalOpen(false)}
+        home={activeHome}
       />
 
 

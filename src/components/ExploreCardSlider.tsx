@@ -1,9 +1,14 @@
 import { useState, useEffect, useRef, type TouchEvent } from 'react';
+import { X } from 'lucide-react';
 
 interface ExploreCardItem {
   id: number;
   heading: string;
   text: string;
+}
+
+interface ExploreCardSliderProps {
+  onDismiss?: () => void;
 }
 
 const exploreCards: ExploreCardItem[] = [
@@ -24,7 +29,7 @@ const exploreCards: ExploreCardItem[] = [
   },
 ];
 
-export const ExploreCardSlider = () => {
+export const ExploreCardSlider = ({ onDismiss }: ExploreCardSliderProps = {}) => {
   const [activeIndex, setActiveIndex] = useState(0);
   const touchStartX = useRef<number>(0);
   const touchEndX = useRef<number>(0);
@@ -90,6 +95,20 @@ export const ExploreCardSlider = () => {
             background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.50) 0%, transparent 60%)'
           }}
         />
+
+        {/* Top-Right Dismiss (X) button if onDismiss is provided */}
+        {onDismiss && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onDismiss();
+            }}
+            className="absolute top-3.5 right-3.5 z-20 p-1.5 rounded-full bg-slate-900/10 hover:bg-slate-900/20 text-slate-700 hover:text-slate-900 transition-colors cursor-pointer"
+            aria-label="Dismiss banner"
+          >
+            <X className="w-4 h-4" strokeWidth={2.2} />
+          </button>
+        )}
 
         {/* Carousel Slider Track */}
         <div 

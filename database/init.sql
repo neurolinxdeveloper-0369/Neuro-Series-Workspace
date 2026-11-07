@@ -47,3 +47,31 @@ CREATE TRIGGER trg_users_updated_at
 BEFORE UPDATE ON users
 FOR EACH ROW
 EXECUTE FUNCTION update_users_updated_at();
+
+-- 5. Homes Table (Properties / Locations)
+CREATE TABLE IF NOT EXISTS homes (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    owner_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name VARCHAR(100) NOT NULL,
+    property_type VARCHAR(30) NOT NULL,
+    floor_count INT DEFAULT 1,
+    address_line TEXT,
+    city VARCHAR(100),
+    latitude DECIMAL(10, 8),
+    longitude DECIMAL(11, 8),
+    timezone VARCHAR(50) DEFAULT 'Asia/Kolkata',
+    default_wifi_ssid VARCHAR(64),
+    wifi_password_encrypted TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_homes_owner_id ON homes(owner_id);
+
+-- 6. Auto-update trigger for homes
+DROP TRIGGER IF EXISTS trg_homes_updated_at ON homes;
+CREATE TRIGGER trg_homes_updated_at
+BEFORE UPDATE ON homes
+FOR EACH ROW
+EXECUTE FUNCTION update_users_updated_at();
+
