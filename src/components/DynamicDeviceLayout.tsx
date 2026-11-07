@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { 
   Zap, 
   Gauge, 
@@ -17,8 +17,15 @@ import {
   Sparkles,
   ShieldCheck,
   Check,
-  RotateCw
+  RotateCw,
+  Edit2,
+  X,
+  Search,
+  CheckCircle2,
+  Info
 } from 'lucide-react';
+import { getAssetUrl } from '../utils/assets';
+import { HARDWARE_ICONS } from '../utils/icons';
 
 export interface ResolvedDeviceMeta {
   modelCode: string;
@@ -165,41 +172,198 @@ interface TouchPanelProps {
   deviceName?: string;
 }
 
-const DEFAULT_SWITCH_NAMES = [
-  'Ceiling Light',
-  'Chandelier',
-  'Wall Lamp',
-  'Fan Speed',
-  'Ambient Glow',
-  'Balcony Light',
-  'Spotlight',
-  'Master Bed Lamp',
-  'Reading Light',
-  'Night Light',
-  'Passage Light',
-  'Accent Light',
-];
+export interface SwitchItemConfig {
+  index: number;
+  name: string;
+  iconPath: string;
+  state: boolean;
+}
 
 export const TouchPanelLayout = ({ switchCount, modelCode, deviceName }: TouchPanelProps) => {
-  const [switchStates, setSwitchStates] = useState<boolean[]>(() => 
-    Array.from({ length: switchCount }, (_, i) => i === 0 || i === 2)
-  );
+  // Initialize default switch names strictly as "Switch 1", "Switch 2", "Switch 3"...
+  const [switches, setSwitches] = useState<SwitchItemConfig[]>(() => {
+    try {
+      const stored = localStorage.getItem(`neuro_touch_panel_${modelCode}_${switchCount}`);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length === switchCount) {
+          return parsed;
+        }
+      }
+    } catch {
+      // ignore
+    }
+    return Array.from({ length: switchCount }, (_, i) => ({
+      index: i,
+      name: `Switch ${i + 1}`,
+      iconPath: '',
+      state: i === 0 || i === 2,
+    }));
+  });
 
-  const toggleSwitch = (index: number) => {
-    setSwitchStates(prev => {
-      const next = [...prev];
-      next[index] = !next[index];
-      return next;
-    });
+  // Long press timer & flag
+  const pressTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const isLongPressRef = useRef(false);
+
+  // Customize modal state
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [draftName, setDraftName] = useState('');
+  const [draftIconPath, setDraftIconPath] = useState('');
+  const [iconSearch, setIconSearch] = useState('');
+  const [conflictNotice, setConflictNotice] = useState<string | null>(null);
+  const [namingStyle, setNamingStyle] = useState<'numbered' | 'prefixed'>('numbered');
+
+  // Save to localStorage whenever switches are modified
+  const persistSwitches = (updated: SwitchItemConfig[]) => {
+    setSwitches(updated);
+    try {
+      localStorage.setItem(`neuro_touch_panel_${modelCode}_${switchCount}`, JSON.stringify(updated));
+    } catch {
+      // ignore
+    }
   };
 
-  const allOn = () => setSwitchStates(Array(switchCount).fill(true));
-  const allOff = () => setSwitchStates(Array(switchCount).fill(false));
+  const toggleSwitch = (index: number) => {
+    const updated = switches.map((sw, i) => 
+      i === index ? { ...sw, state: !sw.state } : sw
+    );
+    persistSwitches(updated);
+  };
+
+  const allOn = () => {
+    persistSwitches(switches.map(sw => ({ ...sw, state: true })));
+  };
+
+  const allOff = () => {
+    persistSwitches(switches.map(sw => ({ ...sw, state: false })));
+  };
+
+  // Long-press start
+  const handleTouchStart = (index: number) => {
+    isLongPressRef.current = false;
+    pressTimerRef.current = setTimeout(() => {
+      isLongPressRef.current = true;
+      if (typeof navigator !== 'undefined' && navigator.vibrate) {
+        try { navigator.vibrate(50); } catch {}
+      }
+      openCustomizeModal(index);
+    }, 450);
+  };
+
+  // Long-press end
+  const handleTouchEnd = (index: number) => {
+    if (pressTimerRef.current) {
+      clearTimeout(pressTimerRef.current);
+      pressTimerRef.current = null;
+    }
+    if (!isLongPressRef.current) {
+      toggleSwitch(index);
+    }
+  };
+
+  const handleTouchCancel = () => {
+    if (pressTimerRef.current) {
+      clearTimeout(pressTimerRef.current);
+      pressTimerRef.current = null;
+    }
+  };
+
+  // Open customization modal
+  const openCustomizeModal = (index: number) => {
+    const sw = switches[index];
+    if (!sw) return;
+    setEditingIndex(index);
+    setDraftName(sw.name);
+    setDraftIconPath(sw.iconPath || '');
+    setIconSearch('');
+    setConflictNotice(null);
+  };
+
+  // Smart naming conflict resolver
+  // If "Light" exists on Switch 1, auto-names next to "Light 2", or "Switch 2 - Light"
+  const applyPresetName = (preset: string) => {
+    if (editingIndex === null) return;
+    
+    // Check other switches for same base name
+    const otherSwitches = switches.filter((_, idx) => idx !== editingIndex);
+    const existingMatches = otherSwitches.filter(s => {
+      const lower = s.name.toLowerCase();
+      return lower === preset.toLowerCase() || 
+             lower.startsWith(`${preset.toLowerCase()} `) || 
+             lower.includes(`- ${preset.toLowerCase()}`);
+    });
+
+    if (existingMatches.length === 0) {
+      if (namingStyle === 'prefixed') {
+        setDraftName(`Switch ${editingIndex + 1} - ${preset}`);
+      } else {
+        setDraftName(`${preset} 1`);
+      }
+      setConflictNotice(null);
+    } else {
+      // Conflict detected! Auto-number as Light 2, Light 3...
+      const existingNums = existingMatches.map(s => {
+        const numMatch = s.name.match(/\d+$/);
+        return numMatch ? parseInt(numMatch[0], 10) : 1;
+      });
+      const nextNum = Math.max(1, ...existingNums) + 1;
+
+      if (namingStyle === 'prefixed') {
+        const newName = `Switch ${editingIndex + 1} - ${preset}`;
+        setDraftName(newName);
+        setConflictNotice(`Multiple "${preset}" nodes: Formatted as "${newName}".`);
+      } else {
+        const newName = `${preset} ${nextNum}`;
+        setDraftName(newName);
+        setConflictNotice(`"${preset} 1" is already in use. Auto-numbered as "${newName}" to keep controls distinct.`);
+      }
+    }
+  };
+
+  const handleSaveCustomization = () => {
+    if (editingIndex === null) return;
+    const finalName = draftName.trim() || `Switch ${editingIndex + 1}`;
+    
+    const updated = switches.map((sw, idx) => {
+      if (idx === editingIndex) {
+        return {
+          ...sw,
+          name: finalName,
+          iconPath: draftIconPath,
+        };
+      }
+      return sw;
+    });
+
+    persistSwitches(updated);
+    setEditingIndex(null);
+  };
+
+  // Quick preset labels
+  const PRESET_APPLIANCES = [
+    'Light',
+    'Fan',
+    'Socket',
+    'Lamp',
+    'Chandelier',
+    'Wall Lamp',
+    'Spotlight',
+    'Night Lamp',
+    'AC',
+    'TV',
+    'Heater',
+    'Exhaust'
+  ];
+
+  // Filtered hardware icons from public/ICONS
+  const filteredIcons = HARDWARE_ICONS.filter(f => 
+    !iconSearch || f.toLowerCase().includes(iconSearch.toLowerCase())
+  );
 
   return (
     <div className="bg-gradient-to-b from-slate-900 to-slate-950 text-white rounded-3xl p-4 sm:p-5 border border-slate-800 shadow-xl select-none">
       {/* Top Header */}
-      <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-800/80">
+      <div className="flex items-center justify-between mb-3 pb-3 border-b border-slate-800/80">
         <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-xl bg-sky-500/20 text-sky-400 flex items-center justify-center border border-sky-500/30">
             <ToggleRight className="w-4 h-4" />
@@ -233,33 +397,60 @@ export const TouchPanelLayout = ({ switchCount, modelCode, deviceName }: TouchPa
         </div>
       </div>
 
-      {/* Dynamic Grid of Switches based on switchCount (e.g. 8 switches for TP8) */}
+      {/* Helpful Hint */}
+      <div className="flex items-center justify-between text-[11px] text-slate-400 font-sans mb-3 px-1">
+        <span className="flex items-center gap-1.5 text-slate-400">
+          <Info className="w-3.5 h-3.5 text-sky-400" />
+          <span>Tap to toggle • <strong>Long press</strong> to rename & change icon</span>
+        </span>
+        <span className="text-[10px] text-sky-400 font-mono bg-sky-950/60 px-2 py-0.5 rounded-full border border-sky-800/60">
+          8 Touch Plates
+        </span>
+      </div>
+
+      {/* Dynamic Grid of 8 Switches based on switchCount */}
       <div className={`grid gap-2.5 ${
         switchCount <= 2 ? 'grid-cols-2' :
         switchCount <= 4 ? 'grid-cols-2' :
         switchCount <= 8 ? 'grid-cols-2 sm:grid-cols-4' :
         'grid-cols-3 sm:grid-cols-4'
       }`}>
-        {Array.from({ length: switchCount }).map((_, idx) => {
-          const isOn = switchStates[idx] ?? false;
-          const switchLabel = DEFAULT_SWITCH_NAMES[idx] || `Switch ${idx + 1}`;
+        {switches.map((sw, idx) => {
+          const isOn = sw.state;
 
           return (
-            <button
+            <div
               key={idx}
-              type="button"
-              onClick={() => toggleSwitch(idx)}
+              onMouseDown={() => handleTouchStart(idx)}
+              onMouseUp={() => handleTouchEnd(idx)}
+              onMouseLeave={handleTouchCancel}
+              onTouchStart={() => handleTouchStart(idx)}
+              onTouchEnd={() => handleTouchEnd(idx)}
+              onTouchCancel={handleTouchCancel}
               className={`group relative flex flex-col justify-between p-3 rounded-2xl border transition-all duration-300 text-left cursor-pointer overflow-hidden ${
                 isOn
                   ? 'bg-gradient-to-br from-sky-500/20 via-sky-950/40 to-slate-900 border-sky-400/60 shadow-[0_0_18px_rgba(14,165,233,0.35)]'
                   : 'bg-slate-800/60 hover:bg-slate-800 border-slate-700/60 text-slate-400 opacity-90'
               }`}
             >
-              {/* Top Row: Switch Number + Neon LED Indicator */}
+              {/* Top Row: Switch Number + Edit trigger + Glowing Neon LED */}
               <div className="flex items-center justify-between w-full mb-3">
-                <span className="text-[10px] font-mono font-bold text-slate-400">
-                  SW {idx + 1}
-                </span>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] font-mono font-bold text-slate-400">
+                    SW {idx + 1}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openCustomizeModal(idx);
+                    }}
+                    className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-white/10 text-slate-400 hover:text-white transition-opacity"
+                    title="Customize switch"
+                  >
+                    <Edit2 className="w-2.5 h-2.5" />
+                  </button>
+                </div>
                 
                 {/* Capacitive Touch Glowing LED */}
                 <div className={`w-3 h-3 rounded-full transition-all duration-300 flex items-center justify-center ${
@@ -271,15 +462,24 @@ export const TouchPanelLayout = ({ switchCount, modelCode, deviceName }: TouchPa
                 </div>
               </div>
 
-              {/* Icon & Label */}
-              <div className="space-y-1">
-                <div className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors ${
-                  isOn ? 'bg-sky-400 text-slate-950 shadow-sm' : 'bg-slate-700/60 text-slate-400'
+              {/* Icon & Custom Label */}
+              <div className="space-y-1.5">
+                <div className={`w-8 h-8 rounded-lg flex items-center justify-center p-1 transition-colors ${
+                  isOn ? 'bg-sky-400/20 text-sky-300 shadow-sm border border-sky-400/40' : 'bg-slate-700/60 text-slate-400'
                 }`}>
-                  <Power className="w-3.5 h-3.5" strokeWidth={2.5} />
+                  {sw.iconPath ? (
+                    <img 
+                      src={getAssetUrl(`ICONS/${sw.iconPath}`)} 
+                      alt={sw.name}
+                      className="w-full h-full object-contain filter drop-shadow-[0_1px_3px_rgba(0,0,0,0.5)]"
+                    />
+                  ) : (
+                    <Power className="w-4 h-4" strokeWidth={2.5} />
+                  )}
                 </div>
+
                 <div className={`text-xs font-bold tracking-tight truncate ${isOn ? 'text-white' : 'text-slate-300'}`}>
-                  {switchLabel}
+                  {sw.name}
                 </div>
                 <div className="text-[10px] font-mono">
                   {isOn ? (
@@ -289,7 +489,7 @@ export const TouchPanelLayout = ({ switchCount, modelCode, deviceName }: TouchPa
                   )}
                 </div>
               </div>
-            </button>
+            </div>
           );
         })}
       </div>
@@ -301,9 +501,253 @@ export const TouchPanelLayout = ({ switchCount, modelCode, deviceName }: TouchPa
           <span className="text-emerald-400 font-semibold">Capacitive Grid Active</span>
         </span>
         <span className="font-mono">
-          {switchStates.filter(Boolean).length} of {switchCount} Powered ON
+          {switches.filter(s => s.state).length} of {switchCount} Powered ON
         </span>
       </div>
+
+      {/* =========================================================
+          CUSTOMIZE SWITCH MODAL (Name & Icon Picker Screen)
+          Triggered via Long Press on any switch
+          ========================================================= */}
+      {editingIndex !== null && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in select-none">
+          <div className="bg-slate-900 border border-slate-800 w-full max-w-md rounded-t-[32px] sm:rounded-3xl p-5 sm:p-6 shadow-2xl text-white max-h-[92vh] flex flex-col justify-between overflow-hidden">
+            
+            {/* Modal Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800 mb-4 flex-shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-sky-500/20 text-sky-400 flex items-center justify-center border border-sky-500/30">
+                  <Edit2 className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">
+                    Customize Switch {editingIndex + 1}
+                  </h3>
+                  <p className="text-xs text-slate-400 font-mono">
+                    Model: {modelCode} • SW {editingIndex + 1}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setEditingIndex(null)}
+                className="w-8 h-8 rounded-full bg-slate-800 hover:bg-slate-700 flex items-center justify-center text-slate-400 hover:text-white transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Modal Scrollable Body */}
+            <div className="overflow-y-auto space-y-4 pr-1 flex-1">
+              
+              {/* Switch Name Input */}
+              <div>
+                <label className="text-xs font-bold text-slate-300 block mb-1.5">
+                  Switch Label / Appliance Name
+                </label>
+                <div className="flex items-center gap-2 bg-slate-800/80 rounded-2xl border border-slate-700 px-3 py-2 focus-within:border-sky-400 transition-colors">
+                  <input
+                    type="text"
+                    value={draftName}
+                    onChange={(e) => {
+                      setDraftName(e.target.value);
+                      setConflictNotice(null);
+                    }}
+                    placeholder={`e.g. Light ${editingIndex + 1} or Fan`}
+                    className="w-full bg-transparent text-sm text-white font-sans outline-none"
+                    autoFocus
+                  />
+                  {draftName && (
+                    <button
+                      type="button"
+                      onClick={() => setDraftName('')}
+                      className="text-slate-400 hover:text-slate-200"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Conflict / Auto-numbering notification */}
+              {conflictNotice && (
+                <div className="bg-sky-950/60 border border-sky-500/40 rounded-2xl p-2.5 flex items-start gap-2 text-xs text-sky-200 animate-in fade-in">
+                  <Info className="w-4 h-4 text-sky-400 flex-shrink-0 mt-0.5" />
+                  <span>{conflictNotice}</span>
+                </div>
+              )}
+
+              {/* Quick Preset Labels with Smart Conflict Auto-Numbering */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-bold text-slate-400">
+                    Quick Preset Names:
+                  </span>
+                  <div className="flex items-center gap-1.5 text-[10px]">
+                    <span className="text-slate-500">Style:</span>
+                    <button
+                      type="button"
+                      onClick={() => setNamingStyle('numbered')}
+                      className={`px-1.5 py-0.5 rounded cursor-pointer ${namingStyle === 'numbered' ? 'bg-sky-500/30 text-sky-300 font-bold' : 'text-slate-400'}`}
+                    >
+                      Light 1, 2
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setNamingStyle('prefixed')}
+                      className={`px-1.5 py-0.5 rounded cursor-pointer ${namingStyle === 'prefixed' ? 'bg-sky-500/30 text-sky-300 font-bold' : 'text-slate-400'}`}
+                    >
+                      SW 1 - Light
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-1.5">
+                  {PRESET_APPLIANCES.map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => applyPresetName(preset)}
+                      className="px-2.5 py-1 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-medium border border-slate-700/80 transition-colors cursor-pointer"
+                    >
+                      {preset}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Live Switch Preview Card */}
+              <div className="bg-slate-950/80 rounded-2xl p-3 border border-slate-800 flex items-center justify-between">
+                <span className="text-xs font-mono text-slate-400">Switch Preview:</span>
+                <div className="flex items-center gap-2.5 bg-slate-900 border border-sky-400/50 rounded-xl px-3 py-1.5">
+                  <div className="w-6 h-6 rounded-md bg-sky-400/20 flex items-center justify-center">
+                    {draftIconPath ? (
+                      <img 
+                        src={getAssetUrl(`ICONS/${draftIconPath}`)} 
+                        alt="Preview" 
+                        className="w-5 h-5 object-contain"
+                      />
+                    ) : (
+                      <Power className="w-3.5 h-3.5 text-sky-400" />
+                    )}
+                  </div>
+                  <div className="text-xs font-bold text-white font-mono">
+                    {draftName || `Switch ${editingIndex + 1}`}
+                  </div>
+                  <span className="text-[10px] text-sky-300 font-bold bg-sky-500/20 px-1.5 py-0.5 rounded">
+                    ON
+                  </span>
+                </div>
+              </div>
+
+              {/* Icon Picker Header & Search */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-xs font-bold text-slate-300">
+                    Select Icon ({HARDWARE_ICONS.length} Appliance Icons)
+                  </label>
+                  {draftIconPath && (
+                    <button
+                      type="button"
+                      onClick={() => setDraftIconPath('')}
+                      className="text-[11px] font-semibold text-rose-400 hover:underline cursor-pointer"
+                    >
+                      Use Default Icon
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2 bg-slate-800/80 rounded-2xl border border-slate-700 px-3 py-1.5 mb-3">
+                  <Search className="w-3.5 h-3.5 text-slate-400" />
+                  <input
+                    type="text"
+                    value={iconSearch}
+                    onChange={(e) => setIconSearch(e.target.value)}
+                    placeholder="Search icons..."
+                    className="w-full bg-transparent text-xs text-white outline-none"
+                  />
+                  {iconSearch && (
+                    <button type="button" onClick={() => setIconSearch('')}>
+                      <X className="w-3 h-3 text-slate-400" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Grid of 174 transparent PNG icons */}
+                <div className="grid grid-cols-6 sm:grid-cols-8 gap-2 max-h-48 overflow-y-auto p-1 bg-slate-950/60 rounded-2xl border border-slate-800/80">
+                  
+                  {/* Default / Lucide Power Option */}
+                  <button
+                    type="button"
+                    onClick={() => setDraftIconPath('')}
+                    className={`aspect-square rounded-xl p-1.5 flex flex-col items-center justify-center transition-all cursor-pointer border ${
+                      !draftIconPath
+                        ? 'bg-sky-500/20 border-sky-400 shadow-[0_0_10px_rgba(56,189,248,0.4)]'
+                        : 'bg-slate-800/60 border-slate-700 hover:bg-slate-800'
+                    }`}
+                    title="Default Power Icon"
+                  >
+                    <Power className="w-5 h-5 text-sky-400" />
+                  </button>
+
+                  {/* 174 Icons from public/ICONS */}
+                  {filteredIcons.map((iconName) => {
+                    const isSelected = draftIconPath === iconName;
+                    return (
+                      <button
+                        key={iconName}
+                        type="button"
+                        onClick={() => setDraftIconPath(iconName)}
+                        className={`aspect-square rounded-xl p-1.5 flex items-center justify-center transition-all cursor-pointer relative group border ${
+                          isSelected
+                            ? 'bg-sky-500/30 border-sky-400 shadow-[0_0_12px_rgba(56,189,248,0.5)] scale-105'
+                            : 'bg-slate-800/50 border-slate-700/60 hover:bg-slate-800 hover:border-slate-500'
+                        }`}
+                        title={iconName}
+                      >
+                        <img 
+                          src={getAssetUrl(`ICONS/${iconName}`)} 
+                          alt="Icon" 
+                          className="w-full h-full object-contain filter drop-shadow-sm transition-transform group-hover:scale-110"
+                          loading="lazy"
+                        />
+                        {isSelected && (
+                          <div className="absolute top-0.5 right-0.5 w-3 h-3 bg-sky-400 rounded-full flex items-center justify-center">
+                            <Check className="w-2 h-2 text-slate-950" strokeWidth={3} />
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+            </div>
+
+            {/* Modal Actions */}
+            <div className="flex items-center gap-3 pt-4 border-t border-slate-800 mt-4 flex-shrink-0">
+              <button
+                type="button"
+                onClick={() => setEditingIndex(null)}
+                className="flex-1 py-3 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveCustomization}
+                className="flex-1 py-3 rounded-full bg-[#0284c7] hover:bg-[#0369a1] text-white font-bold text-xs shadow-md shadow-sky-500/25 transition-all cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                <span>Save Switch</span>
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };
