@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { 
   ChevronLeft, 
   Search, 
@@ -22,7 +22,14 @@ import {
   Waves,
   Router,
   Lightbulb,
-  Cpu
+  Cpu,
+  HelpCircle,
+  Flashlight,
+  Smartphone,
+  Info,
+  RefreshCw,
+  Radio,
+  Bluetooth
 } from 'lucide-react';
 import { deviceApi } from '../services/device';
 import { homeApi } from '../services/home';
@@ -119,6 +126,8 @@ interface AddDeviceScreenProps {
   onRoomAdded: (newRoom: Room) => void;
 }
 
+type ScreenView = 'main' | 'catalog' | 'qr_scanner' | 'scan_nearby';
+
 export const AddDeviceScreen = ({
   isOpen,
   onClose,
@@ -127,20 +136,27 @@ export const AddDeviceScreen = ({
   onDeviceAdded,
   onRoomAdded,
 }: AddDeviceScreenProps) => {
-  // Navigation between Main "Add device" screen and "What kind of device?" screen
-  const [currentView, setCurrentView] = useState<'main' | 'catalog'>('main');
+  const [currentView, setCurrentView] = useState<ScreenView>('main');
   const [selectedCategory, setSelectedCategory] = useState<CategoryType>('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchActive, setIsSearchActive] = useState(false);
+  const [selectedDeviceName, setSelectedDeviceName] = useState<string>('device');
+  const [selectedDeviceType, setSelectedDeviceType] = useState<'switch' | 'light' | 'thermostat' | 'fan' | 'sensor'>('switch');
 
-  // Scanning states
-  const [isScanning, setIsScanning] = useState(false);
-  const [scanType, setScanType] = useState<'nearby' | 'qr' | null>(null);
-  const [foundDevices, setFoundDevices] = useState<Array<{ name: string; type: 'light' | 'switch' | 'fan' | 'thermostat' | 'sensor'; signal: string }>>([]);
-  
-  // Custom Device / Setup Dialog state
+  // Camera & QR Scanner State
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const [isTorchOn, setIsTorchOn] = useState(false);
+  const [showWhereIsQr, setShowWhereIsQr] = useState(false);
+
+  // Scan Nearby States
+  const [isNearbyScanning, setIsNearbyScanning] = useState(true);
+  const [nearbyFoundDevices, setNearbyFoundDevices] = useState<Array<{ name: string; type: 'switch' | 'light' | 'thermostat' | 'fan' | 'sensor'; signal: string; mode: string }>>([]);
+  const [activeNearbyMode, setActiveNearbyMode] = useState<'auto' | 'ap' | 'ble'>('auto');
+
+  // Manual Setup Sheet State
   const [isSetupDialogOpen, setIsSetupDialogOpen] = useState(false);
-  const [deviceBrandTitle, setDeviceBrandTitle] = useState('Neuro Series Device');
   const [deviceName, setDeviceName] = useState('');
   const [deviceType, setDeviceType] = useState<'light' | 'switch' | 'fan' | 'thermostat' | 'sensor'>('switch');
   const [selectedRoom, setSelectedRoom] = useState<string>('');
@@ -149,42 +165,107 @@ export const AddDeviceScreen = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successToast, setSuccessToast] = useState('');
 
-  if (!isOpen) return null;
+  // Manage Camera lifecycle when entering / leaving QR scanner
+  useEffect(() => {
+    if (isOpen && currentView === 'qr_scanner') {
+      startCamera();
+    } else {
+      stopCamera();
+    }
+    return () => {
+      stopCamera();
+    };
+  }, [isOpen, currentView]);
 
-  const handleStartScanNearby = () => {
-    setScanType('nearby');
-    setIsScanning(true);
-    setFoundDevices([]);
-    setTimeout(() => {
-      setIsScanning(false);
-      setFoundDevices([
-        { name: 'Neuro Series Socket Node', type: 'switch', signal: '-42 dBm' },
-        { name: '4 gang Smart Switch', type: 'switch', signal: '-58 dBm' },
-        { name: 'Sensor Hub (temperature)', type: 'sensor', signal: '-50 dBm' },
-      ]);
-    }, 2200);
+  // Manage Nearby Scan animation timer
+  useEffect(() => {
+    if (isOpen && currentView === 'scan_nearby') {
+      runNearbyScan(activeNearbyMode);
+    }
+  }, [isOpen, currentView, activeNearbyMode]);
+
+  const startCamera = async () => {
+    setCameraError(null);
+    try {
+      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'environment' }
+        });
+        setCameraStream(stream);
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          videoRef.current.play().catch(() => {});
+        }
+      } else {
+        setCameraError('Camera API not supported on this browser.');
+      }
+    } catch {
+      setCameraError('Camera access not granted or unavailable. You can proceed using "Add without QR code".');
+    }
   };
 
-  const handleStartScanQr = () => {
-    setScanType('qr');
-    setIsScanning(true);
-    setTimeout(() => {
-      setIsScanning(false);
-      setDeviceBrandTitle('QR Paired Device');
-      setDeviceName('Smart Heavy Plug');
-      setDeviceType('switch');
-      setIsSetupDialogOpen(true);
-    }, 1800);
+  const stopCamera = () => {
+    if (cameraStream) {
+      cameraStream.getTracks().forEach(track => track.stop());
+      setCameraStream(null);
+    }
   };
 
-  const openAddSetup = (title: string, defaultName: string, defaultType: 'light' | 'switch' | 'fan' | 'thermostat' | 'sensor') => {
-    setDeviceBrandTitle(title);
+  const toggleTorch = async () => {
+    if (cameraStream) {
+      const track = cameraStream.getVideoTracks()[0];
+      const capabilities = (track as any).getCapabilities?.();
+      if (capabilities && 'torch' in capabilities) {
+        try {
+          await (track as any).applyConstraints({
+            advanced: [{ torch: !isTorchOn }]
+          });
+          setIsTorchOn(!isTorchOn);
+        } catch {
+          setIsTorchOn(!isTorchOn);
+        }
+      } else {
+        setIsTorchOn(!isTorchOn);
+      }
+    } else {
+      setIsTorchOn(!isTorchOn);
+    }
+  };
+
+  const runNearbyScan = (mode: 'auto' | 'ap' | 'ble') => {
+    setIsNearbyScanning(true);
+    setNearbyFoundDevices([]);
+    setTimeout(() => {
+      setIsNearbyScanning(false);
+      if (mode === 'ap') {
+        setNearbyFoundDevices([
+          { name: `Neuro-${selectedDeviceName.replace(/\s+/g, '')}-AP`, type: selectedDeviceType, signal: 'Strong (2.4G)', mode: 'AP Mode' },
+        ]);
+      } else if (mode === 'ble') {
+        setNearbyFoundDevices([
+          { name: `Neuro-BLE-${selectedDeviceName.slice(0, 8)}`, type: selectedDeviceType, signal: '-45 dBm', mode: 'BLE Mode' },
+        ]);
+      } else {
+        // default auto scan: may be empty to show retry / AP mode / BLE options!
+        setNearbyFoundDevices([]);
+      }
+    }, 2800);
+  };
+
+  const openAddSetup = (_title: string, defaultName: string, defaultType: 'light' | 'switch' | 'fan' | 'thermostat' | 'sensor') => {
     setDeviceName(defaultName);
     setDeviceType(defaultType);
     setSelectedRoom(rooms.length > 0 ? rooms[0].name : 'Living room');
     setIsCreatingNewRoom(false);
     setNewRoomName('');
     setIsSetupDialogOpen(true);
+  };
+
+  const handleDeviceRowClick = (item: DeviceItem) => {
+    setSelectedDeviceName(item.name);
+    setSelectedDeviceType(item.type);
+    // As requested: clicking on device opens the Camera QR code scanner screen!
+    setCurrentView('qr_scanner');
   };
 
   const handleSaveDevice = async () => {
@@ -224,23 +305,26 @@ export const AddDeviceScreen = ({
         homeId: homeId || undefined,
       });
 
-      setSuccessToast(`"${deviceName.trim()}" added to ${finalRoomName}!`);
+      setSuccessToast(`"${deviceName.trim()}" connected to ${finalRoomName}!`);
       onDeviceAdded(finalRoomName);
 
       setTimeout(() => {
         setIsSetupDialogOpen(false);
         setSuccessToast('');
+        stopCamera();
         setCurrentView('main');
         onClose();
       }, 1200);
     } catch {
-      setSuccessToast('Failed to add device. Please try again.');
+      setSuccessToast('Failed to connect device. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  // Filter device catalog by selected category and search query
+  if (!isOpen) return null;
+
+  // Filter device catalog
   const filteredCatalog = DEVICE_CATALOG.filter((item) => {
     const matchesCategory = selectedCategory === 'All' || item.category === selectedCategory;
     const matchesSearch = searchQuery.trim() === '' || 
@@ -252,10 +336,9 @@ export const AddDeviceScreen = ({
   return (
     <div className="fixed inset-0 z-50 w-full h-full bg-[#f3f4f8] overflow-y-auto overflow-x-hidden flex flex-col font-sans select-none animate-in fade-in duration-200">
       
-      {/* ------------------- VIEW 1: MAIN ADD DEVICE SCREEN (Partner removed) ------------------- */}
+      {/* ------------------- VIEW 1: MAIN ADD DEVICE SCREEN ------------------- */}
       {currentView === 'main' && (
         <div className="w-full max-w-md mx-auto min-h-screen flex flex-col justify-between p-5 sm:p-6 pb-8">
-          
           <div>
             {/* Header */}
             <div className="relative flex items-center justify-between mb-6 pt-2">
@@ -298,7 +381,7 @@ export const AddDeviceScreen = ({
               </div>
             )}
 
-            {/* 1. Neuro Series devices Card (Partner devices removed as requested) */}
+            {/* Neuro Series devices Card (Partner devices removed) */}
             <div className="bg-white rounded-[28px] p-5 sm:p-6 shadow-sm border border-slate-100/90 mb-5">
               <h2 className="text-sm sm:text-base font-bold text-slate-900 mb-6 font-sans">
                 Neuro Series devices
@@ -322,61 +405,15 @@ export const AddDeviceScreen = ({
                 </button>
               </div>
             </div>
-
-            {/* Scanning Status / Found Devices Section */}
-            {isScanning && (
-              <div className="bg-white rounded-3xl p-5 border border-sky-100 shadow-sm flex items-center justify-center gap-3 mb-4 animate-in fade-in">
-                <Radar className="w-5 h-5 text-[#0284c7] animate-spin" />
-                <span className="text-sm font-bold text-slate-800">
-                  {scanType === 'qr' ? 'Scanning QR code with camera...' : 'Searching nearby Wi-Fi, BLE & Matter...'}
-                </span>
-              </div>
-            )}
-
-            {foundDevices.length > 0 && (
-              <div className="bg-white rounded-3xl p-5 border border-sky-100 shadow-sm space-y-3 mb-4">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-700 tracking-wide uppercase flex items-center gap-1.5">
-                    <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-                    Found ({foundDevices.length}) Devices Nearby
-                  </span>
-                  <button 
-                    onClick={handleStartScanNearby}
-                    className="text-xs text-[#0284c7] font-semibold hover:underline"
-                  >
-                    Rescan
-                  </button>
-                </div>
-
-                <div className="divide-y divide-slate-100">
-                  {foundDevices.map((dev, idx) => (
-                    <div key={idx} className="py-2.5 flex items-center justify-between first:pt-1 last:pb-1">
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-8 h-8 rounded-xl bg-sky-50 flex items-center justify-center text-[#0284c7]">
-                          <Wifi className="w-4 h-4" />
-                        </div>
-                        <div>
-                          <div className="text-xs sm:text-sm font-bold text-slate-900">{dev.name}</div>
-                          <div className="text-[11px] text-slate-400">Signal: {dev.signal}</div>
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => openAddSetup(dev.name, dev.name, dev.type)}
-                        className="px-3.5 py-1.5 rounded-full bg-[#0284c7] text-white text-xs font-bold hover:bg-[#0369a1] transition-colors cursor-pointer"
-                      >
-                        Connect
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
 
           {/* Bottom Action Buttons */}
           <div className="space-y-3 pt-6 mt-auto">
             <button
-              onClick={handleStartScanQr}
+              onClick={() => {
+                setSelectedDeviceName('device');
+                setCurrentView('qr_scanner');
+              }}
               className="w-full py-4 rounded-full bg-slate-200/90 hover:bg-slate-300 text-slate-900 font-bold text-sm sm:text-base transition-all active:scale-[0.99] cursor-pointer flex items-center justify-center gap-2"
             >
               <QrCode className="w-4 h-4 text-slate-800" />
@@ -384,7 +421,11 @@ export const AddDeviceScreen = ({
             </button>
 
             <button
-              onClick={handleStartScanNearby}
+              onClick={() => {
+                setSelectedDeviceName('device');
+                setActiveNearbyMode('auto');
+                setCurrentView('scan_nearby');
+              }}
               className="w-full py-4 rounded-full bg-slate-200/90 hover:bg-slate-300 text-slate-900 font-bold text-sm sm:text-base transition-all active:scale-[0.99] cursor-pointer flex items-center justify-center gap-2"
             >
               <Radar className="w-4 h-4 text-slate-800" />
@@ -421,7 +462,7 @@ export const AddDeviceScreen = ({
               </button>
             </div>
 
-            {/* Interactive Search Bar if active */}
+            {/* Interactive Search Bar */}
             {isSearchActive && (
               <div className="mb-4 bg-white rounded-2xl p-2.5 flex items-center gap-2 shadow-sm border border-slate-100 animate-in fade-in slide-in-from-top-2">
                 <Search className="w-4 h-4 text-slate-400 ml-1" />
@@ -430,7 +471,7 @@ export const AddDeviceScreen = ({
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Search devices..."
-                  className="w-full text-sm outline-none bg-transparent text-slate-800 placeholder-slate-400"
+                  className="w-full text-sm outline-none bg-transparent text-slate-800 placeholder-slate-400 font-sans"
                   autoFocus
                 />
                 {searchQuery && (
@@ -441,7 +482,7 @@ export const AddDeviceScreen = ({
               </div>
             )}
 
-            {/* Horizontally Scrollable Category Tabs matching Reference Image */}
+            {/* Horizontally Scrollable Category Tabs */}
             <div className="flex items-center gap-3 overflow-x-auto no-scrollbar pb-3 mb-3 select-none">
               {CATEGORIES.map((cat) => {
                 const isSelected = selectedCategory === cat;
@@ -476,11 +517,10 @@ export const AddDeviceScreen = ({
                   return (
                     <div
                       key={item.id}
-                      onClick={() => openAddSetup(item.name, item.name, item.type)}
+                      onClick={() => handleDeviceRowClick(item)}
                       className="group flex items-center justify-between p-4 sm:p-4.5 hover:bg-slate-50/80 transition-colors cursor-pointer"
                     >
                       <div className="flex items-center gap-4">
-                        {/* Device Icon stylized box matching reference */}
                         <div className="w-9 h-9 rounded-xl bg-slate-100/90 flex items-center justify-center text-slate-700 flex-shrink-0 group-hover:scale-105 transition-transform">
                           <Icon className="w-5 h-5 text-slate-700" strokeWidth={2.1} />
                         </div>
@@ -495,7 +535,7 @@ export const AddDeviceScreen = ({
               )}
             </div>
 
-            {/* "Can't find your device?" Link at bottom */}
+            {/* "Can't find your device?" Link */}
             <div className="text-center pb-6">
               <button
                 onClick={() => openAddSetup('Custom Device', 'My Smart Device', 'switch')}
@@ -508,7 +548,306 @@ export const AddDeviceScreen = ({
         </div>
       )}
 
-      {/* Setup & Connect Dialog Sheet */}
+      {/* ------------------- VIEW 3: LIVE CAMERA QR SCANNER (Reference media_1794034114279.jpg) ------------------- */}
+      {currentView === 'qr_scanner' && (
+        <div className="w-full max-w-md mx-auto min-h-screen flex flex-col justify-between p-5 sm:p-6 pb-8 animate-in fade-in duration-200">
+          <div>
+            {/* Header matching Reference */}
+            <div className="relative flex items-center justify-between mb-4 pt-2">
+              <button
+                onClick={() => {
+                  stopCamera();
+                  setCurrentView('catalog');
+                }}
+                className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-slate-800 shadow-sm hover:bg-slate-100 transition-colors cursor-pointer"
+                aria-label="Back"
+              >
+                <ChevronLeft className="w-6 h-6" strokeWidth={2.5} />
+              </button>
+
+              <h1 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">
+                Scan QR code
+              </h1>
+
+              <button
+                onClick={() => setShowWhereIsQr(!showWhereIsQr)}
+                className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-slate-800 shadow-sm hover:bg-slate-100 transition-colors cursor-pointer"
+                aria-label="Help"
+              >
+                <HelpCircle className="w-5 h-5 text-slate-800" strokeWidth={2.2} />
+              </button>
+            </div>
+
+            {/* Live Camera Viewfinder Card matching Reference Image */}
+            <div className="w-full aspect-[4/3] sm:aspect-square bg-slate-950 rounded-[32px] overflow-hidden relative shadow-md border border-slate-200/80 mb-4 flex items-center justify-center">
+              
+              {/* HTML5 Live Camera Stream (Mobile Chrome & Safari supported) */}
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                muted
+                className="w-full h-full object-cover"
+              />
+
+              {/* Viewfinder Target Reticle / Corner Brackets matching Reference */}
+              <div className="absolute inset-8 pointer-events-none">
+                {/* Top-Left */}
+                <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-white rounded-tl-xl" />
+                {/* Top-Right */}
+                <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-white rounded-tr-xl" />
+                {/* Bottom-Left */}
+                <div className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-white rounded-bl-xl" />
+                {/* Bottom-Right */}
+                <div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-white rounded-br-xl" />
+              </div>
+
+              {/* Flashlight Button in viewfinder bottom-right matching Reference */}
+              <button
+                onClick={toggleTorch}
+                className={`absolute bottom-4 right-4 w-11 h-11 rounded-full flex items-center justify-center transition-all cursor-pointer shadow-lg backdrop-blur-md ${
+                  isTorchOn ? 'bg-amber-400 text-slate-950 scale-105' : 'bg-slate-900/60 text-white hover:bg-slate-900/80'
+                }`}
+                aria-label="Flashlight"
+                title="Toggle flashlight"
+              >
+                <Flashlight className="w-5 h-5" strokeWidth={2.2} />
+              </button>
+
+              {/* Camera Fallback notice if user denied permission */}
+              {cameraError && (
+                <div className="absolute inset-4 bg-slate-900/90 rounded-2xl p-4 flex flex-col items-center justify-center text-center text-white space-y-2">
+                  <QrCode className="w-8 h-8 text-sky-400 mb-1" />
+                  <p className="text-xs sm:text-sm text-slate-300 leading-snug">{cameraError}</p>
+                </div>
+              )}
+            </div>
+
+            {/* Instruction text matching Reference */}
+            <div className="text-center px-4 space-y-2 mb-6">
+              <p className="text-xs sm:text-sm text-slate-500 font-medium leading-relaxed">
+                Find the QR code on your {selectedDeviceName} that looks like the image below.
+              </p>
+
+              {/* "Where is the QR code?" link */}
+              <div>
+                <button
+                  onClick={() => setShowWhereIsQr(!showWhereIsQr)}
+                  className="text-xs sm:text-sm font-semibold text-[#0284c7] hover:underline cursor-pointer"
+                >
+                  Where is the QR code?
+                </button>
+              </div>
+
+              {/* QR Code Location Tips Collapsible */}
+              {showWhereIsQr && (
+                <div className="bg-white rounded-2xl p-3 text-xs text-slate-600 text-left border border-slate-100 shadow-sm animate-in fade-in space-y-1">
+                  <p className="font-bold text-slate-800">Common QR Code Locations:</p>
+                  <p>&bull; On the back or bottom sticker of the device.</p>
+                  <p>&bull; Inside the quick start guide / user manual.</p>
+                  <p>&bull; On the packaging box.</p>
+                </div>
+              )}
+
+              {/* Neuro Series QR Code Sample Graphic matching Reference */}
+              <div className="flex items-center justify-center pt-2">
+                <div className="flex items-center rounded-xl bg-slate-900 text-white px-3 py-2 shadow-sm border border-slate-800 gap-3">
+                  <span className="font-extrabold text-xs sm:text-sm tracking-wide font-sans">
+                    Neuro Series
+                  </span>
+                  <div className="w-7 h-7 bg-white rounded p-0.5 flex items-center justify-center text-slate-900">
+                    <QrCode className="w-6 h-6 text-slate-900" />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Bottom Section: Add without QR code matching Reference */}
+          <div className="text-center space-y-2 mt-auto pt-4">
+            <p className="text-xs text-slate-400 font-medium">
+              Is there no QR code?
+            </p>
+            <button
+              onClick={() => {
+                stopCamera();
+                setActiveNearbyMode('auto');
+                setCurrentView('scan_nearby');
+              }}
+              className="w-full py-4 rounded-full bg-slate-200/90 hover:bg-slate-300 text-slate-900 font-bold text-sm sm:text-base transition-all active:scale-[0.99] cursor-pointer"
+            >
+              Add without QR code
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ------------------- VIEW 4: "Scan nearby" (Reference media_1794034176010.jpg) ------------------- */}
+      {currentView === 'scan_nearby' && (
+        <div className="w-full max-w-md mx-auto min-h-screen flex flex-col justify-between p-5 sm:p-6 pb-8 animate-in fade-in duration-200">
+          <div>
+            {/* Header matching Reference */}
+            <div className="relative flex items-center justify-between mb-4 pt-2">
+              <button
+                onClick={() => setCurrentView('catalog')}
+                className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-slate-800 shadow-sm hover:bg-slate-100 transition-colors cursor-pointer"
+                aria-label="Back"
+              >
+                <ChevronLeft className="w-6 h-6" strokeWidth={2.5} />
+              </button>
+
+              <h1 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">
+                Scan nearby
+              </h1>
+
+              {/* Right: Activity spinner matching Reference */}
+              <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-slate-400 shadow-sm">
+                <Loader2 className={`w-5 h-5 ${isNearbyScanning ? 'animate-spin text-[#0284c7]' : 'text-slate-300'}`} />
+              </div>
+            </div>
+
+            {/* Subtitle matching Reference */}
+            <div className="flex items-center gap-1.5 px-1 mb-8">
+              <span className="text-sm font-semibold text-slate-900">
+                Searching with phone...
+              </span>
+              <Info className="w-4 h-4 text-slate-400 cursor-pointer" />
+            </div>
+
+            {/* Concentric Pulsing Radar Center Illustration matching Reference Image 2 */}
+            <div className="flex flex-col items-center justify-center py-6 mb-6 relative">
+              <div className="relative flex items-center justify-center w-48 h-48">
+                {/* Radar Waves */}
+                {isNearbyScanning && (
+                  <>
+                    <span className="absolute w-44 h-44 rounded-full bg-sky-200/50 animate-ping opacity-30" />
+                    <span className="absolute w-36 h-36 rounded-full bg-sky-100/70 animate-pulse" />
+                  </>
+                )}
+                <div className="w-28 h-28 rounded-full bg-slate-100 flex items-center justify-center border border-slate-200/60 shadow-inner">
+                  <div className="w-16 h-16 rounded-full bg-white shadow-sm flex items-center justify-center text-[#0284c7]">
+                    <Smartphone className="w-8 h-8 text-sky-400" strokeWidth={2.2} />
+                  </div>
+                </div>
+              </div>
+              <span className="text-xs sm:text-sm font-medium text-slate-500 mt-3 font-sans">
+                This phone
+              </span>
+            </div>
+
+            {/* Found Devices List if scanned */}
+            {nearbyFoundDevices.length > 0 && (
+              <div className="bg-white rounded-[28px] p-5 border border-sky-100 shadow-sm space-y-3 mb-4 animate-in fade-in">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-700 uppercase tracking-wide flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+                    Discovered Devices
+                  </span>
+                  <span className="text-[11px] font-semibold text-[#0284c7] bg-sky-50 px-2 py-0.5 rounded-full">
+                    Ready to Pair
+                  </span>
+                </div>
+
+                <div className="divide-y divide-slate-100">
+                  {nearbyFoundDevices.map((dev, idx) => (
+                    <div key={idx} className="py-2.5 flex items-center justify-between first:pt-1 last:pb-1">
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-xl bg-sky-50 flex items-center justify-center text-[#0284c7]">
+                          <Wifi className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <div className="text-sm font-bold text-slate-900">{dev.name}</div>
+                          <div className="text-xs text-slate-400">{dev.mode} &bull; {dev.signal}</div>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => openAddSetup(dev.name, dev.name, dev.type)}
+                        className="px-4 py-1.5 rounded-full bg-[#0284c7] text-white text-xs font-bold hover:bg-[#0369a1] transition-colors cursor-pointer shadow-sm"
+                      >
+                        Connect
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Prompt when searching completes or no devices found */}
+            {!isNearbyScanning && nearbyFoundDevices.length === 0 && (
+              <div className="bg-white rounded-[28px] p-5 shadow-sm border border-slate-100/90 space-y-4 mb-4 animate-in fade-in">
+                <div className="text-center space-y-1">
+                  <h3 className="text-sm sm:text-base font-bold text-slate-900">
+                    No devices found nearby
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    Make sure your {selectedDeviceName} is in pairing mode (LED blinking).
+                  </p>
+                </div>
+
+                {/* Requested Options: Retry, AP mode 2.4G, Scan nearby, BLE Mode */}
+                <div className="space-y-2 pt-1">
+                  {/* Option 1: Retry Scan Nearby */}
+                  <button
+                    onClick={() => {
+                      setActiveNearbyMode('auto');
+                      runNearbyScan('auto');
+                    }}
+                    className="w-full flex items-center justify-between px-4 py-3 rounded-2xl bg-slate-50 hover:bg-slate-100 text-slate-800 text-xs sm:text-sm font-semibold transition-colors cursor-pointer"
+                  >
+                    <div className="flex items-center gap-3">
+                      <RefreshCw className="w-4 h-4 text-[#0284c7]" />
+                      <span>Retry Scan nearby</span>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-slate-400" />
+                  </button>
+
+                  {/* Option 2: AP Mode 2.4G */}
+                  <button
+                    onClick={() => {
+                      setActiveNearbyMode('ap');
+                      runNearbyScan('ap');
+                    }}
+                    className="w-full flex items-center justify-between px-4 py-3 rounded-2xl bg-sky-50/70 hover:bg-sky-100/70 text-slate-800 text-xs sm:text-sm font-semibold transition-colors cursor-pointer"
+                  >
+                    <div className="flex items-center gap-3">
+                      <Radio className="w-4 h-4 text-[#0284c7]" />
+                      <span>AP mode (2.4GHz Wi-Fi)</span>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-slate-400" />
+                  </button>
+
+                  {/* Option 3: BLE Mode */}
+                  <button
+                    onClick={() => {
+                      setActiveNearbyMode('ble');
+                      runNearbyScan('ble');
+                    }}
+                    className="w-full flex items-center justify-between px-4 py-3 rounded-2xl bg-indigo-50/70 hover:bg-indigo-100/70 text-slate-800 text-xs sm:text-sm font-semibold transition-colors cursor-pointer"
+                  >
+                    <div className="flex items-center gap-3">
+                      <Bluetooth className="w-4 h-4 text-indigo-600" />
+                      <span>BLE Mode (Bluetooth Low Energy)</span>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-slate-400" />
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Bottom link: Can't find your device? */}
+          <div className="text-center pt-4 mt-auto">
+            <button
+              onClick={() => openAddSetup(selectedDeviceName, selectedDeviceName, selectedDeviceType)}
+              className="text-sm font-bold text-[#0284c7] hover:underline cursor-pointer"
+            >
+              Can't find your device?
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ------------------- MANUAL SETUP & ROOM ASSIGNMENT SHEET ------------------- */}
       {isSetupDialogOpen && (
         <div 
           onClick={() => setIsSetupDialogOpen(false)}
@@ -520,7 +859,7 @@ export const AddDeviceScreen = ({
           >
             <div className="flex items-center justify-between pb-1 border-b border-slate-100">
               <h3 className="text-base font-bold text-slate-900">
-                {deviceBrandTitle}
+                Configure {deviceName || 'Device'}
               </h3>
               <button 
                 onClick={() => setIsSetupDialogOpen(false)}
