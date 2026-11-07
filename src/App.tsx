@@ -35,6 +35,7 @@ import { authStorage, authApi, type UserProfile } from './services/auth';
 import { homeApi, homeStorage, type Home as UserHome, type Room } from './services/home';
 import { deviceApi } from './services/device';
 import { DynamicDeviceLayout } from './components/DynamicDeviceLayout';
+import { SplashScreen } from '@capacitor/splash-screen';
 
 export function App() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -159,6 +160,18 @@ export function App() {
         });
     }
   }, []);
+
+  // Automatically dismiss native splash screen once dashboard has finished loading
+  useEffect(() => {
+    if (!isInitializing) {
+      const timer = setTimeout(() => {
+        SplashScreen.hide({ fadeOutDuration: 400 }).catch(() => {
+          // Graceful fallback for web browser environment
+        });
+      }, 150);
+      return () => clearTimeout(timer);
+    }
+  }, [isInitializing]);
 
   // Close dropdown menus when clicking outside
   useEffect(() => {

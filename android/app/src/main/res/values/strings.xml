@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Neuro Series</string>
+    <string name="title_activity_main">Neuro Series</string>
+    <string name="package_name">in.neurolinx.neuroseries</string>
+    <string name="custom_url_scheme">in.neurolinx.neuroseries</string>
+</resources>
