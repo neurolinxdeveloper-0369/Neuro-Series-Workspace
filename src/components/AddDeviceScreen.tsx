@@ -35,6 +35,7 @@ import {
 import { deviceApi } from '../services/device';
 import { homeApi } from '../services/home';
 import type { Room } from '../services/home';
+import { DynamicDeviceLayout, resolveDeviceFromSsid } from './DynamicDeviceLayout';
 
 export interface DeviceModelItem {
   id: string;
@@ -238,6 +239,24 @@ export const AddDeviceScreen = ({
     setCurrentView('provision_form');
   };
 
+  const [manualSsidInput, setManualSsidInput] = useState('');
+
+  // SSID Layout Resolver: extracts model notation from SSID and resolves layout before room assignment
+  const initiateDeviceFromSsid = (ssidString: string) => {
+    if (!ssidString) return;
+    const resolved = resolveDeviceFromSsid(ssidString);
+    const matched = DEVICE_CATALOG.find(d => d.modelCode.toUpperCase() === resolved.modelCode.toUpperCase()) || {
+      id: `dev_${resolved.modelCode.toLowerCase()}`,
+      name: resolved.name,
+      category: resolved.category as any,
+      modelCode: resolved.modelCode,
+      ssidFormat: `NEURO-${resolved.modelCode}-[MAC4]`,
+      type: 'switch' as const,
+      icon: Sliders
+    };
+    initiateDeviceSetup(matched, resolved.mac4);
+  };
+
   // Camera Management
   useEffect(() => {
     if (isOpen && currentView === 'qr_scanner') {
@@ -247,6 +266,33 @@ export const AddDeviceScreen = ({
     }
     return () => stopCamera();
   }, [isOpen, currentView]);
+
+  // Real-time BarcodeDetector for live camera QR scanning
+  useEffect(() => {
+    if (isOpen && currentView === 'qr_scanner' && cameraStream && typeof window !== 'undefined' && 'BarcodeDetector' in window) {
+      let intervalId: any;
+      try {
+        const barcodeDetector = new (window as any).BarcodeDetector({ formats: ['qr_code'] });
+        intervalId = setInterval(async () => {
+          if (videoRef.current && videoRef.current.readyState === videoRef.current.HAVE_ENOUGH_DATA) {
+            try {
+              const barcodes = await barcodeDetector.detect(videoRef.current);
+              if (barcodes && barcodes.length > 0 && barcodes[0].rawValue) {
+                initiateDeviceFromSsid(barcodes[0].rawValue);
+              }
+            } catch {
+              // frame detection pass
+            }
+          }
+        }, 500);
+      } catch {
+        // BarcodeDetector initialization pass
+      }
+      return () => {
+        if (intervalId) clearInterval(intervalId);
+      };
+    }
+  }, [isOpen, currentView, cameraStream]);
 
   const startCamera = async () => {
     setCameraError(null);
@@ -308,24 +354,33 @@ export const AddDeviceScreen = ({
     setNearbyFoundDevices([]);
     setTimeout(() => {
       setIsNearbyScanning(false);
-      const m4 = getRandomMac4();
-      const devSsid = activeModel.ssidFormat.replace('[MAC4]', m4);
-      
+      const m4_1 = 'BC88';
+      const m4_2 = '4A12';
+      const m4_3 = '55BB';
+
+      const tp8Item = DEVICE_CATALOG.find(d => d.modelCode === 'TP8') || activeModel;
+      const em1Item = DEVICE_CATALOG.find(d => d.modelCode === 'EM1') || activeModel;
+      const tnkItem = DEVICE_CATALOG.find(d => d.modelCode === 'TNK') || activeModel;
+
       if (mode === 'ap') {
         setNearbyFoundDevices([
-          { model: activeModel, mac4: m4, ssid: devSsid, signal: 'Strong (2.4GHz)', mode: 'AP Mode' },
+          { model: tp8Item, mac4: m4_1, ssid: `NEURO-TP8-${m4_1}`, signal: 'Strong (2.4GHz)', mode: 'AP Mode' },
+          { model: em1Item, mac4: m4_2, ssid: `NEURO-EM1-${m4_2}`, signal: 'Good (2.4GHz)', mode: 'AP Mode' },
         ]);
       } else if (mode === 'ble') {
         setNearbyFoundDevices([
-          { model: activeModel, mac4: m4, ssid: `NEURO-BLE-${activeModel.modelCode}-${m4}`, signal: '-45 dBm', mode: 'BLE Mode' },
+          { model: tp8Item, mac4: m4_1, ssid: `NEURO-BLE-TP8-${m4_1}`, signal: '-45 dBm', mode: 'BLE Mode' },
+          { model: tnkItem, mac4: m4_3, ssid: `NEURO-BLE-TNK-${m4_3}`, signal: '-58 dBm', mode: 'BLE Mode' },
         ]);
       } else {
-        // Auto: 2 sample devices discovered matching Hotspot SSID format
+        // Auto / Nearby Scan: discovered SSIDs ready for Dynamic UI Layout resolving
         setNearbyFoundDevices([
-          { model: activeModel, mac4: m4, ssid: devSsid, signal: 'Good (-52 dBm)', mode: 'Hotspot SSID' }
+          { model: tp8Item, mac4: m4_1, ssid: `NEURO-TP8-${m4_1}`, signal: 'Excellent (-42 dBm)', mode: 'Hotspot SSID' },
+          { model: em1Item, mac4: m4_2, ssid: `NEURO-EM1-${m4_2}`, signal: 'Good (-52 dBm)', mode: 'Hotspot SSID' },
+          { model: tnkItem, mac4: m4_3, ssid: `NEURO-TNK-${m4_3}`, signal: 'Good (-58 dBm)', mode: 'Hotspot SSID' },
         ]);
       }
-    }, 2400);
+    }, 1800);
   };
 
   // Submit Provisioning to Backend & Hardware
@@ -732,6 +787,57 @@ export const AddDeviceScreen = ({
                   </div>
                 </div>
               </div>
+
+              {/* Quick Scan / Test Presets */}
+              <div className="pt-3 text-left">
+                <div className="text-[11px] font-bold text-slate-600 mb-1.5 flex items-center justify-between">
+                  <span>Quick Test Scanned SSIDs:</span>
+                  <span className="text-[10px] text-sky-600 font-normal">Tap to resolve layout</span>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {[
+                    { ssid: 'NEURO-TP8-BC88', label: 'TP8 (8 Switches)' },
+                    { ssid: 'NEURO-EM1-4A12', label: 'EM1 (1ph Meter)' },
+                    { ssid: 'NEURO-TNK-55BB', label: 'TNK (Water Tank)' },
+                    { ssid: 'NEURO-IR1-8899', label: 'IR1 (Smart IR)' },
+                    { ssid: 'NEURO-MTR-1020', label: 'MTR (Motor)' },
+                    { ssid: 'NEURO-CRT-7711', label: 'CRT (Curtains)' },
+                  ].map(p => (
+                    <button
+                      key={p.ssid}
+                      type="button"
+                      onClick={() => initiateDeviceFromSsid(p.ssid)}
+                      className="px-2.5 py-1 rounded-lg bg-white border border-slate-200 hover:border-sky-500 hover:bg-sky-50 text-slate-700 hover:text-sky-700 text-[11px] font-mono font-semibold shadow-xs transition-colors cursor-pointer"
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Manual SSID Input Resolver */}
+              <div className="pt-2">
+                <div className="flex items-center gap-1.5 bg-white p-1 rounded-xl border border-slate-200 shadow-xs">
+                  <input
+                    type="text"
+                    value={manualSsidInput}
+                    onChange={(e) => setManualSsidInput(e.target.value)}
+                    placeholder="Enter SSID (e.g. NEURO-TP8-BC88)"
+                    className="flex-1 px-2.5 py-1.5 text-xs text-slate-800 outline-none bg-transparent font-mono placeholder:font-sans placeholder:text-slate-400"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (manualSsidInput.trim()) {
+                        initiateDeviceFromSsid(manualSsidInput.trim());
+                      }
+                    }}
+                    className="px-3 py-1.5 rounded-lg bg-[#0284c7] hover:bg-[#0369a1] text-white text-xs font-bold transition-colors cursor-pointer"
+                  >
+                    Resolve
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -831,7 +937,7 @@ export const AddDeviceScreen = ({
                         </div>
                       </div>
                       <button
-                        onClick={() => initiateDeviceSetup(dev.model, dev.mac4)}
+                        onClick={() => initiateDeviceFromSsid(dev.ssid)}
                         className="px-4 py-1.5 rounded-full bg-[#0284c7] text-white text-xs font-bold hover:bg-[#0369a1] transition-colors cursor-pointer shadow-sm"
                       >
                         Set up
@@ -961,6 +1067,23 @@ export const AddDeviceScreen = ({
                   {generatedDeviceId}
                 </span>
               </div>
+            </div>
+
+            {/* Dynamic UI Layout Resolved from SSID before Room Assignment */}
+            <div className="mb-4 space-y-2">
+              <div className="flex items-center justify-between px-1">
+                <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-sky-500" />
+                  <span>Hardware UI Layout (Resolved from SSID: {activeModel.ssidFormat.replace('[MAC4]', mac4)})</span>
+                </span>
+                <span className="text-[11px] font-mono text-[#0284c7] font-semibold bg-sky-50 px-2.5 py-0.5 rounded-full border border-sky-100">
+                  {activeModel.modelCode}
+                </span>
+              </div>
+              <DynamicDeviceLayout 
+                modelCode={activeModel.modelCode} 
+                deviceName={customDeviceName}
+              />
             </div>
 
             {/* Form Inputs */}

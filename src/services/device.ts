@@ -61,6 +61,11 @@ export const deviceApi = {
     return res.success && Array.isArray(res.devices) ? res.devices : [];
   },
 
+  getDevicesByHome: async (homeId: string): Promise<any[]> => {
+    const res = await api.get<{ success: boolean; devices: any[] }>(`/devices/home/${homeId}`);
+    return res.success && Array.isArray(res.devices) ? res.devices : [];
+  },
+
   provisionDevice: async (input: ProvisionInput): Promise<ProvisionResult> => {
     const res = await api.post<ProvisionResult>('/devices/provision', input);
     if (!res.success || !res.deviceId) {

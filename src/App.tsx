@@ -33,6 +33,8 @@ import { NeuroLoader } from './components/NeuroLoader';
 import { getAssetUrl } from './utils/assets';
 import { authStorage, authApi, type UserProfile } from './services/auth';
 import { homeApi, homeStorage, type Home as UserHome, type Room } from './services/home';
+import { deviceApi } from './services/device';
+import { DynamicDeviceLayout } from './components/DynamicDeviceLayout';
 
 export function App() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -69,7 +71,10 @@ export function App() {
     return typeof window !== 'undefined' && sessionStorage.getItem('neuro_explore_dismissed') === 'true';
   });
 
-  // Load rooms for a given home
+  const [devices, setDevices] = useState<any[]>([]);
+  const [selectedDeviceForControl, setSelectedDeviceForControl] = useState<any | null>(null);
+
+  // Load rooms and devices for a given home
   const loadRooms = async (homeId: string) => {
     try {
       const homeRooms = await homeApi.getRooms(homeId);
@@ -79,11 +84,22 @@ export function App() {
     }
   };
 
+  const loadDevices = async (homeId: string) => {
+    try {
+      const homeDevices = await deviceApi.getDevicesByHome(homeId);
+      setDevices(homeDevices);
+    } catch {
+      setDevices([]);
+    }
+  };
+
   useEffect(() => {
     if (activeHome) {
       loadRooms(activeHome.id);
+      loadDevices(activeHome.id);
     } else {
       setRooms([]);
+      setDevices([]);
     }
   }, [activeHome?.id]);
 
@@ -692,6 +708,71 @@ export function App() {
               />
             )}
 
+            {/* Active Hardware Nodes in Room */}
+            {(() => {
+              const filtered = activeRoomTab === 'all'
+                ? devices
+                : devices.filter(d => {
+                    const room = rooms.find(r => r.name === activeRoomTab);
+                    return room ? d.room_id === room.id : false;
+                  });
+
+              if (filtered.length === 0) return null;
+
+              return (
+                <div className="w-full max-w-sm sm:max-w-md md:max-w-lg space-y-3 pointer-events-auto">
+                  <div className="flex items-center justify-between px-1">
+                    <span className="text-xs font-bold uppercase tracking-wider text-slate-600 font-mono">
+                      Connected Devices ({filtered.length})
+                    </span>
+                    <button
+                      onClick={() => handleProtectedAction(() => setIsAddDeviceOpen(true))}
+                      className="text-xs font-bold text-[#0284c7] hover:underline cursor-pointer"
+                    >
+                      + Add device
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-2.5">
+                    {filtered.map((dev) => (
+                      <div
+                        key={dev.id}
+                        onClick={() => setSelectedDeviceForControl(dev)}
+                        className="bg-white rounded-3xl p-4 sm:p-4.5 shadow-sm border border-slate-100 hover:border-sky-300 transition-all cursor-pointer group"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-2xl bg-sky-50 text-[#0284c7] flex items-center justify-center font-bold font-mono text-xs sm:text-sm group-hover:scale-105 transition-transform">
+                              {dev.model_code}
+                            </div>
+                            <div>
+                              <h3 className="text-sm sm:text-base font-bold text-slate-900 group-hover:text-[#0284c7] transition-colors">
+                                {dev.custom_name}
+                              </h3>
+                              <p className="text-xs text-slate-400 font-mono">
+                                {dev.device_id || `NEURO-${dev.model_code}-${dev.mac_4}`}
+                              </p>
+                            </div>
+                          </div>
+                          <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-600 border border-emerald-100 flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                            Online
+                          </span>
+                        </div>
+
+                        <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+                          <span>{dev.endpoints?.length || 0} Hardware Endpoints</span>
+                          <span className="text-[#0284c7] font-bold flex items-center gap-1 group-hover:translate-x-0.5 transition-transform">
+                            Open Dynamic UI &rarr;
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+
             {/* Reference 2 / Reference 1 White Device Card */}
             <QuickDevicesCard 
               isLoggedIn={isSignedIn}
@@ -702,10 +783,65 @@ export function App() {
         )}
 
         {activeTab === 'devices' && (
-          <DevicesMenuCard 
-            onAddDevice={() => handleProtectedAction(() => setIsAddDeviceOpen(true))}
-            onSupportedDevices={() => handleProtectedAction()}
-          />
+          <>
+            {devices.length > 0 && (
+              <div className="w-full max-w-sm sm:max-w-md md:max-w-lg space-y-3 pointer-events-auto mb-2">
+                <div className="flex items-center justify-between px-1">
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-600 font-mono">
+                    All Hardware Devices ({devices.length})
+                  </span>
+                  <button
+                    onClick={() => handleProtectedAction(() => setIsAddDeviceOpen(true))}
+                    className="text-xs font-bold text-[#0284c7] hover:underline cursor-pointer"
+                  >
+                    + Add device
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 gap-2.5">
+                  {devices.map((dev) => (
+                    <div
+                      key={dev.id}
+                      onClick={() => setSelectedDeviceForControl(dev)}
+                      className="bg-white rounded-3xl p-4 sm:p-4.5 shadow-sm border border-slate-100 hover:border-sky-300 transition-all cursor-pointer group"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-2xl bg-sky-50 text-[#0284c7] flex items-center justify-center font-bold font-mono text-xs sm:text-sm group-hover:scale-105 transition-transform">
+                            {dev.model_code}
+                          </div>
+                          <div>
+                            <h3 className="text-sm sm:text-base font-bold text-slate-900 group-hover:text-[#0284c7] transition-colors">
+                              {dev.custom_name}
+                            </h3>
+                            <p className="text-xs text-slate-400 font-mono">
+                              {dev.device_id || `NEURO-${dev.model_code}-${dev.mac_4}`}
+                            </p>
+                          </div>
+                        </div>
+                        <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-600 border border-emerald-100 flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                          Online
+                        </span>
+                      </div>
+
+                      <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+                        <span>{dev.endpoints?.length || 0} Hardware Endpoints</span>
+                        <span className="text-[#0284c7] font-bold flex items-center gap-1 group-hover:translate-x-0.5 transition-transform">
+                          Open Dynamic UI &rarr;
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <DevicesMenuCard 
+              onAddDevice={() => handleProtectedAction(() => setIsAddDeviceOpen(true))}
+              onSupportedDevices={() => handleProtectedAction()}
+            />
+          </>
         )}
 
         {activeTab === 'explore' && (
@@ -912,6 +1048,7 @@ export function App() {
         defaultWifiSsid={activeHome?.default_wifi_ssid || ''}
         rooms={rooms}
         onDeviceAdded={(roomName) => {
+          if (activeHome) loadDevices(activeHome.id);
           setActiveRoomTab(roomName);
         }}
         onRoomAdded={(newRoom) => {
@@ -924,6 +1061,36 @@ export function App() {
           setActiveRoomTab(newRoom.name);
         }}
       />
+
+      {/* 14. Dynamic Hardware Controller Modal */}
+      {selectedDeviceForControl && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in select-none pointer-events-auto">
+          <div className="bg-[#0f172a] w-full max-w-lg rounded-t-[32px] sm:rounded-3xl p-5 sm:p-6 shadow-2xl border border-slate-800 text-white max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-800">
+              <div>
+                <h2 className="text-base sm:text-lg font-bold text-white">
+                  {selectedDeviceForControl.custom_name}
+                </h2>
+                <p className="text-xs text-slate-400 font-mono">
+                  {selectedDeviceForControl.device_id} &bull; Model: {selectedDeviceForControl.model_code}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedDeviceForControl(null)}
+                className="w-8 h-8 rounded-full bg-slate-800 hover:bg-slate-700 flex items-center justify-center text-slate-300 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <DynamicDeviceLayout 
+              modelCode={selectedDeviceForControl.model_code}
+              deviceName={selectedDeviceForControl.custom_name}
+            />
+          </div>
+        </div>
+      )}
 
 
       {/* 8. Light Blue Energy Symbol Cursor (Red replaced with Light Blue #38bdf8 / #7dd3fc) */}
