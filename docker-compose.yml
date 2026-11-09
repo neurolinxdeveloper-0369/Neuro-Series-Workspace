@@ -44,6 +44,11 @@ services:
       - GOOGLE_ANDROID_CLIENT_ID=${GOOGLE_ANDROID_CLIENT_ID}
       - GOOGLE_IOS_CLIENT_ID=${GOOGLE_IOS_CLIENT_ID}
       - MQTT_BROKER_URL=mqtt://smart-workspace-emqx:1883
+      - SMTP_HOST=${SMTP_HOST:-smtp.gmail.com}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER:-neurolinxdeveloper@gmail.com}
+      - SMTP_PASS=${SMTP_PASS}
+      - SMTP_FROM=${SMTP_FROM:-Neuro Series <neurolinxdeveloper@gmail.com>}
     logging:
       driver: "json-file"
       options:

@@ -86,17 +86,32 @@ export class AuthService {
 
     // Send email via nodemailer if SMTP configured
     let emailSent = false;
-    if (ENV.SMTP_USER && ENV.SMTP_PASS) {
+    const cleanPass = ENV.SMTP_PASS.trim().replace(/\s+/g, '');
+    if (ENV.SMTP_USER && cleanPass) {
       try {
-        const transporter = nodemailer.createTransport({
-          host: ENV.SMTP_HOST,
-          port: ENV.SMTP_PORT,
-          secure: ENV.SMTP_PORT === 465,
-          auth: {
-            user: ENV.SMTP_USER,
-            pass: ENV.SMTP_PASS,
-          },
-        });
+        const isGmail = ENV.SMTP_HOST.includes('gmail.com');
+        const transporter = nodemailer.createTransport(
+          isGmail
+            ? {
+                service: 'gmail',
+                auth: {
+                  user: ENV.SMTP_USER,
+                  pass: cleanPass,
+                },
+              }
+            : {
+                host: ENV.SMTP_HOST,
+                port: ENV.SMTP_PORT,
+                secure: ENV.SMTP_PORT === 465,
+                auth: {
+                  user: ENV.SMTP_USER,
+                  pass: cleanPass,
+                },
+                tls: {
+                  rejectUnauthorized: false,
+                },
+              }
+        );
 
         await transporter.sendMail({
           from: ENV.SMTP_FROM,
@@ -121,12 +136,12 @@ export class AuthService {
           `,
         });
         emailSent = true;
-        console.log(`📧 [EMAIL SENT] Verification code successfully sent to ${email}`);
+        console.log(`📧 [EMAIL SENT] Verification code successfully sent to ${email} via ${ENV.SMTP_USER}`);
       } catch (mailErr) {
-        console.warn(`⚠️ Could not send email via SMTP (${(mailErr as Error).message}). Code is logged for dev/fallback.`);
+        console.error(`❌ [SMTP ERROR] Could not send email via SMTP (${(mailErr as Error).message}). Code is logged for dev/fallback.`);
       }
     } else {
-      console.log(`ℹ️ [SMTP NOTICE] SMTP_USER/SMTP_PASS not set. OTP code logged: ${otp}`);
+      console.log(`ℹ️ [SMTP NOTICE] SMTP_USER or SMTP_PASS not set. Set SMTP_PASS in Portainer stack env. OTP code logged: ${otp}`);
     }
 
     return {
