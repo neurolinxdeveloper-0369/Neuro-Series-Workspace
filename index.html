@@ -11,6 +11,57 @@
     <script src="https://accounts.google.com/gsi/client" async defer></script>
   </head>
   <body class="bg-[#050608] text-white selection:bg-cyan-500/30 selection:text-cyan-200 antialiased overflow-x-hidden min-h-screen">
+    <script>
+      (function() {
+        if (window.location.hash && window.location.hash.includes('access_token=')) {
+          var params = new URLSearchParams(window.location.hash.substring(1));
+          var accessToken = params.get('access_token');
+          if (accessToken) {
+            document.addEventListener('DOMContentLoaded', function() {
+              var loaderEl = document.createElement('div');
+              loaderEl.style.cssText = 'position:fixed;inset:0;background:#d4edf4;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:sans-serif;z-index:999999;color:#0369a1;font-weight:600;font-size:15px;gap:12px;';
+              loaderEl.innerHTML = '<div style="width:36px;height:36px;border:3px solid rgba(2,132,199,0.2);border-top-color:#0284c7;border-radius:50%;animation:neuro_spin 0.8s linear infinite;"></div><div>Completing sign in...</div><style>@keyframes neuro_spin{to{transform:rotate(360deg)}}</style>';
+              document.body.appendChild(loaderEl);
+            });
+
+            fetch('/neuro-series/api/auth/google', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ accessToken: accessToken })
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+              if (data.success && data.token && data.user) {
+                localStorage.setItem('neuro_auth_token', data.token);
+                localStorage.setItem('neuro_user', JSON.stringify(data.user));
+
+                if (window.opener) {
+                  try {
+                    window.opener.postMessage({
+                      type: 'NEURO_AUTH_SUCCESS',
+                      token: data.token,
+                      user: data.user
+                    }, '*');
+                  } catch (e) {}
+                }
+
+                // Trigger native app deep link for Android APK & iOS
+                var deepLink = 'in.neurolinx.neuroseries://auth?token=' + encodeURIComponent(data.token) +
+                  '&user=' + encodeURIComponent(JSON.stringify(data.user));
+                window.location.href = deepLink;
+
+                setTimeout(function() {
+                  window.history.replaceState(null, '', window.location.pathname);
+                }, 500);
+              }
+            })
+            .catch(function(err) {
+              console.error('OAuth callback exchange error:', err);
+            });
+          }
+        }
+      })();
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

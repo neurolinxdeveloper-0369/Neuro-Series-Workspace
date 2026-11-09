@@ -262,20 +262,21 @@ export const SignInScreen = ({ isOpen, onClose, onSignInSuccess }: SignInScreenP
     }
   };
 
-  // Single Google Sign-In Handler
+  // Single Direct Google Sign-In Handler
   const handleGoogleSignInClick = async () => {
     if (isLoading) return;
     setErrorMessage(null);
 
+    // Direct Google OAuth 2.0 authorization endpoint registered for https://neurolinx.in/neuro-series/
+    const googleAuthUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${GOOGLE_WEB_CLIENT_ID}&redirect_uri=${encodeURIComponent('https://neurolinx.in/neuro-series/')}&response_type=token&scope=${encodeURIComponent('openid profile email')}&prompt=select_account`;
+
     // 1. On Native Mobile (Capacitor Android / iOS):
-    // Embedded WebViews trigger Google's "400 Error: disallowed_useragent".
-    // We MUST use the external Chrome Custom Tab via Browser.open().
+    // Directly opens Google's official account selector dialog without ANY intermediate website
     if (Capacitor.isNativePlatform()) {
-      const authUrl = 'https://neurolinx.in/neuro-series/auth-mobile.html';
       try {
-        await Browser.open({ url: authUrl, presentationStyle: 'popover' });
+        await Browser.open({ url: googleAuthUrl, presentationStyle: 'popover' });
       } catch {
-        window.open(authUrl, '_blank');
+        window.open(googleAuthUrl, '_blank');
       }
       return;
     }
@@ -325,8 +326,7 @@ export const SignInScreen = ({ isOpen, onClose, onSignInSuccess }: SignInScreenP
     }
 
     // 3. Fallback for Web if GIS script not ready
-    const authUrl = 'https://neurolinx.in/neuro-series/auth-mobile.html';
-    window.open(authUrl, '_blank', 'width=500,height=620');
+    window.location.href = googleAuthUrl;
   };
 
   return (
