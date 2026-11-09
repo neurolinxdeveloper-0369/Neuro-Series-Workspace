@@ -243,7 +243,86 @@ export const AddDeviceScreen = ({
     deviceId: string;
     firmwareVersion: string;
     endpoints: any[];
+    mqttHost?: string;
+    mqttPort?: number;
   } | null>(null);
+
+  // Helper to send Device ID, Wi-Fi credentials & MQTT details to hardware at 192.168.4.1/configure
+  const sendConfigToHardware = async (payload: {
+    deviceId: string;
+    ssid: string;
+    password?: string;
+    mqttHost: string;
+    mqttPort: number;
+    mqttUsername: string;
+    mqttPassword: string;
+  }) => {
+    // 1. If on native Android, ensure network is bound to device Wi-Fi
+    const androidBridge = typeof window !== 'undefined' ? (window as any).AndroidWifiBridge : null;
+    if (androidBridge?.bindProcessToWifi) {
+      try {
+        androidBridge.bindProcessToWifi();
+      } catch {}
+    }
+
+    const fullPayload = {
+      // Device ID
+      deviceId: payload.deviceId,
+      device_id: payload.deviceId,
+
+      // Wi-Fi Details
+      ssid: payload.ssid,
+      password: payload.password || '',
+      wifi_ssid: payload.ssid,
+      wifi_password: payload.password || '',
+
+      // MQTT Details (flat keys for standard microcontrollers / PubSubClient)
+      mqttHost: payload.mqttHost,
+      mqtt_host: payload.mqttHost,
+      mqttPort: payload.mqttPort,
+      mqtt_port: payload.mqttPort,
+      mqttUsername: payload.mqttUsername,
+      mqtt_username: payload.mqttUsername,
+      mqtt_user: payload.mqttUsername,
+      mqttPassword: payload.mqttPassword,
+      mqtt_password: payload.mqttPassword,
+      mqtt_pass: payload.mqttPassword,
+      mqttTopicPrefix: 'neurolinx/devices',
+      mqtt_topic_prefix: 'neurolinx/devices',
+
+      // MQTT Details (nested structured object for modern JSON firmware parsers)
+      mqtt: {
+        host: payload.mqttHost,
+        port: payload.mqttPort,
+        username: payload.mqttUsername,
+        password: payload.mqttPassword,
+        clientId: payload.deviceId,
+        topic_prefix: 'neurolinx/devices',
+        state_topic: `neurolinx/devices/${payload.deviceId}/state`,
+        command_topic: `neurolinx/devices/${payload.deviceId}/set`,
+        telemetry_topic: `neurolinx/devices/${payload.deviceId}/telemetry`,
+      },
+    };
+
+    console.log('Sending hardware configuration with Wi-Fi & MQTT details:', fullPayload);
+
+    // Send to hardware AP endpoints
+    const endpoints = ['/configure', '/api/configure', '/wifi'];
+    for (const ep of endpoints) {
+      try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 2500);
+        await fetch(`http://192.168.4.1${ep}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(fullPayload),
+          signal: controller.signal,
+        });
+        clearTimeout(timeout);
+        break;
+      } catch {}
+    }
+  };
 
   // Generate random ntxx-mac4-Code helper
   const createDeviceId = (m4: string, code: string) => {
@@ -664,27 +743,22 @@ export const AddDeviceScreen = ({
         ipAddress: '192.168.4.1',
       });
 
-      // Step 2: Send configuration payload to hardware at 192.168.4.1
-      // { ssid: "HomeWiFi", password: "<wifi-password>", deviceId: "<id returned by backend>" }
-      const hardwarePayload = {
+      // Step 2: Send configuration payload (Device ID, Wi-Fi details & MQTT details) to hardware at 192.168.4.1
+      const assignedDeviceId = provisionResult.deviceId || generatedDeviceId;
+      const mqttHost = provisionResult.mqttHost || 'api.neurolinx.in';
+      const mqttPort = provisionResult.mqttPort || 1887;
+      const mqttUsername = provisionResult.mqttUsername || 'neuro_device_user';
+      const mqttPassword = provisionResult.mqttPassword || 'NeuroSeriesEmqx2026!';
+
+      await sendConfigToHardware({
+        deviceId: assignedDeviceId,
         ssid: wifiSsid.trim(),
         password: wifiPassword,
-        deviceId: provisionResult.deviceId,
-      };
-
-      try {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 2000);
-        await fetch('http://192.168.4.1/configure', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(hardwarePayload),
-          signal: controller.signal,
-        });
-        clearTimeout(timeout);
-      } catch {
-        // Expected on HTTPS origin without direct LAN routing to device AP
-      }
+        mqttHost,
+        mqttPort,
+        mqttUsername,
+        mqttPassword,
+      });
 
       // Step 3: Hardware confirmation 200 OK
       // Hardware resets, connects to Wi-Fi & MQTT
@@ -693,6 +767,8 @@ export const AddDeviceScreen = ({
         deviceId: `246F281A${mac4}`,
         firmwareVersion: 'v1.2.4-neuro',
         endpoints: provisionResult.endpoints || [],
+        mqttHost,
+        mqttPort,
       };
 
       const newlyCreatedDevice: Device = {
@@ -703,7 +779,7 @@ export const AddDeviceScreen = ({
         mac_4: mac4,
         custom_name: customDeviceName.trim() || activeModel.name,
         icon: selectedDeviceIcon || undefined,
-        device_id: generatedDeviceId,
+        device_id: assignedDeviceId,
         ip_address: '192.168.4.1',
         firmware_version: 'v1.2.4-neuro',
         is_online: true,
@@ -718,6 +794,24 @@ export const AddDeviceScreen = ({
 
     } catch (err: unknown) {
       console.error('Provisioning error:', err);
+
+      // Attempt to send hardware configuration even if backend connection is unavailable
+      const fallbackDeviceId = generatedDeviceId;
+      const fallbackMqttHost = 'api.neurolinx.in';
+      const fallbackMqttPort = 1887;
+      const fallbackMqttUser = 'neuro_device_user';
+      const fallbackMqttPass = 'NeuroSeriesEmqx2026!';
+
+      await sendConfigToHardware({
+        deviceId: fallbackDeviceId,
+        ssid: wifiSsid.trim(),
+        password: wifiPassword,
+        mqttHost: fallbackMqttHost,
+        mqttPort: fallbackMqttPort,
+        mqttUsername: fallbackMqttUser,
+        mqttPassword: fallbackMqttPass,
+      });
+
       // Fallback confirmation on local client
       const fallbackEndpoints = [
         { id: `ep_${Date.now()}_1`, device_id: `dev_${Date.now()}`, endpoint_number: 1, name: 'Switch 1', endpoint_type: 'RELAY', current_state: { on: false } },
@@ -731,7 +825,7 @@ export const AddDeviceScreen = ({
         mac_4: mac4,
         custom_name: customDeviceName.trim() || activeModel.name,
         icon: selectedDeviceIcon || undefined,
-        device_id: generatedDeviceId,
+        device_id: fallbackDeviceId,
         ip_address: '192.168.4.1',
         firmware_version: 'v1.2.4-neuro',
         is_online: true,
@@ -744,6 +838,8 @@ export const AddDeviceScreen = ({
         deviceId: `246F281A${mac4}`,
         firmwareVersion: 'v1.2.4-neuro',
         endpoints: fallbackEndpoints,
+        mqttHost: fallbackMqttHost,
+        mqttPort: fallbackMqttPort,
       });
       onDeviceAdded(finalRoomName, fallbackDevice);
       setCurrentView('provision_success');
@@ -1701,6 +1797,20 @@ export const AddDeviceScreen = ({
                 )}
               </div>
 
+              {/* MQTT Broker Configuration Info */}
+              <div className="p-3 rounded-2xl bg-sky-50/50 border border-sky-100 flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <Router className="w-4 h-4 text-[#0284c7]" />
+                  <div>
+                    <span className="text-xs font-bold text-slate-800 block">MQTT Broker Sync</span>
+                    <span className="text-[11px] font-mono text-slate-500">api.neurolinx.in:1887 &bull; auto-synced</span>
+                  </div>
+                </div>
+                <span className="text-[10px] font-bold text-[#0284c7] bg-white px-2 py-0.5 rounded-full border border-sky-100 shadow-xs">
+                  Included
+                </span>
+              </div>
+
             </div>
           </div>
 
@@ -1717,7 +1827,7 @@ export const AddDeviceScreen = ({
                   <span>Configuring Hardware (192.168.4.1)...</span>
                 </>
               ) : (
-                <span>Send Wi-Fi Details & Finish Setup</span>
+                <span>Send Wi-Fi & MQTT Details to Hardware</span>
               )}
             </button>
           </div>
@@ -1824,6 +1934,20 @@ export const AddDeviceScreen = ({
                 <span className="text-xs text-slate-400 font-semibold">Firmware Version</span>
                 <span className="text-xs font-mono font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-lg">
                   {hardwareResponse?.firmwareVersion || 'v1.2.4-neuro'}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                <span className="text-xs text-slate-400 font-semibold">MQTT Broker</span>
+                <span className="text-xs font-mono font-semibold text-[#0284c7] bg-sky-50 px-2 py-0.5 rounded-lg border border-sky-100">
+                  {hardwareResponse?.mqttHost || 'api.neurolinx.in'}:{hardwareResponse?.mqttPort || 1887}
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                <span className="text-xs text-slate-400 font-semibold">MQTT State Topic</span>
+                <span className="text-xs font-mono text-slate-600 truncate max-w-[200px]">
+                  neurolinx/devices/{generatedDeviceId}/state
                 </span>
               </div>
 

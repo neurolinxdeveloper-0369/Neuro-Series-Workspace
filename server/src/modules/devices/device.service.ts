@@ -291,8 +291,8 @@ class DeviceService {
       device: deviceRecord,
       endpoints,
       deviceId,
-      mqttHost: '50.6.45.177',
-      mqttPort: 1887,
+      mqttHost: ENV.MQTT_PUBLIC_HOST || 'api.neurolinx.in',
+      mqttPort: ENV.MQTT_PUBLIC_PORT || 1887,
       mqttUsername: ENV.MQTT_USERNAME || 'neuro_device_user',
       mqttPassword: ENV.MQTT_PASSWORD || 'NeuroSeriesEmqx2026!',
     };
