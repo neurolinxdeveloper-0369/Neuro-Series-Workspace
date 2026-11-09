@@ -2,12 +2,22 @@ package in.neurolinx.neuroseries;
 
 import android.Manifest;
 import android.app.Dialog;
+import android.content.Context;
+import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.net.ConnectivityManager;
+import android.net.Network;
+import android.net.NetworkCapabilities;
+import android.net.wifi.ScanResult;
+import android.net.wifi.WifiInfo;
+import android.net.wifi.WifiManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Message;
+import android.provider.Settings;
 import android.view.ViewGroup;
 import android.webkit.CookieManager;
+import android.webkit.JavascriptInterface;
 import android.webkit.PermissionRequest;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
@@ -17,33 +27,127 @@ import android.webkit.WebViewClient;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 import com.getcapacitor.BridgeActivity;
+import org.json.JSONArray;
+import org.json.JSONObject;
+import java.util.List;
 
 public class MainActivity extends BridgeActivity {
     private static final int CAMERA_PERMISSION_REQ_CODE = 101;
+
+    // Native Android Wi-Fi Bridge exposed to WebView JavaScript as window.AndroidWifiBridge
+    public class AndroidWifiBridge {
+        private final Context context;
+
+        public AndroidWifiBridge(Context context) {
+            this.context = context;
+        }
+
+        @JavascriptInterface
+        public String getConnectedSsid() {
+            try {
+                WifiManager wm = (WifiManager) context.getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+                if (wm != null) {
+                    WifiInfo info = wm.getConnectionInfo();
+                    if (info != null && info.getSSID() != null) {
+                        String ssid = info.getSSID().replace("\"", "").trim();
+                        if (!ssid.equals("<unknown ssid>") && !ssid.isEmpty()) {
+                            return ssid;
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+            return "";
+        }
+
+        @JavascriptInterface
+        public String getScanResults() {
+            try {
+                WifiManager wm = (WifiManager) context.getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+                if (wm != null) {
+                    List<ScanResult> results = wm.getScanResults();
+                    JSONArray arr = new JSONArray();
+                    if (results != null) {
+                        for (ScanResult r : results) {
+                            if (r.SSID != null && !r.SSID.isEmpty()) {
+                                JSONObject obj = new JSONObject();
+                                obj.put("ssid", r.SSID);
+                                obj.put("bssid", r.BSSID);
+                                obj.put("level", r.level);
+                                arr.put(obj);
+                            }
+                        }
+                    }
+                    return arr.toString();
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+            return "[]";
+        }
+
+        @JavascriptInterface
+        public void openWifiSettings() {
+            try {
+                Intent intent = new Intent(Settings.ACTION_WIFI_SETTINGS);
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                context.startActivity(intent);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+
+        @JavascriptInterface
+        public boolean bindProcessToWifi() {
+            try {
+                ConnectivityManager cm = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
+                if (cm != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    for (Network net : cm.getAllNetworks()) {
+                        NetworkCapabilities caps = cm.getNetworkCapabilities(net);
+                        if (caps != null && caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) {
+                            return cm.bindProcessToNetwork(net);
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+            return false;
+        }
+    }
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         
-        // Runtime camera and location permissions for Android 6.0+ (API 23+)
+        // Runtime camera, location, and Wi-Fi permissions for Android 6.0+ (API 23+)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
-                ActivityCompat.requestPermissions(
-                    this, 
-                    new String[]{
-                        Manifest.permission.CAMERA,
-                        Manifest.permission.ACCESS_FINE_LOCATION,
-                        Manifest.permission.ACCESS_COARSE_LOCATION
-                    }, 
-                    CAMERA_PERMISSION_REQ_CODE
-                );
+            String[] perms;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                perms = new String[]{
+                    Manifest.permission.CAMERA,
+                    Manifest.permission.ACCESS_FINE_LOCATION,
+                    Manifest.permission.ACCESS_COARSE_LOCATION,
+                    Manifest.permission.NEARBY_WIFI_DEVICES
+                };
+            } else {
+                perms = new String[]{
+                    Manifest.permission.CAMERA,
+                    Manifest.permission.ACCESS_FINE_LOCATION,
+                    Manifest.permission.ACCESS_COARSE_LOCATION
+                };
             }
+            ActivityCompat.requestPermissions(this, perms, CAMERA_PERMISSION_REQ_CODE);
         }
 
         // Configure WebView settings on Capacitor Bridge
         if (this.bridge != null && this.bridge.getWebView() != null) {
             WebView webView = this.bridge.getWebView();
             WebSettings settings = webView.getSettings();
+
+            // Register native Android Wi-Fi Bridge
+            webView.addJavascriptInterface(new AndroidWifiBridge(MainActivity.this), "AndroidWifiBridge");
 
             // 1. Enable DOM Storage, JavaScript & Multi-Window support
             settings.setJavaScriptEnabled(true);

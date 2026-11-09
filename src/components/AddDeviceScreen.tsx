@@ -389,6 +389,8 @@ export const AddDeviceScreen = ({
     setNearbyFoundDevices([]);
     setScanFeedbackMessage(null);
 
+    const androidBridge = typeof window !== 'undefined' ? (window as any).AndroidWifiBridge : null;
+
     if (mode === 'ble') {
       // Real-time Web Bluetooth API Scan
       if (typeof navigator !== 'undefined' && 'bluetooth' in navigator) {
@@ -426,36 +428,116 @@ export const AddDeviceScreen = ({
     }
 
     if (mode === 'ap' || mode === 'auto') {
-      // Real-time probe to http://192.168.4.1/info or status
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 2500);
-        const res = await fetch('http://192.168.4.1/info', { signal: controller.signal });
-        clearTimeout(timeoutId);
+      // 1. In native Android APK: check connected SSID & native Wi-Fi scan results
+      if (androidBridge) {
+        try {
+          androidBridge.bindProcessToWifi();
+        } catch {}
 
-        if (res.ok) {
-          const info = await res.json().catch(() => null);
-          const devSsid = info?.ssid || `NEURO-${info?.model || activeModel.modelCode}-${info?.mac || '0001'}`;
-          const resolved = resolveDeviceFromSsid(devSsid);
-          const matched = DEVICE_CATALOG.find(d => d.modelCode.toUpperCase() === resolved.modelCode.toUpperCase()) || activeModel;
+        // Check if phone is already connected to a NEURO device Wi-Fi
+        try {
+          const connectedSsid = androidBridge.getConnectedSsid?.();
+          if (connectedSsid && (connectedSsid.toUpperCase().startsWith('NEURO') || connectedSsid.toUpperCase().includes('NEURO'))) {
+            const resolved = resolveDeviceFromSsid(connectedSsid);
+            const matched = DEVICE_CATALOG.find(d => d.modelCode.toUpperCase() === resolved.modelCode.toUpperCase()) || activeModel;
+            setNearbyFoundDevices([{
+              model: matched,
+              mac4: resolved.mac4,
+              ssid: connectedSsid,
+              signal: 'Connected to Hotspot',
+              mode: 'AP Mode'
+            }]);
+            setIsNearbyScanning(false);
+            return;
+          }
+        } catch {}
+
+        // Check native Wi-Fi scan results from phone's Wi-Fi list
+        try {
+          const scanJson = androidBridge.getScanResults?.();
+          if (scanJson) {
+            const results = JSON.parse(scanJson);
+            const neuroSsids = results.filter((r: any) => r.ssid && (r.ssid.toUpperCase().startsWith('NEURO') || r.ssid.toUpperCase().includes('NEURO')));
+            if (neuroSsids.length > 0) {
+              const discovered = neuroSsids.map((r: any) => {
+                const resolved = resolveDeviceFromSsid(r.ssid);
+                const matched = DEVICE_CATALOG.find(d => d.modelCode.toUpperCase() === resolved.modelCode.toUpperCase()) || activeModel;
+                return {
+                  model: matched,
+                  mac4: resolved.mac4,
+                  ssid: r.ssid,
+                  signal: `${r.level || -60} dBm`,
+                  mode: 'Discovered Wi-Fi'
+                };
+              });
+              setNearbyFoundDevices(discovered);
+              setIsNearbyScanning(false);
+              return;
+            }
+          }
+        } catch {}
+      }
+
+      // 2. Real-time HTTP probe to http://192.168.4.1 (multi-endpoint fallback)
+      let foundViaHttp = false;
+      const endpoints = ['/info', '/status', '/', '/api/device'];
+      for (const ep of endpoints) {
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 1800);
+          const res = await fetch(`http://192.168.4.1${ep}`, { signal: controller.signal });
+          clearTimeout(timeoutId);
+
+          if (res.ok) {
+            const info = await res.json().catch(() => null);
+            const devSsid = info?.ssid || `NEURO-${info?.model || activeModel.modelCode}-${info?.mac || '0001'}`;
+            const resolved = resolveDeviceFromSsid(devSsid);
+            const matched = DEVICE_CATALOG.find(d => d.modelCode.toUpperCase() === resolved.modelCode.toUpperCase()) || activeModel;
+            setNearbyFoundDevices([{
+              model: matched,
+              mac4: resolved.mac4,
+              ssid: devSsid,
+              signal: 'Connected (192.168.4.1)',
+              mode: 'AP Mode'
+            }]);
+            foundViaHttp = true;
+            break;
+          }
+        } catch {}
+      }
+
+      // 3. Fallback no-cors ping (in case device responds without CORS headers)
+      if (!foundViaHttp) {
+        try {
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 1500);
+          await fetch('http://192.168.4.1/', { mode: 'no-cors', signal: controller.signal });
+          clearTimeout(timeoutId);
           setNearbyFoundDevices([{
-            model: matched,
-            mac4: resolved.mac4,
-            ssid: devSsid,
-            signal: 'Strong (192.168.4.1)',
+            model: activeModel,
+            mac4: 'AP01',
+            ssid: `NEURO-${activeModel.modelCode}-AP01`,
+            signal: 'Connected (192.168.4.1)',
             mode: 'AP Mode'
           }]);
-        } else {
-          setScanFeedbackMessage('Device at 192.168.4.1 returned an unexpected response. Please verify device hotspot connection.');
-        }
-      } catch {
-        // Device not reached at 192.168.4.1
-        if (mode === 'ap') {
-          setScanFeedbackMessage('Could not reach device at 192.168.4.1. Connect your phone\'s Wi-Fi to the "NEURO-..." hotspot and tap Retry.');
-        }
-      } finally {
-        setIsNearbyScanning(false);
+          foundViaHttp = true;
+        } catch {}
       }
+
+      if (!foundViaHttp) {
+        const isBrowser = !androidBridge && !Capacitor.isNativePlatform();
+        if (isBrowser) {
+          setScanFeedbackMessage(
+            'In web browsers, security restrictions prevent scanning ambient Wi-Fi networks directly. Connect your phone or PC Wi-Fi to the "NEURO-..." hotspot in Settings, then tap Retry or enter the SSID below.'
+          );
+        } else {
+          setScanFeedbackMessage(
+            'To connect via AP mode: Open your phone Wi-Fi settings, connect to the "NEURO-..." network, then tap Retry or enter the SSID below.'
+          );
+        }
+      }
+
+      setIsNearbyScanning(false);
     }
   };
 
@@ -1092,6 +1174,21 @@ export const AddDeviceScreen = ({
                   </p>
                 </div>
 
+                {/* Android Native Wi-Fi Settings Button (APK only) */}
+                {typeof window !== 'undefined' && (window as any).AndroidWifiBridge && (
+                  <button
+                    type="button"
+                    onClick={() => (window as any).AndroidWifiBridge.openWifiSettings()}
+                    className="w-full flex items-center justify-between px-4 py-3 rounded-2xl bg-[#0284c7] hover:bg-[#0369a1] text-white text-xs sm:text-sm font-bold shadow-sm transition-all cursor-pointer active:scale-[0.99]"
+                  >
+                    <div className="flex items-center gap-3">
+                      <Wifi className="w-4 h-4 text-white" />
+                      <span>Open Phone Wi-Fi Settings</span>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-white/80" />
+                  </button>
+                )}
+
                 <div className="space-y-2 pt-1">
                   {/* Retry */}
                   <button
@@ -1137,6 +1234,33 @@ export const AddDeviceScreen = ({
                     </div>
                     <ChevronRight className="w-4 h-4 text-slate-400" />
                   </button>
+                </div>
+
+                {/* Direct SSID resolver from Wi-Fi list */}
+                <div className="border-t border-slate-100 pt-3 space-y-2">
+                  <span className="text-[11px] font-bold text-slate-600 block">
+                    Saw a device SSID in your Wi-Fi list? Enter it here:
+                  </span>
+                  <div className="flex items-center gap-1.5 bg-slate-50 p-1 rounded-xl border border-slate-200">
+                    <input
+                      type="text"
+                      value={manualSsidInput}
+                      onChange={(e) => setManualSsidInput(e.target.value)}
+                      placeholder="e.g. NEURO-TP8-BC88"
+                      className="flex-1 px-2.5 py-1.5 text-xs text-slate-800 outline-none bg-transparent font-mono placeholder:font-sans placeholder:text-slate-400"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (manualSsidInput.trim()) {
+                          initiateDeviceFromSsid(manualSsidInput.trim());
+                        }
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-[#0284c7] hover:bg-[#0369a1] text-white text-xs font-bold transition-colors cursor-pointer"
+                    >
+                      Connect
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
