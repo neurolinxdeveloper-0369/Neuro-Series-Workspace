@@ -324,10 +324,10 @@ export function App() {
     }
   };
 
-  // Real-time Clock View with Date, Time, Day & Right-side User Details
+  // Real-time Clock View with Date, Time, Day & Right-side User Details (Desktop & Laptops only)
   const renderRealTimeHeader = () => (
     <div 
-      className="w-full max-w-sm sm:max-w-md md:max-w-2xl lg:max-w-5xl rounded-3xl p-4 sm:p-5 shadow-xl select-none pointer-events-auto transition-all"
+      className="hidden lg:block w-full max-w-5xl rounded-3xl p-5 shadow-xl select-none pointer-events-auto transition-all"
       style={{
         background: 'rgba(255, 255, 255, 0.88)',
         backdropFilter: 'blur(24px) saturate(190%)',
@@ -336,19 +336,19 @@ export function App() {
         boxShadow: '0 20px 45px -10px rgba(0, 0, 0, 0.12), 0 4px 14px rgba(0, 0, 0, 0.04)',
       }}
     >
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+      <div className="flex items-center justify-between gap-4">
         {/* Left: Clock Graphic + Live Time + Day + Date */}
-        <div className="flex items-center gap-3.5 sm:gap-4.5">
-          <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-gradient-to-tr from-[#0284c7] to-[#38bdf8] p-2.5 text-white flex items-center justify-center shadow-md flex-shrink-0">
-            <Clock className="w-6 h-6 sm:w-7 sm:h-7" strokeWidth={2.3} />
+        <div className="flex items-center gap-4">
+          <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-[#0284c7] to-[#38bdf8] p-2.5 text-white flex items-center justify-center shadow-md flex-shrink-0">
+            <Clock className="w-7 h-7" strokeWidth={2.3} />
           </div>
           <div>
             <div className="flex items-baseline gap-2">
-              <span className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight font-mono">
+              <span className="text-3xl font-extrabold text-slate-900 tracking-tight font-mono">
                 {timeFormatted}
               </span>
             </div>
-            <p className="text-xs sm:text-sm font-semibold text-slate-600 flex items-center gap-1.5 mt-0.5">
+            <p className="text-sm font-semibold text-slate-600 flex items-center gap-1.5 mt-0.5">
               <Calendar className="w-3.5 h-3.5 text-[#0284c7]" />
               <span>{dayName}, {dateFormatted}</span>
               <span className="text-slate-300">&bull;</span>
@@ -358,7 +358,7 @@ export function App() {
         </div>
 
         {/* Right: User Details */}
-        <div className="flex items-center gap-3 p-2 sm:px-3.5 sm:py-2 rounded-2xl bg-slate-100/80 border border-slate-200/90 w-full sm:w-auto justify-between sm:justify-start">
+        <div className="flex items-center gap-3 px-3.5 py-2 rounded-2xl bg-slate-100/80 border border-slate-200/90 justify-start">
           <div className="flex items-center gap-3">
             {currentUser?.avatar_url ? (
               <img 
