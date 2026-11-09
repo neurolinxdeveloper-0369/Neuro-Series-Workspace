@@ -145,9 +145,14 @@ export const SignInScreen = ({ isOpen, onClose, onSignInSuccess }: SignInScreenP
         const res = await authApi.sendEmailOtp(cleanId.toLowerCase());
         if (res.success) {
           setStep('otp');
-          setOtp(['', '', '', '', '', '']);
+          if (res.debugOtp) {
+            setOtp(res.debugOtp.split(''));
+            setSuccessMessage(`Verification code: ${res.debugOtp} (Server SMTP credentials not yet set)`);
+          } else {
+            setOtp(['', '', '', '', '', '']);
+            setSuccessMessage(`A 6-digit verification code has been sent to ${cleanId}`);
+          }
           setResendCooldown(60);
-          setSuccessMessage(`A 6-digit verification code has been sent to ${cleanId}`);
         } else {
           setErrorMessage(res.message || 'Failed to send OTP code');
         }
@@ -250,7 +255,12 @@ export const SignInScreen = ({ isOpen, onClose, onSignInSuccess }: SignInScreenP
       const res = await authApi.sendEmailOtp(identifier.trim().toLowerCase());
       if (res.success) {
         setResendCooldown(60);
-        setSuccessMessage('A new verification code has been sent!');
+        if (res.debugOtp) {
+          setOtp(res.debugOtp.split(''));
+          setSuccessMessage(`Verification code: ${res.debugOtp} (Server SMTP credentials not yet set)`);
+        } else {
+          setSuccessMessage('A new verification code has been sent to your email!');
+        }
       } else {
         setErrorMessage(res.message || 'Failed to resend OTP');
       }
