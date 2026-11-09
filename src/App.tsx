@@ -17,10 +17,12 @@ import {
   Check,
   SlidersHorizontal,
   Layers,
-  ArrowLeft,
   Sun,
   Moon,
-  Sparkles
+  Sparkles,
+  Clock,
+  Calendar,
+  User
 } from 'lucide-react';
 import { ExploreCardSlider } from './components/ExploreCardSlider';
 import { QuickDevicesCard } from './components/QuickDevicesCard';
@@ -74,6 +76,19 @@ export function App() {
   const [isExploreDismissed, setIsExploreDismissed] = useState(() => {
     return typeof window !== 'undefined' && sessionStorage.getItem('neuro_explore_dismissed') === 'true';
   });
+
+  // Live Date & Time Clock for Desktop & Dashboard
+  const [currentDateTime, setCurrentDateTime] = useState(() => new Date());
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentDateTime(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const timeFormatted = currentDateTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+  const dayName = currentDateTime.toLocaleDateString('en-US', { weekday: 'long' });
+  const dateFormatted = currentDateTime.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  const currentHour = currentDateTime.getHours();
+  const timeGreeting = currentHour < 12 ? 'Good morning' : currentHour < 17 ? 'Good afternoon' : currentHour < 21 ? 'Good evening' : 'Good night';
 
   const [devices, setDevices] = useState<any[]>([]);
   const [selectedDeviceForControl, setSelectedDeviceForControl] = useState<any | null>(null);
@@ -695,16 +710,92 @@ export function App() {
       <main className="explore-slider-wrapper fixed inset-x-0 top-[4.5rem] sm:top-20 bottom-20 sm:bottom-6 overflow-y-auto overflow-x-hidden flex flex-col items-center justify-start pointer-events-none z-20 px-4 sm:px-6 sm:pl-24 pb-8 space-y-3.5">
         {activeTab === 'home' && (
           <>
+            {/* Clock View with Date, Time, Day & Right-side User Details */}
+            <div 
+              className="w-full max-w-sm sm:max-w-md md:max-w-2xl lg:max-w-5xl rounded-3xl p-4 sm:p-5 shadow-xl select-none pointer-events-auto transition-all"
+              style={{
+                background: 'rgba(255, 255, 255, 0.88)',
+                backdropFilter: 'blur(24px) saturate(190%)',
+                WebkitBackdropFilter: 'blur(24px) saturate(190%)',
+                border: '1px solid rgba(255, 255, 255, 0.95)',
+                boxShadow: '0 20px 45px -10px rgba(0, 0, 0, 0.12), 0 4px 14px rgba(0, 0, 0, 0.04)',
+              }}
+            >
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                {/* Left: Clock Graphic + Live Time + Day + Date */}
+                <div className="flex items-center gap-3.5 sm:gap-4.5">
+                  <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-gradient-to-tr from-[#0284c7] to-[#38bdf8] p-2.5 text-white flex items-center justify-center shadow-md flex-shrink-0">
+                    <Clock className="w-6 h-6 sm:w-7 sm:h-7" strokeWidth={2.3} />
+                  </div>
+                  <div>
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight font-mono">
+                        {timeFormatted}
+                      </span>
+                    </div>
+                    <p className="text-xs sm:text-sm font-semibold text-slate-600 flex items-center gap-1.5 mt-0.5">
+                      <Calendar className="w-3.5 h-3.5 text-[#0284c7]" />
+                      <span>{dayName}, {dateFormatted}</span>
+                      <span className="text-slate-300">&bull;</span>
+                      <span className="text-[#0284c7] font-bold">{timeGreeting}</span>
+                    </p>
+                  </div>
+                </div>
+
+                {/* Right: User Details */}
+                <div className="flex items-center gap-3 p-2 sm:px-3.5 sm:py-2 rounded-2xl bg-slate-100/80 border border-slate-200/90 w-full sm:w-auto justify-between sm:justify-start">
+                  <div className="flex items-center gap-3">
+                    {currentUser?.avatar_url ? (
+                      <img 
+                        src={currentUser.avatar_url} 
+                        alt="User Avatar" 
+                        className="w-10 h-10 rounded-full object-cover border-2 border-[#0284c7]/40 shadow-xs flex-shrink-0"
+                      />
+                    ) : (
+                      <div className="w-10 h-10 rounded-full bg-sky-100 border-2 border-sky-200 flex items-center justify-center text-[#0284c7] flex-shrink-0">
+                        <User className="w-5 h-5" />
+                      </div>
+                    )}
+                    <div>
+                      <div className="flex items-center gap-1.5">
+                        <h3 className="text-xs sm:text-sm font-bold text-slate-900 truncate max-w-[140px] sm:max-w-[180px]">
+                          {currentUser?.full_name || (isSignedIn ? 'User' : 'Guest Mode')}
+                        </h3>
+                        {isSignedIn && (
+                          <span className="px-1.5 py-0.5 rounded-md bg-sky-100 text-[#0284c7] text-[10px] font-bold">
+                            Owner
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-slate-500 font-sans truncate max-w-[150px] sm:max-w-[200px]">
+                        {currentUser?.email || (isSignedIn ? 'Authenticated' : 'Tap to sign in')}
+                      </p>
+                      <div className="flex items-center gap-1.5 text-[10px] sm:text-[11px] text-slate-600 font-medium mt-0.5">
+                        <span className="flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                          {devices.length} {devices.length === 1 ? 'Device' : 'Devices'}
+                        </span>
+                        <span className="text-slate-300">&bull;</span>
+                        <span className="truncate max-w-[100px] text-slate-700 font-semibold">
+                          {activeHome?.name || 'Home'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             {/* Reference 2 Room Sub-Tabs bar */}
             {isSignedIn && (
               rooms.length === 0 ? (
-                <div className="w-full max-w-sm sm:max-w-md md:max-w-lg px-2 py-1 select-none pointer-events-auto">
+                <div className="w-full max-w-sm sm:max-w-md md:max-w-2xl lg:max-w-5xl px-2 py-1 select-none pointer-events-auto">
                   <h2 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight font-sans">
                     Devices
                   </h2>
                 </div>
               ) : (
-                <div className="w-full max-w-sm sm:max-w-md md:max-w-lg flex items-center gap-3.5 px-2 py-0.5 select-none pointer-events-auto overflow-x-auto no-scrollbar">
+                <div className="w-full max-w-sm sm:max-w-md md:max-w-2xl lg:max-w-5xl flex items-center gap-3.5 px-2 py-0.5 select-none pointer-events-auto overflow-x-auto no-scrollbar">
                   <button 
                     onClick={() => {}}
                     className="p-1 rounded-full hover:bg-white/40 text-slate-700 transition-colors cursor-pointer flex-shrink-0"
@@ -774,7 +865,7 @@ export function App() {
 
                 if (filtered.length === 0) {
                   return (
-                    <div className="w-full max-w-sm sm:max-w-md md:max-w-lg bg-white/70 backdrop-blur-md rounded-3xl p-6 text-center border border-white/80 shadow-xs pointer-events-auto">
+                    <div className="w-full max-w-sm sm:max-w-md md:max-w-2xl lg:max-w-5xl bg-white/80 backdrop-blur-md rounded-3xl p-6 text-center border border-white/80 shadow-xs pointer-events-auto">
                       <p className="text-sm font-semibold text-slate-700">No devices in {activeRoomTab}</p>
                       <p className="text-xs text-slate-400 mt-1">Assign devices to this room or add a new device</p>
                       <button
@@ -788,7 +879,7 @@ export function App() {
                 }
 
                 return (
-                  <div className="w-full max-w-sm sm:max-w-md md:max-w-lg space-y-3 pointer-events-auto">
+                  <div className="w-full max-w-sm sm:max-w-md md:max-w-2xl lg:max-w-5xl space-y-3 pointer-events-auto">
                     <div className="flex items-center justify-between px-1">
                       <span className="text-xs font-bold uppercase tracking-wider text-slate-600 font-mono">
                         Connected Devices ({filtered.length})
@@ -801,7 +892,7 @@ export function App() {
                       </button>
                     </div>
 
-                    <div className="grid grid-cols-1 gap-2.5">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                       {filtered.map((dev) => {
                         const devRoom = rooms.find(r => r.id === dev.room_id);
                         const roomLabel = devRoom ? devRoom.name : 'Living room';
@@ -810,7 +901,7 @@ export function App() {
                           <div
                             key={dev.id}
                             onClick={() => setSelectedDeviceForControl(dev)}
-                            className="bg-white rounded-3xl p-4 sm:p-4.5 shadow-sm border border-slate-100 hover:border-sky-300 transition-all cursor-pointer group active:scale-[0.99]"
+                            className="bg-white/90 backdrop-blur-md rounded-3xl p-4 sm:p-4.5 shadow-sm border border-slate-100 hover:border-sky-300 hover:shadow-md transition-all cursor-pointer group active:scale-[0.99]"
                           >
                             <div className="flex items-center justify-between">
                               <div className="flex items-center gap-3">
@@ -844,7 +935,7 @@ export function App() {
                                   </p>
                                 </div>
                               </div>
-                              <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-600 border border-emerald-100 flex items-center gap-1">
+                              <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-600 border border-emerald-100 flex items-center gap-1 flex-shrink-0">
                                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                                 Online
                               </span>
@@ -876,9 +967,9 @@ export function App() {
                 onExplore={() => handleProtectedAction(() => setActiveTab('explore'))} 
               />
             ) : (
-              <div className="w-full max-w-sm sm:max-w-md md:max-w-lg space-y-3 pointer-events-auto mb-2">
+              <div className="w-full max-w-sm sm:max-w-md md:max-w-2xl lg:max-w-5xl space-y-3 pointer-events-auto mb-2">
                 <div className="flex items-center justify-between px-1">
-                  <span className="text-xs font-bold uppercase tracking-wider text-slate-600 font-mono">
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-700 font-mono">
                     All Hardware Devices ({devices.length})
                   </span>
                   <button
@@ -889,7 +980,7 @@ export function App() {
                   </button>
                 </div>
 
-                <div className="grid grid-cols-1 gap-2.5">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                   {devices.map((dev) => {
                     const devRoom = rooms.find(r => r.id === dev.room_id);
                     const roomLabel = devRoom ? devRoom.name : 'Living room';
@@ -898,11 +989,11 @@ export function App() {
                       <div
                         key={dev.id}
                         onClick={() => setSelectedDeviceForControl(dev)}
-                        className="bg-white rounded-3xl p-4 sm:p-4.5 shadow-sm border border-slate-100 hover:border-sky-300 transition-all cursor-pointer group active:scale-[0.99]"
+                        className="bg-white/90 backdrop-blur-md rounded-3xl p-4 sm:p-5 shadow-sm border border-slate-200/80 hover:border-sky-400 hover:shadow-md transition-all cursor-pointer group active:scale-[0.99]"
                       >
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-3">
-                            <div className="w-11 h-11 rounded-2xl bg-sky-50 flex items-center justify-center p-1.5 border border-sky-100 shadow-xs group-hover:scale-105 transition-transform flex-shrink-0">
+                            <div className="w-12 h-12 rounded-2xl bg-sky-50 flex items-center justify-center p-2 border border-sky-100 shadow-xs group-hover:scale-105 transition-transform flex-shrink-0">
                               {dev.icon ? (
                                 <img
                                   src={getAssetUrl('ICONS/' + dev.icon)}
@@ -932,16 +1023,16 @@ export function App() {
                               </p>
                             </div>
                           </div>
-                          <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-600 border border-emerald-100 flex items-center gap-1">
+                          <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-600 border border-emerald-100 flex items-center gap-1 flex-shrink-0">
                             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                             Online
                           </span>
                         </div>
 
-                        <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+                        <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
                           <span>{dev.endpoints?.length || 0} Controls Available</span>
                           <span className="text-[#0284c7] font-bold flex items-center gap-1 group-hover:translate-x-0.5 transition-transform">
-                            Tap to Open Layout &rarr;
+                            Open Switch Layout &rarr;
                           </span>
                         </div>
                       </div>
@@ -1264,94 +1355,106 @@ export function App() {
         }}
       />
 
-      {/* 14. Dedicated Full Screen Layout for Hardware Device Control (Not in Modal) */}
+      {/* 14. Modal UI Layout for Hardware Device Control */}
       {selectedDeviceForControl && (() => {
         const devRoom = rooms.find(r => r.id === selectedDeviceForControl.room_id);
         const roomLabel = devRoom ? devRoom.name : 'Living room';
 
         return (
           <div 
-            className="fixed inset-0 z-50 w-full h-full overflow-y-auto overflow-x-hidden flex flex-col font-sans select-none pointer-events-auto animate-in slide-in-from-right duration-200"
-            style={{
-              backgroundColor: '#d4edf4',
-              backgroundImage: `
-                radial-gradient(circle at 10% 10%, rgba(255, 255, 255, 0.95) 0%, transparent 50%),
-                radial-gradient(circle at 90% 90%, rgba(255, 255, 255, 0.90) 0%, transparent 50%)
-              `,
-            }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/60 backdrop-blur-md animate-in fade-in duration-200 select-none pointer-events-auto"
+            onClick={() => setSelectedDeviceForControl(null)}
           >
-            {/* Top Navigation App Bar */}
-            <header className="sticky top-0 z-20 w-full bg-[#d4edf4]/95 backdrop-blur-md px-4 sm:px-6 py-4 flex items-center justify-between border-b border-sky-200/60 shadow-xs">
-              <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => setSelectedDeviceForControl(null)}
-                  className="w-10 h-10 rounded-full bg-white/90 hover:bg-white text-slate-700 shadow-sm border border-slate-200/80 flex items-center justify-center cursor-pointer active:scale-95 transition-all"
-                  aria-label="Back to Devices"
-                >
-                  <ArrowLeft className="w-5 h-5 text-slate-800" strokeWidth={2.5} />
-                </button>
-                <div>
-                  <h1 className="text-base sm:text-lg font-extrabold text-slate-900 tracking-tight leading-tight">
-                    {selectedDeviceForControl.custom_name}
-                  </h1>
-                  <p className="text-xs text-slate-500 font-sans flex items-center gap-1.5 mt-0.5">
-                    <span>{getRoomEmoji(roomLabel)}</span>
-                    <span className="font-semibold text-slate-700">{roomLabel}</span>
-                    <span className="text-slate-300">&bull;</span>
-                    <span className="font-mono text-[11px] text-[#0284c7] font-bold">{selectedDeviceForControl.model_code}</span>
-                  </p>
+            {/* Modal Dialog Card */}
+            <div 
+              className="relative w-full max-w-xl max-h-[92vh] overflow-hidden flex flex-col rounded-3xl shadow-2xl border border-white/80 animate-in zoom-in-95 duration-200"
+              style={{
+                backgroundColor: '#d4edf4',
+                backgroundImage: `
+                  radial-gradient(circle at 10% 10%, rgba(255, 255, 255, 0.95) 0%, transparent 50%),
+                  radial-gradient(circle at 90% 90%, rgba(255, 255, 255, 0.90) 0%, transparent 50%)
+                `,
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Modal Header */}
+              <header className="sticky top-0 z-20 w-full bg-[#d4edf4]/95 backdrop-blur-md px-4 sm:px-6 py-3.5 flex items-center justify-between border-b border-sky-200/60 shadow-xs flex-shrink-0">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-white shadow-xs border border-sky-100 flex items-center justify-center flex-shrink-0">
+                    {selectedDeviceForControl.icon ? (
+                      <img
+                        src={getAssetUrl('ICONS/' + selectedDeviceForControl.icon)}
+                        alt={selectedDeviceForControl.custom_name}
+                        className="w-7 h-7 object-contain"
+                      />
+                    ) : (
+                      <span className="font-bold font-mono text-xs text-[#0284c7]">
+                        {selectedDeviceForControl.model_code}
+                      </span>
+                    )}
+                  </div>
+                  <div>
+                    <h2 className="text-base sm:text-lg font-extrabold text-slate-900 tracking-tight leading-tight">
+                      {selectedDeviceForControl.custom_name}
+                    </h2>
+                    <p className="text-xs text-slate-500 font-sans flex items-center gap-1.5 mt-0.5">
+                      <span>{getRoomEmoji(roomLabel)}</span>
+                      <span className="font-semibold text-slate-700">{roomLabel}</span>
+                      <span className="text-slate-300">&bull;</span>
+                      <span className="font-mono text-[11px] text-[#0284c7] font-bold">{selectedDeviceForControl.model_code}</span>
+                    </p>
+                  </div>
                 </div>
-              </div>
 
-              {/* Status Badge */}
-              <div className="flex items-center gap-2">
-                <span className={`px-2.5 py-1 rounded-full text-xs font-bold border flex items-center gap-1.5 shadow-xs ${
-                  selectedDeviceForControl.is_online !== false
-                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                    : 'bg-slate-100 text-slate-600 border-slate-200'
-                }`}>
-                  <span className={`w-2 h-2 rounded-full ${
+                <div className="flex items-center gap-2">
+                  <span className={`px-2.5 py-1 rounded-full text-xs font-bold border flex items-center gap-1.5 shadow-xs ${
                     selectedDeviceForControl.is_online !== false
-                      ? 'bg-emerald-500 animate-pulse'
-                      : 'bg-slate-400'
-                  }`} />
-                  {selectedDeviceForControl.is_online !== false ? 'Online' : 'Offline'}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setSelectedDeviceForControl(null)}
-                  className="w-9 h-9 rounded-full bg-white hover:bg-slate-100 flex items-center justify-center text-slate-700 shadow-xs cursor-pointer border border-slate-200 sm:hidden"
-                  aria-label="Close"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            </header>
+                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                      : 'bg-slate-100 text-slate-600 border-slate-200'
+                  }`}>
+                    <span className={`w-2 h-2 rounded-full ${
+                      selectedDeviceForControl.is_online !== false
+                        ? 'bg-emerald-500 animate-pulse'
+                        : 'bg-slate-400'
+                    }`} />
+                    {selectedDeviceForControl.is_online !== false ? 'Online' : 'Offline'}
+                  </span>
 
-            {/* Quick Meta Sub-bar */}
-            <div className="w-full max-w-xl mx-auto px-4 sm:px-6 pt-3 pb-1">
-              <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-2.5 px-4 border border-sky-100/80 flex items-center justify-between text-xs font-mono text-slate-600 shadow-xs">
-                <div className="flex items-center gap-2">
-                  <span className="text-slate-400 font-sans font-medium text-[11px]">Device ID:</span>
-                  <span className="font-bold text-[#0284c7]">{selectedDeviceForControl.device_id}</span>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedDeviceForControl(null)}
+                    className="w-9 h-9 rounded-full bg-white/90 hover:bg-white text-slate-700 hover:text-slate-900 shadow-xs border border-slate-200 flex items-center justify-center cursor-pointer active:scale-95 transition-all"
+                    aria-label="Close modal"
+                  >
+                    <X className="w-5 h-5 text-slate-700" strokeWidth={2.5} />
+                  </button>
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-slate-400 font-sans font-medium text-[11px]">IP:</span>
-                  <span className="text-slate-700 font-semibold">{selectedDeviceForControl.ip_address || '192.168.1.x'}</span>
+              </header>
+
+              {/* Modal Meta Details */}
+              <div className="px-4 sm:px-6 pt-3 pb-1 flex-shrink-0">
+                <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-2 px-3.5 border border-sky-100/80 flex items-center justify-between text-xs font-mono text-slate-600 shadow-xs">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-slate-400 font-sans font-medium text-[11px]">Device ID:</span>
+                    <span className="font-bold text-[#0284c7]">{selectedDeviceForControl.device_id || `NEURO-${selectedDeviceForControl.model_code}-${selectedDeviceForControl.mac_4}`}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-slate-400 font-sans font-medium text-[11px]">IP:</span>
+                    <span className="text-slate-700 font-semibold">{selectedDeviceForControl.ip_address || '192.168.1.x'}</span>
+                  </div>
                 </div>
+              </div>
+
+              {/* Modal Body: Switch Controls */}
+              <div className="flex-1 overflow-y-auto p-4 sm:p-6">
+                <DynamicDeviceLayout 
+                  modelCode={selectedDeviceForControl.model_code}
+                  deviceName={selectedDeviceForControl.custom_name}
+                  deviceId={selectedDeviceForControl.device_id || selectedDeviceForControl.id}
+                  initialSwitches={selectedDeviceForControl.switches}
+                />
               </div>
             </div>
-
-            {/* Dedicated Device Layout Control Area */}
-            <main className="flex-1 w-full max-w-xl mx-auto p-4 sm:p-6 pb-16">
-              <DynamicDeviceLayout 
-                modelCode={selectedDeviceForControl.model_code}
-                deviceName={selectedDeviceForControl.custom_name}
-                deviceId={selectedDeviceForControl.device_id || selectedDeviceForControl.id}
-                initialSwitches={selectedDeviceForControl.switches}
-              />
-            </main>
           </div>
         );
       })()}
