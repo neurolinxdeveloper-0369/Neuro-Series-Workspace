@@ -966,14 +966,14 @@ export const AddDeviceScreen = ({
       };
 
       const newlyCreatedDevice: Device = {
-        id: provisionResult?.deviceId || assignedDeviceId,
-        home_id: homeId || '',
-        room_id: finalRoomId || null,
+        id: provisionResult?.device?.id || provisionResult?.deviceId || assignedDeviceId,
+        home_id: provisionResult?.device?.home_id || homeId || '',
+        room_id: provisionResult?.device?.room_id || finalRoomId || null,
         model_code: activeModel.modelCode,
         mac_4: mac4,
         custom_name: customDeviceName.trim() || activeModel.name,
         icon: selectedDeviceIcon || undefined,
-        device_id: assignedDeviceId,
+        device_id: provisionResult?.device?.device_id || assignedDeviceId,
         ip_address: actualIp,
         firmware_version: 'v1.2.4-neuro',
         is_online: true,

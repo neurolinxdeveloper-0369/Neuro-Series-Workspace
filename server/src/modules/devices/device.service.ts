@@ -242,6 +242,71 @@ class DeviceService {
     const modelCode = (dto.modelCode || 'TP8').toUpperCase();
     const deviceId = this.generateDeviceId(mac4, modelCode);
 
+    // Ensure valid home_id exists in database to satisfy foreign key constraint
+    let targetHomeId = dto.homeId;
+    if (!targetHomeId || targetHomeId === '00000000-0000-0000-0000-000000000000') {
+      const existingHome = await db.query(`SELECT id FROM homes ORDER BY created_at ASC LIMIT 1`);
+      if (existingHome.rows.length > 0) {
+        targetHomeId = existingHome.rows[0].id;
+      } else {
+        // Find or create default user for the home
+        let userId: string;
+        const userRes = await db.query(`SELECT id FROM users LIMIT 1`);
+        if (userRes.rows.length > 0) {
+          userId = userRes.rows[0].id;
+        } else {
+          const newUser = await db.query(`
+            INSERT INTO users (email, full_name, auth_provider)
+            VALUES ('owner@neurolinx.in', 'Home Owner', 'email')
+            RETURNING id;
+          `);
+          userId = newUser.rows[0].id;
+        }
+
+        const newHome = await db.query(`
+          INSERT INTO homes (owner_id, name, property_type, default_wifi_ssid)
+          VALUES ($1, 'My Home', 'Apartment', $2)
+          RETURNING id;
+        `, [userId, dto.wifiSsid || 'Home Wi-Fi']);
+        targetHomeId = newHome.rows[0].id;
+      }
+    } else {
+      // Validate that the provided homeId actually exists
+      const homeCheck = await db.query(`SELECT id FROM homes WHERE id = $1`, [targetHomeId]);
+      if (homeCheck.rows.length === 0) {
+        const anyHome = await db.query(`SELECT id FROM homes ORDER BY created_at ASC LIMIT 1`);
+        if (anyHome.rows.length > 0) {
+          targetHomeId = anyHome.rows[0].id;
+        }
+      }
+    }
+
+    // Ensure valid room_id exists or create default room
+    let targetRoomId = dto.roomId || null;
+    if (targetRoomId) {
+      const roomCheck = await db.query(`SELECT id FROM rooms WHERE id = $1`, [targetRoomId]);
+      if (roomCheck.rows.length === 0) {
+        targetRoomId = null;
+      }
+    }
+
+    if (!targetRoomId && targetHomeId) {
+      // Check if a default 'Living room' exists or create it
+      const defaultRoom = await db.query(
+        `SELECT id FROM rooms WHERE home_id = $1 AND LOWER(name) = 'living room' LIMIT 1`,
+        [targetHomeId]
+      );
+      if (defaultRoom.rows.length > 0) {
+        targetRoomId = defaultRoom.rows[0].id;
+      } else {
+        const createdRoom = await db.query(
+          `INSERT INTO rooms (home_id, name) VALUES ($1, 'Living room') RETURNING id`,
+          [targetHomeId]
+        );
+        targetRoomId = createdRoom.rows[0].id;
+      }
+    }
+
     // 1. Insert or Update Parent Device Record
     const deviceQuery = `
       INSERT INTO devices (
@@ -259,8 +324,8 @@ class DeviceService {
       RETURNING *;
     `;
     const deviceValues = [
-      dto.homeId,
-      dto.roomId || null,
+      targetHomeId,
+      targetRoomId,
       deviceId,
       mac4,
       modelCode,
