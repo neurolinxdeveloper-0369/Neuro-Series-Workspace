@@ -106,7 +106,16 @@ export function App() {
   const loadDevices = async (homeId: string) => {
     try {
       const homeDevices = await deviceApi.getDevicesByHome(homeId);
-      setDevices(homeDevices);
+      const now = Date.now();
+      const mapped = (homeDevices || []).map((d: any) => {
+        const isOnline = Boolean(d.is_online) && d.last_seen_at && (now - new Date(d.last_seen_at).getTime() <= 12000);
+        return {
+          ...d,
+          is_online: Boolean(isOnline),
+          last_seen_at: d.last_seen_at || null,
+        };
+      });
+      setDevices(mapped);
     } catch {
       setDevices([]);
     }
@@ -125,12 +134,19 @@ export function App() {
   // Real-time WebSocket listener for physical hardware switch telemetry & heartbeats
   useEffect(() => {
     const unsubscribe = realtimeSocket.subscribe((deviceId, incomingState) => {
+      const nowIso = new Date().toISOString();
+      // Hardware telemetry with RSSI or heartbeat signifies device is online
+      const isOnline = incomingState.is_online !== undefined 
+        ? Boolean(incomingState.is_online) 
+        : true;
+
       setDevices(prev => prev.map(dev => {
-        if (dev.device_id === deviceId) {
+        if (dev.device_id === deviceId || dev.id === deviceId) {
           return {
             ...dev,
-            is_online: incomingState.is_online !== undefined ? incomingState.is_online : dev.is_online,
+            is_online: isOnline,
             rssi: incomingState.rssi !== undefined ? incomingState.rssi : dev.rssi,
+            last_seen_at: incomingState.last_seen_at || nowIso,
             switches: incomingState.switches ? { ...dev.switches, ...incomingState.switches } : dev.switches,
           };
         }
@@ -138,11 +154,12 @@ export function App() {
       }));
 
       setSelectedDeviceForControl((prev: any) => {
-        if (prev && prev.device_id === deviceId) {
+        if (prev && (prev.device_id === deviceId || prev.id === deviceId)) {
           return {
             ...prev,
-            is_online: incomingState.is_online !== undefined ? incomingState.is_online : prev.is_online,
+            is_online: isOnline,
             rssi: incomingState.rssi !== undefined ? incomingState.rssi : prev.rssi,
+            last_seen_at: incomingState.last_seen_at || nowIso,
             switches: incomingState.switches ? { ...prev.switches, ...incomingState.switches } : prev.switches,
           };
         }
@@ -151,6 +168,47 @@ export function App() {
     });
 
     return unsubscribe;
+  }, []);
+
+  // 12-second watchdog timer: If hardware hasn't sent RSSI/telemetry within 12 seconds, flip status to offline
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const now = Date.now();
+      setDevices(prev => {
+        let changed = false;
+        const updated = prev.map(dev => {
+          if (!dev.is_online) return dev;
+          if (dev.last_seen_at) {
+            const diff = now - new Date(dev.last_seen_at).getTime();
+            if (diff > 12000) {
+              changed = true;
+              return { ...dev, is_online: false };
+            }
+          } else {
+            changed = true;
+            return { ...dev, is_online: false };
+          }
+          return dev;
+        });
+        return changed ? updated : prev;
+      });
+
+      setSelectedDeviceForControl((prev: any) => {
+        if (prev && prev.is_online) {
+          if (prev.last_seen_at) {
+            const diff = now - new Date(prev.last_seen_at).getTime();
+            if (diff > 12000) {
+              return { ...prev, is_online: false };
+            }
+          } else {
+            return { ...prev, is_online: false };
+          }
+        }
+        return prev;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
   }, []);
 
   // Load user homes and trigger onboarding if 0 homes exist
@@ -875,27 +933,31 @@ export function App() {
                       return room ? d.room_id === room.id : false;
                     });
 
-                if (filtered.length === 0) {
-                  return (
-                    <div className="w-full max-w-sm sm:max-w-md md:max-w-2xl lg:max-w-5xl bg-white/80 backdrop-blur-md rounded-3xl p-6 text-center border border-white/80 shadow-xs pointer-events-auto">
-                      <p className="text-sm font-semibold text-slate-700">No devices in {activeRoomTab}</p>
-                      <p className="text-xs text-slate-400 mt-1">Assign devices to this room or add a new device</p>
-                      <button
-                        onClick={() => handleProtectedAction(() => setIsAddDeviceOpen(true))}
-                        className="mt-3.5 inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold bg-[#0284c7] text-white hover:bg-sky-600 transition-colors shadow-xs cursor-pointer"
-                      >
-                        + Add device
-                      </button>
-                    </div>
-                  );
-                }
+                const onlineCount = filtered.filter(d => Boolean(d.is_online)).length;
+                const offlineCount = filtered.filter(d => !d.is_online).length;
 
                 return (
                   <div className="w-full max-w-sm sm:max-w-md md:max-w-2xl lg:max-w-5xl space-y-3 pointer-events-auto">
+                    {/* Plain Text Status Line (Total Connected, Online, Offline - NOT cards) */}
                     <div className="flex items-center justify-between px-1">
-                      <span className="text-xs font-bold uppercase tracking-wider text-slate-600 font-mono">
-                        Connected Devices ({filtered.length})
-                      </span>
+                      <div>
+                        <span className="text-xs font-bold uppercase tracking-wider text-slate-700 font-mono">
+                          Connected Devices ({filtered.length})
+                        </span>
+                        <p className="text-xs text-slate-500 font-medium mt-0.5 flex items-center gap-1.5 flex-wrap">
+                          <span>Total Connected: <strong className="text-slate-800 font-semibold">{filtered.length}</strong></span>
+                          <span className="text-slate-300">&bull;</span>
+                          <span className="flex items-center gap-1 text-emerald-600 font-semibold">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                            Online: {onlineCount}
+                          </span>
+                          <span className="text-slate-300">&bull;</span>
+                          <span className="flex items-center gap-1 text-rose-500 font-semibold">
+                            <span className="w-1.5 h-1.5 rounded-full bg-rose-400" />
+                            Offline: {offlineCount}
+                          </span>
+                        </p>
+                      </div>
                       <button
                         onClick={() => handleProtectedAction(() => setIsAddDeviceOpen(true))}
                         className="text-xs font-bold text-[#0284c7] hover:underline cursor-pointer"
@@ -904,65 +966,89 @@ export function App() {
                       </button>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                      {filtered.map((dev) => {
-                        const devRoom = rooms.find(r => r.id === dev.room_id);
-                        const roomLabel = devRoom ? devRoom.name : 'Living room';
+                    {filtered.length === 0 ? (
+                      <div className="bg-white/80 backdrop-blur-md rounded-3xl p-6 text-center border border-white/80 shadow-xs">
+                        <p className="text-sm font-semibold text-slate-700">No devices in {activeRoomTab}</p>
+                        <p className="text-xs text-slate-400 mt-1">Assign devices to this room or add a new device</p>
+                        <button
+                          onClick={() => handleProtectedAction(() => setIsAddDeviceOpen(true))}
+                          className="mt-3.5 inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold bg-[#0284c7] text-white hover:bg-sky-600 transition-colors shadow-xs cursor-pointer"
+                        >
+                          + Add device
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                        {filtered.map((dev) => {
+                          const devRoom = rooms.find(r => r.id === dev.room_id);
+                          const roomLabel = devRoom ? devRoom.name : 'Living room';
 
-                        return (
-                          <div
-                            key={dev.id}
-                            onClick={() => setSelectedDeviceForControl(dev)}
-                            className="bg-white/90 backdrop-blur-md rounded-3xl p-4 sm:p-4.5 shadow-sm border border-slate-100 hover:border-sky-300 hover:shadow-md transition-all cursor-pointer group active:scale-[0.99]"
-                          >
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-3">
-                                <div className="w-11 h-11 rounded-2xl bg-sky-50 flex items-center justify-center p-1.5 border border-sky-100 shadow-xs group-hover:scale-105 transition-transform flex-shrink-0">
-                                  {dev.icon ? (
-                                    <img
-                                      src={getAssetUrl('ICONS/' + dev.icon)}
-                                      alt={dev.custom_name}
-                                      className="w-full h-full object-contain"
-                                    />
-                                  ) : (
-                                    <span className="font-bold font-mono text-xs text-[#0284c7]">
-                                      {dev.model_code}
-                                    </span>
-                                  )}
-                                </div>
-                                <div>
-                                  <div className="flex items-center gap-2">
-                                    <h3 className="text-sm sm:text-base font-bold text-slate-900 group-hover:text-[#0284c7] transition-colors">
-                                      {dev.custom_name}
-                                    </h3>
-                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-50 text-[#0284c7] border border-sky-100 font-mono">
-                                      {dev.model_code}
-                                    </span>
+                          return (
+                            <div
+                              key={dev.id}
+                              onClick={() => setSelectedDeviceForControl(dev)}
+                              className="bg-white/90 backdrop-blur-md rounded-3xl p-4 sm:p-4.5 shadow-sm border border-slate-100 hover:border-sky-300 hover:shadow-md transition-all cursor-pointer group active:scale-[0.99]"
+                            >
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                  <div className="w-11 h-11 rounded-2xl bg-sky-50 flex items-center justify-center p-1.5 border border-sky-100 shadow-xs group-hover:scale-105 transition-transform flex-shrink-0">
+                                    {dev.icon ? (
+                                      <img
+                                        src={getAssetUrl('ICONS/' + dev.icon)}
+                                        alt={dev.custom_name}
+                                        className="w-full h-full object-contain"
+                                      />
+                                    ) : (
+                                      <span className="font-bold font-mono text-xs text-[#0284c7]">
+                                        {dev.model_code}
+                                      </span>
+                                    )}
                                   </div>
-                                  <p className="text-xs text-slate-500 font-sans flex items-center gap-1.5 mt-0.5">
-                                    <span>{getRoomEmoji(roomLabel)}</span>
-                                    <span>{roomLabel}</span>
-                                    <span className="text-slate-300">&bull;</span>
-                                    <span className="font-mono text-slate-400">{dev.device_id || `NEURO-${dev.model_code}-${dev.mac_4}`}</span>
-                                  </p>
+                                  <div>
+                                    <div className="flex items-center gap-2">
+                                      <h3 className="text-sm sm:text-base font-bold text-slate-900 group-hover:text-[#0284c7] transition-colors">
+                                        {dev.custom_name}
+                                      </h3>
+                                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-50 text-[#0284c7] border border-sky-100 font-mono">
+                                        {dev.model_code}
+                                      </span>
+                                    </div>
+                                    <p className="text-xs text-slate-500 font-sans flex items-center gap-1.5 mt-0.5">
+                                      <span>{getRoomEmoji(roomLabel)}</span>
+                                      <span>{roomLabel}</span>
+                                      <span className="text-slate-300">&bull;</span>
+                                      <span className="font-mono text-slate-400">{dev.device_id || `NEURO-${dev.model_code}-${dev.mac_4}`}</span>
+                                    </p>
+                                  </div>
                                 </div>
+                                <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold border flex items-center gap-1 flex-shrink-0 ${
+                                  dev.is_online
+                                    ? 'bg-emerald-50 text-emerald-600 border-emerald-100'
+                                    : 'bg-rose-50 text-rose-600 border-rose-100'
+                                }`}>
+                                  <span className={`w-1.5 h-1.5 rounded-full ${
+                                    dev.is_online ? 'bg-emerald-500 animate-pulse' : 'bg-rose-400'
+                                  }`} />
+                                  {dev.is_online ? 'Online' : 'Offline'}
+                                  {dev.is_online && typeof dev.rssi === 'number' && (
+                                    <span className="text-[10px] text-emerald-700 font-mono ml-0.5">({dev.rssi} dBm)</span>
+                                  )}
+                                </span>
                               </div>
-                              <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-600 border border-emerald-100 flex items-center gap-1 flex-shrink-0">
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                                Online
-                              </span>
-                            </div>
 
-                            <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
-                              <span>{dev.endpoints?.length || 0} Controls Available</span>
-                              <span className="text-[#0284c7] font-bold flex items-center gap-1 group-hover:translate-x-0.5 transition-transform">
-                                Tap to Open Layout &rarr;
-                              </span>
+                              <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+                                <span>{dev.endpoints?.length || 0} Controls Available</span>
+                                <span className={`font-bold flex items-center gap-1 group-hover:translate-x-0.5 transition-transform ${
+                                  dev.is_online ? 'text-[#0284c7]' : 'text-slate-400'
+                                }`}>
+                                  {dev.is_online ? 'Tap to Open Layout →' : 'Offline'}
+                                </span>
+                              </div>
                             </div>
-                          </div>
-                        );
-                      })}
-                    </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 );
               })()
@@ -993,27 +1079,31 @@ export function App() {
                       return room ? d.room_id === room.id : false;
                     });
 
-                if (filtered.length === 0) {
-                  return (
-                    <div className="w-full max-w-sm sm:max-w-md md:max-w-2xl lg:max-w-5xl bg-white/80 backdrop-blur-md rounded-3xl p-6 text-center border border-white/80 shadow-xs pointer-events-auto">
-                      <p className="text-sm font-semibold text-slate-700">No devices in {activeRoomTab}</p>
-                      <p className="text-xs text-slate-400 mt-1">Assign devices to this room or add a new device</p>
-                      <button
-                        onClick={() => handleProtectedAction(() => setIsAddDeviceOpen(true))}
-                        className="mt-3.5 inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold bg-[#0284c7] text-white hover:bg-sky-600 transition-colors shadow-xs cursor-pointer"
-                      >
-                        + Add device
-                      </button>
-                    </div>
-                  );
-                }
+                const onlineCount = filtered.filter(d => Boolean(d.is_online)).length;
+                const offlineCount = filtered.filter(d => !d.is_online).length;
 
                 return (
                   <div className="w-full max-w-sm sm:max-w-md md:max-w-2xl lg:max-w-5xl space-y-3 pointer-events-auto mb-2">
+                    {/* Plain Text Status Line (Total Connected, Online, Offline - NOT cards) */}
                     <div className="flex items-center justify-between px-1">
-                      <span className="text-xs font-bold uppercase tracking-wider text-slate-700 font-mono">
-                        Hardware Devices ({filtered.length})
-                      </span>
+                      <div>
+                        <span className="text-xs font-bold uppercase tracking-wider text-slate-700 font-mono">
+                          Hardware Devices ({filtered.length})
+                        </span>
+                        <p className="text-xs text-slate-500 font-medium mt-0.5 flex items-center gap-1.5 flex-wrap">
+                          <span>Total Connected: <strong className="text-slate-800 font-semibold">{filtered.length}</strong></span>
+                          <span className="text-slate-300">&bull;</span>
+                          <span className="flex items-center gap-1 text-emerald-600 font-semibold">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                            Online: {onlineCount}
+                          </span>
+                          <span className="text-slate-300">&bull;</span>
+                          <span className="flex items-center gap-1 text-rose-500 font-semibold">
+                            <span className="w-1.5 h-1.5 rounded-full bg-rose-400" />
+                            Offline: {offlineCount}
+                          </span>
+                        </p>
+                      </div>
                       <button
                         onClick={() => handleProtectedAction(() => setIsAddDeviceOpen(true))}
                         className="text-xs font-bold text-[#0284c7] hover:underline cursor-pointer"
@@ -1022,65 +1112,89 @@ export function App() {
                       </button>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                      {filtered.map((dev) => {
-                        const devRoom = rooms.find(r => r.id === dev.room_id);
-                        const roomLabel = devRoom ? devRoom.name : 'Living room';
+                    {filtered.length === 0 ? (
+                      <div className="bg-white/80 backdrop-blur-md rounded-3xl p-6 text-center border border-white/80 shadow-xs">
+                        <p className="text-sm font-semibold text-slate-700">No devices in {activeRoomTab}</p>
+                        <p className="text-xs text-slate-400 mt-1">Assign devices to this room or add a new device</p>
+                        <button
+                          onClick={() => handleProtectedAction(() => setIsAddDeviceOpen(true))}
+                          className="mt-3.5 inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold bg-[#0284c7] text-white hover:bg-sky-600 transition-colors shadow-xs cursor-pointer"
+                        >
+                          + Add device
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                        {filtered.map((dev) => {
+                          const devRoom = rooms.find(r => r.id === dev.room_id);
+                          const roomLabel = devRoom ? devRoom.name : 'Living room';
 
-                        return (
-                          <div
-                            key={dev.id}
-                            onClick={() => setSelectedDeviceForControl(dev)}
-                            className="bg-white/90 backdrop-blur-md rounded-3xl p-4 sm:p-5 shadow-sm border border-slate-200/80 hover:border-sky-400 hover:shadow-md transition-all cursor-pointer group active:scale-[0.99]"
-                          >
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-3">
-                                <div className="w-12 h-12 rounded-2xl bg-sky-50 flex items-center justify-center p-2 border border-sky-100 shadow-xs group-hover:scale-105 transition-transform flex-shrink-0">
-                                  {dev.icon ? (
-                                    <img
-                                      src={getAssetUrl('ICONS/' + dev.icon)}
-                                      alt={dev.custom_name}
-                                      className="w-full h-full object-contain"
-                                    />
-                                  ) : (
-                                    <span className="font-bold font-mono text-xs text-[#0284c7]">
-                                      {dev.model_code}
-                                    </span>
-                                  )}
-                                </div>
-                                <div>
-                                  <div className="flex items-center gap-2">
-                                    <h3 className="text-sm sm:text-base font-bold text-slate-900 group-hover:text-[#0284c7] transition-colors">
-                                      {dev.custom_name}
-                                    </h3>
-                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-50 text-[#0284c7] border border-sky-100 font-mono">
-                                      {dev.model_code}
-                                    </span>
+                          return (
+                            <div
+                              key={dev.id}
+                              onClick={() => setSelectedDeviceForControl(dev)}
+                              className="bg-white/90 backdrop-blur-md rounded-3xl p-4 sm:p-5 shadow-sm border border-slate-200/80 hover:border-sky-400 hover:shadow-md transition-all cursor-pointer group active:scale-[0.99]"
+                            >
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                  <div className="w-12 h-12 rounded-2xl bg-sky-50 flex items-center justify-center p-2 border border-sky-100 shadow-xs group-hover:scale-105 transition-transform flex-shrink-0">
+                                    {dev.icon ? (
+                                      <img
+                                        src={getAssetUrl('ICONS/' + dev.icon)}
+                                        alt={dev.custom_name}
+                                        className="w-full h-full object-contain"
+                                      />
+                                    ) : (
+                                      <span className="font-bold font-mono text-xs text-[#0284c7]">
+                                        {dev.model_code}
+                                      </span>
+                                    )}
                                   </div>
-                                  <p className="text-xs text-slate-500 font-sans flex items-center gap-1.5 mt-0.5">
-                                    <span>{getRoomEmoji(roomLabel)}</span>
-                                    <span>{roomLabel}</span>
-                                    <span className="text-slate-300">&bull;</span>
-                                    <span className="font-mono text-slate-400">{dev.device_id || `NEURO-${dev.model_code}-${dev.mac_4}`}</span>
-                                  </p>
+                                  <div>
+                                    <div className="flex items-center gap-2">
+                                      <h3 className="text-sm sm:text-base font-bold text-slate-900 group-hover:text-[#0284c7] transition-colors">
+                                        {dev.custom_name}
+                                      </h3>
+                                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-50 text-[#0284c7] border border-sky-100 font-mono">
+                                        {dev.model_code}
+                                      </span>
+                                    </div>
+                                    <p className="text-xs text-slate-500 font-sans flex items-center gap-1.5 mt-0.5">
+                                      <span>{getRoomEmoji(roomLabel)}</span>
+                                      <span>{roomLabel}</span>
+                                      <span className="text-slate-300">&bull;</span>
+                                      <span className="font-mono text-slate-400">{dev.device_id || `NEURO-${dev.model_code}-${dev.mac_4}`}</span>
+                                    </p>
+                                  </div>
                                 </div>
+                                <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold border flex items-center gap-1 flex-shrink-0 ${
+                                  dev.is_online
+                                    ? 'bg-emerald-50 text-emerald-600 border-emerald-100'
+                                    : 'bg-rose-50 text-rose-600 border-rose-100'
+                                }`}>
+                                  <span className={`w-1.5 h-1.5 rounded-full ${
+                                    dev.is_online ? 'bg-emerald-500 animate-pulse' : 'bg-rose-400'
+                                  }`} />
+                                  {dev.is_online ? 'Online' : 'Offline'}
+                                  {dev.is_online && typeof dev.rssi === 'number' && (
+                                    <span className="text-[10px] text-emerald-700 font-mono ml-0.5">({dev.rssi} dBm)</span>
+                                  )}
+                                </span>
                               </div>
-                              <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-600 border border-emerald-100 flex items-center gap-1 flex-shrink-0">
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                                Online
-                              </span>
-                            </div>
 
-                            <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
-                              <span>{dev.endpoints?.length || 0} Controls Available</span>
-                              <span className="text-[#0284c7] font-bold flex items-center gap-1 group-hover:translate-x-0.5 transition-transform">
-                                Open Switch Layout &rarr;
-                              </span>
+                              <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+                                <span>{dev.endpoints?.length || 0} Controls Available</span>
+                                <span className={`font-bold flex items-center gap-1 group-hover:translate-x-0.5 transition-transform ${
+                                  dev.is_online ? 'text-[#0284c7]' : 'text-slate-400'
+                                }`}>
+                                  {dev.is_online ? 'Open Switch Layout →' : 'Offline'}
+                                </span>
+                              </div>
                             </div>
-                          </div>
-                        );
-                      })}
-                    </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 );
               })()
@@ -1457,14 +1571,17 @@ export function App() {
                   <span className={`px-2.5 py-1 rounded-full text-xs font-bold border flex items-center gap-1.5 shadow-xs ${
                     selectedDeviceForControl.is_online !== false
                       ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                      : 'bg-slate-100 text-slate-600 border-slate-200'
+                      : 'bg-rose-50 text-rose-700 border-rose-200'
                   }`}>
                     <span className={`w-2 h-2 rounded-full ${
                       selectedDeviceForControl.is_online !== false
                         ? 'bg-emerald-500 animate-pulse'
-                        : 'bg-slate-400'
+                        : 'bg-rose-400'
                     }`} />
                     {selectedDeviceForControl.is_online !== false ? 'Online' : 'Offline'}
+                    {selectedDeviceForControl.is_online !== false && typeof selectedDeviceForControl.rssi === 'number' && (
+                      <span className="text-[11px] text-emerald-700 font-mono">({selectedDeviceForControl.rssi} dBm)</span>
+                    )}
                   </span>
 
                   <button
@@ -1499,6 +1616,7 @@ export function App() {
                   deviceName={selectedDeviceForControl.custom_name}
                   deviceId={selectedDeviceForControl.device_id || selectedDeviceForControl.id}
                   initialSwitches={selectedDeviceForControl.switches}
+                  isOnline={selectedDeviceForControl.is_online !== false}
                 />
               </div>
             </div>

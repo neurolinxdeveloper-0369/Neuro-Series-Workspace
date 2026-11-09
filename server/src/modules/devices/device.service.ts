@@ -98,6 +98,29 @@ class DeviceService {
       emqxService.onHeartbeat(async (deviceId, payload) => {
         await this.handleHeartbeat(deviceId, payload);
       });
+
+      // 12-second watchdog timer: If hardware hasn't sent RSSI/telemetry within 12 seconds, mark it offline
+      setInterval(async () => {
+        try {
+          const timeoutResult = await db.query(
+            `UPDATE devices 
+             SET is_online = false, updated_at = CURRENT_TIMESTAMP 
+             WHERE is_online = true AND (last_seen_at IS NULL OR last_seen_at < CURRENT_TIMESTAMP - INTERVAL '12 seconds')
+             RETURNING device_id`
+          );
+          if (timeoutResult.rows.length > 0) {
+            for (const row of timeoutResult.rows) {
+              console.log(`⏱️ [DEVICE TIMEOUT (12s)] Device ${row.device_id} marked offline (no RSSI/heartbeat within 12s)`);
+              socketManager.broadcastDeviceUpdate(row.device_id, {
+                deviceId: row.device_id,
+                is_online: false,
+              });
+            }
+          }
+        } catch {
+          // ignore
+        }
+      }, 2000);
     } catch (err) {
       console.error('❌ Failed to initialize devices tables:', err);
     }
@@ -397,6 +420,13 @@ class DeviceService {
   }
 
   public async getDevicesByHome(homeId: string): Promise<Array<DeviceRecord & { endpoints: DeviceEndpointRecord[] }>> {
+    // Automatically mark devices offline if last_seen_at is older than 12 seconds
+    await db.query(
+      `UPDATE devices 
+       SET is_online = false 
+       WHERE is_online = true AND (last_seen_at IS NULL OR last_seen_at < CURRENT_TIMESTAMP - INTERVAL '12 seconds')`
+    ).catch(() => {});
+
     const devQuery = `SELECT * FROM devices WHERE home_id = $1 ORDER BY created_at DESC`;
     const devResult = await db.query(devQuery, [homeId]);
     const devices: DeviceRecord[] = devResult.rows;
@@ -582,7 +612,7 @@ class DeviceService {
   }> {
     // 1. Fetch current device from database
     const devRes = await db.query(
-      `SELECT id, device_id, model_code, switches FROM devices WHERE id::text = $1 OR device_id = $1 LIMIT 1`,
+      `SELECT id, device_id, model_code, switches, is_online, last_seen_at FROM devices WHERE id::text = $1 OR device_id = $1 LIMIT 1`,
       [identifier]
     );
     if (devRes.rows.length === 0) {
@@ -590,6 +620,11 @@ class DeviceService {
     }
 
     const device = devRes.rows[0];
+    const isOnline = Boolean(device.is_online) && device.last_seen_at && (Date.now() - new Date(device.last_seen_at).getTime() <= 12000);
+    if (!isOnline) {
+      throw new Error(`Device ${device.device_id} is offline. Switches cannot be controlled.`);
+    }
+
     const deviceId = device.device_id;
     const currentSwitches = (device.switches as Record<string, boolean>) || {};
     const currentVal = Boolean(currentSwitches[String(channel)]);

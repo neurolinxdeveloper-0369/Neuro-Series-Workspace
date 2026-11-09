@@ -174,6 +174,7 @@ interface TouchPanelProps {
   deviceName?: string;
   deviceId?: string;
   initialSwitches?: Record<string, boolean>;
+  isOnline?: boolean;
 }
 
 export interface SwitchItemConfig {
@@ -188,7 +189,8 @@ export const TouchPanelLayout = ({
   modelCode, 
   deviceName, 
   deviceId, 
-  initialSwitches 
+  initialSwitches,
+  isOnline = true
 }: TouchPanelProps) => {
   // Initialize default switch names strictly as "Switch 1", "Switch 2", "Switch 3"...
   const [switches, setSwitches] = useState<SwitchItemConfig[]>(() => {
@@ -216,6 +218,17 @@ export const TouchPanelLayout = ({
     }));
   });
 
+  // Track pending rollback timers by channel number
+  const rollbackTimersRef = useRef<Map<number, NodeJS.Timeout>>(new Map());
+
+  // Cleanup pending rollback timers on unmount
+  useEffect(() => {
+    return () => {
+      rollbackTimersRef.current.forEach(timer => clearTimeout(timer));
+      rollbackTimersRef.current.clear();
+    };
+  }, []);
+
   // Sync state when initialSwitches from server changes
   useEffect(() => {
     if (initialSwitches) {
@@ -236,6 +249,15 @@ export const TouchPanelLayout = ({
       if (incomingDeviceId === deviceId && incomingState) {
         const switchMap = incomingState.switches || incomingState.payload || (typeof incomingState.state === 'object' ? incomingState.state : null);
         if (switchMap && typeof switchMap === 'object') {
+          // Acknowledged by hardware: clear rollback timer for each updated channel
+          Object.keys(switchMap).forEach(chKey => {
+            const chNum = parseInt(chKey, 10);
+            if (rollbackTimersRef.current.has(chNum)) {
+              clearTimeout(rollbackTimersRef.current.get(chNum)!);
+              rollbackTimersRef.current.delete(chNum);
+            }
+          });
+
           setSwitches(prev => prev.map((sw, i) => {
             const chKey = String(i + 1);
             if (switchMap[chKey] !== undefined) {
@@ -245,6 +267,10 @@ export const TouchPanelLayout = ({
           }));
         } else if (incomingState.channel !== undefined && incomingState.state !== undefined) {
           const chNum = parseInt(String(incomingState.channel), 10);
+          if (rollbackTimersRef.current.has(chNum)) {
+            clearTimeout(rollbackTimersRef.current.get(chNum)!);
+            rollbackTimersRef.current.delete(chNum);
+          }
           if (!isNaN(chNum)) {
             setSwitches(prev => prev.map((sw, i) => {
               if (i + 1 === chNum) {
@@ -282,9 +308,20 @@ export const TouchPanelLayout = ({
   };
 
   const toggleSwitch = async (index: number) => {
+    if (!isOnline) {
+      console.warn('Switch toggle ignored: device is offline.');
+      return;
+    }
+
     const currentState = switches[index]?.state || false;
     const targetState = !currentState;
     const channel = index + 1;
+
+    // Clear any existing rollback timer for this channel
+    if (rollbackTimersRef.current.has(channel)) {
+      clearTimeout(rollbackTimersRef.current.get(channel)!);
+      rollbackTimersRef.current.delete(channel);
+    }
 
     // 1. Optimistic UI update
     const updated = switches.map((sw, i) => 
@@ -292,26 +329,62 @@ export const TouchPanelLayout = ({
     );
     persistSwitches(updated);
 
-    // 2. Call backend switch control API (publishes to devices/{deviceId}/set and saves in DB)
+    // 2. Set 3.5s watchdog timeout: if hardware confirmation state does not arrive in time, flip back!
+    const timer = setTimeout(() => {
+      console.warn(`⏱️ Switch state confirmation timeout for channel ${channel}. Flipping back to ${currentState}`);
+      setSwitches(prev => {
+        const reverted = prev.map((sw, i) => i === index ? { ...sw, state: currentState } : sw);
+        try {
+          localStorage.setItem(`neuro_touch_panel_${modelCode}_${switchCount}`, JSON.stringify(reverted));
+        } catch {}
+        return reverted;
+      });
+      rollbackTimersRef.current.delete(channel);
+    }, 3500);
+
+    rollbackTimersRef.current.set(channel, timer);
+
+    // 3. Call backend switch control API (publishes to devices/{deviceId}/set via MQTT)
     if (deviceId) {
       try {
         const res = await deviceApi.controlSwitch(deviceId, channel, targetState ? 'on' : 'off');
         if (res && res.switches) {
-          setSwitches(prev => prev.map((sw, i) => {
-            const chKey = String(i + 1);
-            if (res.switches[chKey] !== undefined) {
-              return { ...sw, state: Boolean(res.switches[chKey]) };
+          const chKey = String(channel);
+          if (res.switches[chKey] === targetState) {
+            // Confirmation arrived! Cancel rollback timer
+            if (rollbackTimersRef.current.has(channel)) {
+              clearTimeout(rollbackTimersRef.current.get(channel)!);
+              rollbackTimersRef.current.delete(channel);
             }
-            return sw;
-          }));
+          } else if (res.switches[chKey] !== undefined) {
+            // Hardware returned mismatched state -> flip back to what hardware reported
+            if (rollbackTimersRef.current.has(channel)) {
+              clearTimeout(rollbackTimersRef.current.get(channel)!);
+              rollbackTimersRef.current.delete(channel);
+            }
+            setSwitches(prev => prev.map((sw, i) => i === index ? { ...sw, state: Boolean(res.switches[chKey]) } : sw));
+          }
         }
       } catch (err) {
-        console.warn(`Failed to control switch channel ${channel}:`, err);
+        console.warn(`Failed to control switch channel ${channel}, flipping back:`, err);
+        // API call failed -> IMMEDIATELY flip back to previous state!
+        if (rollbackTimersRef.current.has(channel)) {
+          clearTimeout(rollbackTimersRef.current.get(channel)!);
+          rollbackTimersRef.current.delete(channel);
+        }
+        setSwitches(prev => {
+          const reverted = prev.map((sw, i) => i === index ? { ...sw, state: currentState } : sw);
+          try {
+            localStorage.setItem(`neuro_touch_panel_${modelCode}_${switchCount}`, JSON.stringify(reverted));
+          } catch {}
+          return reverted;
+        });
       }
     }
   };
 
   const allOn = async () => {
+    if (!isOnline) return;
     persistSwitches(switches.map(sw => ({ ...sw, state: true })));
     if (deviceId) {
       for (let i = 0; i < switches.length; i++) {
@@ -323,6 +396,7 @@ export const TouchPanelLayout = ({
   };
 
   const allOff = async () => {
+    if (!isOnline) return;
     persistSwitches(switches.map(sw => ({ ...sw, state: false })));
     if (deviceId) {
       for (let i = 0; i < switches.length; i++) {
@@ -335,6 +409,7 @@ export const TouchPanelLayout = ({
 
   // Long-press start
   const handleTouchStart = (index: number) => {
+    if (!isOnline) return;
     isLongPressRef.current = false;
     pressTimerRef.current = setTimeout(() => {
       isLongPressRef.current = true;
@@ -354,6 +429,7 @@ export const TouchPanelLayout = ({
   };
 
   const handleClick = (index: number) => {
+    if (!isOnline) return;
     if (isLongPressRef.current) {
       isLongPressRef.current = false;
       return;
@@ -568,20 +644,38 @@ export const TouchPanelLayout = ({
         <div className="flex items-center gap-2">
           <button
             type="button"
+            disabled={!isOnline}
             onClick={allOn}
-            className="px-3.5 py-1.5 rounded-full bg-[#0284c7] hover:bg-[#0369a1] text-white text-xs font-bold shadow-xs active:scale-95 transition-all cursor-pointer"
+            className={`px-3.5 py-1.5 rounded-full text-xs font-bold shadow-xs transition-all ${
+              isOnline
+                ? 'bg-[#0284c7] hover:bg-[#0369a1] text-white active:scale-95 cursor-pointer'
+                : 'bg-slate-200 text-slate-400 cursor-not-allowed opacity-60'
+            }`}
           >
             All ON
           </button>
           <button
             type="button"
+            disabled={!isOnline}
             onClick={allOff}
-            className="px-3.5 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold border border-slate-200/80 shadow-xs active:scale-95 transition-all cursor-pointer"
+            className={`px-3.5 py-1.5 rounded-full text-xs font-bold border shadow-xs transition-all ${
+              isOnline
+                ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200/80 active:scale-95 cursor-pointer'
+                : 'bg-slate-100 text-slate-400 border-slate-200/50 cursor-not-allowed opacity-60'
+            }`}
           >
             All OFF
           </button>
         </div>
       </div>
+
+      {/* Offline Alert Banner */}
+      {!isOnline && (
+        <div className="mb-4 p-3 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-800 text-xs font-semibold flex items-center gap-2.5 animate-in fade-in">
+          <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse flex-shrink-0" />
+          <span>Device is offline. All switches are disabled until device reconnects.</span>
+        </div>
+      )}
 
       {/* Circular Switches Rows (3 in line 1, 3 in line 2, 2 in line 3 for 8-gang) */}
       <div className="flex flex-col items-center gap-5 sm:gap-8 py-3 my-2">
@@ -599,21 +693,23 @@ export const TouchPanelLayout = ({
                   onTouchEnd={handleTouchEnd}
                   onTouchCancel={handleTouchEnd}
                   onClick={() => handleClick(idx)}
-                  className={`group relative rounded-full aspect-square w-[76px] h-[76px] sm:w-24 sm:h-24 flex items-center justify-center cursor-pointer select-none transition-all duration-300 ease-out active:scale-90 ${
-                    isOn
-                      ? 'bg-[#0b1424] border-2 border-white ring-4 ring-[#38bdf8] shadow-[0_0_26px_rgba(56,189,248,0.9),0_0_50px_rgba(14,165,233,0.45),inset_0_0_16px_rgba(56,189,248,0.4)]'
-                      : 'bg-[#181a1f] hover:bg-[#20232a] border-2 border-[#2f333c] shadow-[0_8px_20px_rgba(0,0,0,0.35),inset_0_2px_4px_rgba(255,255,255,0.06)]'
+                  className={`group relative rounded-full aspect-square w-[76px] h-[76px] sm:w-24 sm:h-24 flex items-center justify-center select-none transition-all duration-300 ease-out ${
+                    !isOnline
+                      ? 'opacity-35 cursor-not-allowed pointer-events-none filter grayscale-[50%] bg-[#181a1f] border-2 border-slate-700'
+                      : isOn
+                        ? 'cursor-pointer active:scale-90 bg-[#0b1424] border-2 border-white ring-4 ring-[#38bdf8] shadow-[0_0_26px_rgba(56,189,248,0.9),0_0_50px_rgba(14,165,233,0.45),inset_0_0_16px_rgba(56,189,248,0.4)]'
+                        : 'cursor-pointer active:scale-90 bg-[#181a1f] hover:bg-[#20232a] border-2 border-[#2f333c] shadow-[0_8px_20px_rgba(0,0,0,0.35),inset_0_2px_4px_rgba(255,255,255,0.06)]'
                   }`}
-                  title={`${sw.name} • Tap to toggle, Long-press to edit`}
+                  title={!isOnline ? 'Device is offline - switch disabled' : `${sw.name} • Tap to toggle, Long-press to edit`}
                 >
                   {/* Luminous Inner Glow Aura when ON */}
-                  {isOn && (
+                  {isOn && isOnline && (
                     <div className="absolute inset-1 rounded-full bg-radial from-sky-400/25 via-transparent to-transparent pointer-events-none animate-pulse" />
                   )}
 
                   {/* Centered Appliance Icon - NO TEXT */}
                   <div className="relative z-10 flex items-center justify-center">
-                    {renderApplianceIcon(sw, idx, isOn)}
+                    {renderApplianceIcon(sw, idx, isOn && isOnline)}
                   </div>
                 </div>
               );
@@ -1644,13 +1740,15 @@ interface DynamicDeviceLayoutProps {
   deviceName?: string;
   deviceId?: string;
   initialSwitches?: Record<string, boolean>;
+  isOnline?: boolean;
 }
 
 export const DynamicDeviceLayout = ({ 
   modelCode, 
   deviceName, 
   deviceId, 
-  initialSwitches 
+  initialSwitches,
+  isOnline = true
 }: DynamicDeviceLayoutProps) => {
   const registered = MODEL_REGISTRY[modelCode] || MODEL_REGISTRY['TP8'];
 
@@ -1663,6 +1761,7 @@ export const DynamicDeviceLayout = ({
           deviceName={deviceName}
           deviceId={deviceId}
           initialSwitches={initialSwitches}
+          isOnline={isOnline}
         />
       );
     case 'energy_meter':
