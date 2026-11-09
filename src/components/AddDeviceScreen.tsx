@@ -918,15 +918,21 @@ export const AddDeviceScreen = ({
         } catch {}
       }
 
+      // Allow 3.5 seconds for ESP32 to drop SoftAP and Android to re-associate to home Wi-Fi or cellular
+      await new Promise(r => setTimeout(r, 3500));
+
       // Step 2: Provision device in PostgreSQL backend
       // Creates parent record in `devices` with real IP and child endpoints in `device_endpoints`
       let provisionResult: any = null;
       let backendErrorDetail = '';
+      const MAX_RETRIES = 6;
       
-      for (let retry = 0; retry < 3; retry++) {
+      for (let retry = 0; retry < MAX_RETRIES; retry++) {
         try {
           if (retry > 0) {
-            await new Promise(r => setTimeout(r, 1500));
+            const retryDelay = 2000 + retry * 500;
+            console.log(`Waiting ${retryDelay}ms before provision attempt ${retry + 1}/${MAX_RETRIES}...`);
+            await new Promise(r => setTimeout(r, retryDelay));
           }
           provisionResult = await deviceApi.provisionDevice({
             homeId: homeId || '00000000-0000-0000-0000-000000000000',
@@ -946,7 +952,7 @@ export const AddDeviceScreen = ({
           }
         } catch (backendErr: any) {
           backendErrorDetail = backendErr.message || String(backendErr);
-          console.warn(`Backend device record creation attempt ${retry + 1} failed:`, backendErr);
+          console.warn(`Backend device record creation attempt ${retry + 1}/${MAX_RETRIES} failed:`, backendErr);
         }
       }
 
@@ -965,6 +971,19 @@ export const AddDeviceScreen = ({
         ipAddress: actualIp,
       };
 
+      const matchGangs = activeModel.modelCode.match(/TP(\d+)/i);
+      const gangCount = matchGangs ? parseInt(matchGangs[1], 10) : (activeModel.modelCode === 'SN' || activeModel.modelCode === 'IRP' ? 2 : 1);
+
+      const fallbackEndpoints = Array.from({ length: gangCount }, (_, i) => ({
+        id: `ep_${assignedDeviceId}_${i + 1}`,
+        device_id: assignedDeviceId,
+        endpoint_index: i + 1,
+        name: `Switch ${i + 1}`,
+        endpoint_type: 'RELAY' as const,
+        state: { status: 'OFF' },
+        is_favorite: false,
+      }));
+
       const newlyCreatedDevice: Device = {
         id: provisionResult?.device?.id || provisionResult?.deviceId || assignedDeviceId,
         home_id: provisionResult?.device?.home_id || homeId || '',
@@ -977,7 +996,9 @@ export const AddDeviceScreen = ({
         ip_address: actualIp,
         firmware_version: 'v1.2.4-neuro',
         is_online: true,
-        endpoints: provisionResult?.endpoints || [],
+        endpoints: (provisionResult?.endpoints && provisionResult.endpoints.length > 0)
+          ? provisionResult.endpoints
+          : fallbackEndpoints,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };

@@ -324,11 +324,63 @@ public class MainActivity extends BridgeActivity {
         }
 
         @JavascriptInterface
+        public boolean hasInternetConnection() {
+            try {
+                ConnectivityManager cm = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
+                if (cm != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    for (Network net : cm.getAllNetworks()) {
+                        NetworkCapabilities caps = cm.getNetworkCapabilities(net);
+                        if (caps != null && caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)) {
+                            return true;
+                        }
+                    }
+                }
+            } catch (Exception ignored) {}
+            return false;
+        }
+
+        @JavascriptInterface
         public String nativeApiCall(String urlString, String method, String jsonBody, String authToken) {
             android.util.Log.d("AndroidWifiBridge", "nativeApiCall requested: " + method + " " + urlString);
             try {
+                ConnectivityManager cm = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
+                Network targetInternetNet = null;
+                if (cm != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    // Try to unbind from any dead local SoftAP first
+                    if (activeNetworkCallback != null) {
+                        try {
+                            cm.unregisterNetworkCallback(activeNetworkCallback);
+                        } catch (Exception ignored) {}
+                        activeNetworkCallback = null;
+                    }
+                    cm.bindProcessToNetwork(null);
+
+                    // Wait up to 3 seconds for Android OS to finish re-associating with home Wi-Fi or LTE
+                    for (int waitCount = 0; waitCount < 6; waitCount++) {
+                        for (Network net : cm.getAllNetworks()) {
+                            NetworkCapabilities caps = cm.getNetworkCapabilities(net);
+                            if (caps != null && caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)) {
+                                targetInternetNet = net;
+                                break;
+                            }
+                        }
+                        if (targetInternetNet != null) break;
+                        try {
+                            Thread.sleep(500);
+                        } catch (InterruptedException ignored) {}
+                    }
+                    android.util.Log.d("AndroidWifiBridge", "nativeApiCall resolved targetInternetNet: " + targetInternetNet);
+                }
+
                 java.net.URL url = new java.net.URL(urlString);
-                java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();
+                java.net.HttpURLConnection conn;
+                if (targetInternetNet != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                    conn = (java.net.HttpURLConnection) targetInternetNet.openConnection(url);
+                    android.util.Log.d("AndroidWifiBridge", "nativeApiCall opened connection via internet network: " + targetInternetNet);
+                } else {
+                    conn = (java.net.HttpURLConnection) url.openConnection();
+                }
+
                 conn.setRequestMethod(method.toUpperCase());
                 conn.setRequestProperty("Content-Type", "application/json");
                 conn.setRequestProperty("Accept", "application/json");
