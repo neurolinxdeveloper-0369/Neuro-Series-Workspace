@@ -209,11 +209,21 @@
               text: 'continue_with'
             }
           );
+
+          // Auto-prompt Google modal immediately without requiring a second tap
+          try {
+            window.google.accounts.id.prompt();
+          } catch (e) {}
+
+          setTimeout(() => {
+            const btn = document.querySelector('#google-btn div[role="button"]');
+            if (btn) btn.click();
+          }, 200);
         } else if (attempts > 30) {
           clearInterval(checkGsi);
           showError('Failed to load Google services. Please check your internet connection.');
         }
-      }, 200);
+      }, 150);
     };
   </script>
 </body>

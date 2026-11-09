@@ -409,10 +409,10 @@ export const AddDeviceScreen = ({
 
     // 2. Real-time verification: Poll GET http://192.168.4.1/api/provision/status
     let verifiedIp = '';
-    const maxPollAttempts = 8;
+    const maxPollAttempts = 2;
     for (let attempt = 1; attempt <= maxPollAttempts; attempt++) {
       try {
-        await new Promise(r => setTimeout(r, 1500));
+        await new Promise(r => setTimeout(r, 800));
         let statusData: any = null;
 
         // Try native bridge first
@@ -429,7 +429,7 @@ export const AddDeviceScreen = ({
         // Fallback to fetch
         if (!statusData) {
           const statusController = new AbortController();
-          const statusTimeout = setTimeout(() => statusController.abort(), 2000);
+          const statusTimeout = setTimeout(() => statusController.abort(), 1200);
           const statusRes = await fetch('http://192.168.4.1/api/provision/status', {
             signal: statusController.signal,
           });
@@ -454,8 +454,9 @@ export const AddDeviceScreen = ({
         if (pollErr.message && pollErr.message.includes('Device Wi-Fi connection failed')) {
           throw pollErr;
         }
-        // If device turned off SoftAP to connect to home Wi-Fi, it's normal for poll to end
-        console.log(`Status poll attempt ${attempt} network note:`, pollErr.message);
+        // Device turned off SoftAP to connect to home Wi-Fi; immediately proceed to next step
+        console.log(`Status poll note (device closed SoftAP):`, pollErr.message);
+        break;
       }
     }
 
@@ -918,8 +919,8 @@ export const AddDeviceScreen = ({
         } catch {}
       }
 
-      // Allow 3.5 seconds for ESP32 to drop SoftAP and Android to re-associate to home Wi-Fi or cellular
-      await new Promise(r => setTimeout(r, 3500));
+      // Allow 1.2 seconds for ESP32 to drop SoftAP while native bridge acquires home internet
+      await new Promise(r => setTimeout(r, 1200));
 
       // Step 2: Provision device in PostgreSQL backend
       // Creates parent record in `devices` with real IP and child endpoints in `device_endpoints`

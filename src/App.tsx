@@ -16,7 +16,8 @@ import {
   MoreVertical,
   Check,
   SlidersHorizontal,
-  Layers
+  Layers,
+  ArrowLeft
 } from 'lucide-react';
 import { ExploreCardSlider } from './components/ExploreCardSlider';
 import { QuickDevicesCard } from './components/QuickDevicesCard';
@@ -1161,11 +1162,14 @@ export function App() {
         }}
       />
 
-      {/* 14. Dynamic Hardware Controller Modal with Consistent Background */}
-      {selectedDeviceForControl && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in select-none pointer-events-auto">
+      {/* 14. Dedicated Full Screen Layout for Hardware Device Control (Not in Modal) */}
+      {selectedDeviceForControl && (() => {
+        const devRoom = rooms.find(r => r.id === selectedDeviceForControl.room_id);
+        const roomLabel = devRoom ? devRoom.name : 'Living room';
+
+        return (
           <div 
-            className="w-full max-w-lg rounded-t-[32px] sm:rounded-3xl p-5 sm:p-6 shadow-2xl border border-white/80 max-h-[92vh] overflow-y-auto"
+            className="fixed inset-0 z-50 w-full h-full overflow-y-auto overflow-x-hidden flex flex-col font-sans select-none pointer-events-auto animate-in slide-in-from-right duration-200"
             style={{
               backgroundColor: '#d4edf4',
               backgroundImage: `
@@ -1174,33 +1178,81 @@ export function App() {
               `,
             }}
           >
-            <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-200/80">
-              <div>
-                <h2 className="text-base sm:text-lg font-bold text-slate-900">
-                  {selectedDeviceForControl.custom_name}
-                </h2>
-                <p className="text-xs text-slate-500 font-mono">
-                  {selectedDeviceForControl.device_id} &bull; Model: {selectedDeviceForControl.model_code}
-                </p>
+            {/* Top Navigation App Bar */}
+            <header className="sticky top-0 z-20 w-full bg-[#d4edf4]/95 backdrop-blur-md px-4 sm:px-6 py-4 flex items-center justify-between border-b border-sky-200/60 shadow-xs">
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setSelectedDeviceForControl(null)}
+                  className="w-10 h-10 rounded-full bg-white/90 hover:bg-white text-slate-700 shadow-sm border border-slate-200/80 flex items-center justify-center cursor-pointer active:scale-95 transition-all"
+                  aria-label="Back to Devices"
+                >
+                  <ArrowLeft className="w-5 h-5 text-slate-800" strokeWidth={2.5} />
+                </button>
+                <div>
+                  <h1 className="text-base sm:text-lg font-extrabold text-slate-900 tracking-tight leading-tight">
+                    {selectedDeviceForControl.custom_name}
+                  </h1>
+                  <p className="text-xs text-slate-500 font-sans flex items-center gap-1.5 mt-0.5">
+                    <span>{getRoomEmoji(roomLabel)}</span>
+                    <span className="font-semibold text-slate-700">{roomLabel}</span>
+                    <span className="text-slate-300">&bull;</span>
+                    <span className="font-mono text-[11px] text-[#0284c7] font-bold">{selectedDeviceForControl.model_code}</span>
+                  </p>
+                </div>
               </div>
-              <button
-                type="button"
-                onClick={() => setSelectedDeviceForControl(null)}
-                className="w-8 h-8 rounded-full bg-white hover:bg-slate-100 flex items-center justify-center text-slate-700 shadow-xs cursor-pointer border border-slate-200"
-              >
-                <X className="w-4 h-4" />
-              </button>
+
+              {/* Status Badge */}
+              <div className="flex items-center gap-2">
+                <span className={`px-2.5 py-1 rounded-full text-xs font-bold border flex items-center gap-1.5 shadow-xs ${
+                  selectedDeviceForControl.is_online !== false
+                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                    : 'bg-slate-100 text-slate-600 border-slate-200'
+                }`}>
+                  <span className={`w-2 h-2 rounded-full ${
+                    selectedDeviceForControl.is_online !== false
+                      ? 'bg-emerald-500 animate-pulse'
+                      : 'bg-slate-400'
+                  }`} />
+                  {selectedDeviceForControl.is_online !== false ? 'Online' : 'Offline'}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setSelectedDeviceForControl(null)}
+                  className="w-9 h-9 rounded-full bg-white hover:bg-slate-100 flex items-center justify-center text-slate-700 shadow-xs cursor-pointer border border-slate-200 sm:hidden"
+                  aria-label="Close"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </header>
+
+            {/* Quick Meta Sub-bar */}
+            <div className="w-full max-w-xl mx-auto px-4 sm:px-6 pt-3 pb-1">
+              <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-2.5 px-4 border border-sky-100/80 flex items-center justify-between text-xs font-mono text-slate-600 shadow-xs">
+                <div className="flex items-center gap-2">
+                  <span className="text-slate-400 font-sans font-medium text-[11px]">Device ID:</span>
+                  <span className="font-bold text-[#0284c7]">{selectedDeviceForControl.device_id}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-slate-400 font-sans font-medium text-[11px]">IP:</span>
+                  <span className="text-slate-700 font-semibold">{selectedDeviceForControl.ip_address || '192.168.1.x'}</span>
+                </div>
+              </div>
             </div>
 
-            <DynamicDeviceLayout 
-              modelCode={selectedDeviceForControl.model_code}
-              deviceName={selectedDeviceForControl.custom_name}
-              deviceId={selectedDeviceForControl.device_id}
-              initialSwitches={selectedDeviceForControl.switches}
-            />
+            {/* Dedicated Device Layout Control Area */}
+            <main className="flex-1 w-full max-w-xl mx-auto p-4 sm:p-6 pb-16">
+              <DynamicDeviceLayout 
+                modelCode={selectedDeviceForControl.model_code}
+                deviceName={selectedDeviceForControl.custom_name}
+                deviceId={selectedDeviceForControl.device_id}
+                initialSwitches={selectedDeviceForControl.switches}
+              />
+            </main>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
 
       {/* 8. Light Blue Energy Symbol Cursor (Red replaced with Light Blue #38bdf8 / #7dd3fc) */}

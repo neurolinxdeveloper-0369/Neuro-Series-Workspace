@@ -3,7 +3,6 @@ import { ArrowLeft, X, Loader2, AlertCircle } from 'lucide-react';
 import { getAssetUrl } from '../utils/assets';
 import { authStorage, authApi, GOOGLE_WEB_CLIENT_ID, type UserProfile } from '../services/auth';
 import { NeuroLoader } from './NeuroLoader';
-import { Capacitor } from '@capacitor/core';
 import { Browser } from '@capacitor/browser';
 import { App as CapApp } from '@capacitor/app';
 
@@ -112,8 +111,23 @@ export const SignInScreen = ({ isOpen, onClose, onSignInSuccess }: SignInScreenP
                 gsiSuccessHandler(response.credential);
               }
             },
+            auto_select: false,
+            cancel_on_tap_outside: true,
           });
           isGsiInitialized = true;
+
+          // Render Google button directly into the container on the first screen
+          const btnContainer = document.getElementById('gsi-first-screen-container');
+          if (btnContainer) {
+            window.google.accounts.id.renderButton(btnContainer, {
+              type: 'standard',
+              theme: 'outline',
+              size: 'large',
+              shape: 'pill',
+              width: 320,
+              text: 'continue_with',
+            });
+          }
         } catch (err) {
           console.error('GIS initialization error:', err);
         }
@@ -219,24 +233,14 @@ export const SignInScreen = ({ isOpen, onClose, onSignInSuccess }: SignInScreenP
     if (isLoading) return;
     setErrorMessage(null);
 
-    const isNativeMobile = Capacitor.isNativePlatform() || 
-      window.location.protocol === 'capacitor:' || 
-      (window.location.hostname === 'localhost' && !import.meta.env.DEV);
-
-    // On mobile devices, launch the hosted auth-mobile.html bridge on neurolinx.in
-    // via native SFSafariViewController on iOS / Chrome Custom Tabs on Android
-    // to guarantee 100% Google origin verification and eliminate Error 400 origin_mismatch
-    if (isNativeMobile) {
-      const authUrl = 'https://neurolinx.in/neuro-series/auth-mobile.html';
-      try {
-        await Browser.open({ url: authUrl, presentationStyle: 'popover' });
-      } catch {
-        window.open(authUrl, '_blank');
-      }
+    // 1. If native GIS button is rendered on the screen, simulate click to trigger native modal directly
+    const renderedBtn = document.querySelector<HTMLElement>('#gsi-first-screen-container div[role="button"]');
+    if (renderedBtn) {
+      renderedBtn.click();
       return;
     }
 
-    // 1. Preferred modern flow: Google OAuth2 popup dialog
+    // 2. Preferred direct flow: Google OAuth2 popup dialog directly on this screen
     if (window.google?.accounts?.oauth2) {
       try {
         const client = window.google.accounts.oauth2.initTokenClient({
@@ -256,7 +260,7 @@ export const SignInScreen = ({ isOpen, onClose, onSignInSuccess }: SignInScreenP
               try {
                 const [res] = await Promise.all([
                   authApi.loginWithGoogle({ accessToken: tokenResponse.access_token }),
-                  new Promise((resolve) => setTimeout(resolve, 1000)),
+                  new Promise((resolve) => setTimeout(resolve, 800)),
                 ]);
                 if (res.success && res.user) {
                   onSignInSuccess?.(res.user);
@@ -278,15 +282,22 @@ export const SignInScreen = ({ isOpen, onClose, onSignInSuccess }: SignInScreenP
         client.requestAccessToken({ prompt: 'select_account' });
         return;
       } catch (err) {
-        console.warn('Could not launch OAuth2 token client:', err);
+        console.warn('Could not launch OAuth2 token client directly:', err);
       }
     }
 
-    // 2. Fallback: prompt Google One Tap
+    // 3. Prompt Google One Tap modal directly
     if (window.google?.accounts?.id) {
       window.google.accounts.id.prompt();
-    } else {
-      setErrorMessage('Google Sign-In is initializing. Please wait a moment and try again.');
+      return;
+    }
+
+    // 4. Last fallback if web SDK is unreachable
+    const authUrl = 'https://neurolinx.in/neuro-series/auth-mobile.html';
+    try {
+      await Browser.open({ url: authUrl, presentationStyle: 'popover' });
+    } catch {
+      window.open(authUrl, '_blank');
     }
   };
 
@@ -388,13 +399,14 @@ export const SignInScreen = ({ isOpen, onClose, onSignInSuccess }: SignInScreenP
             </button>
           </div>
 
-          {/* Trying to sign in with Google? with transparent google image */}
-          <div className="pt-3">
+          {/* Direct Google Sign-In on first screen */}
+          <div className="pt-3 w-full flex flex-col items-center justify-center">
+            <div id="gsi-first-screen-container" className="empty:hidden min-h-[44px] flex items-center justify-center mb-1" />
             <button
               type="button"
               onClick={handleGoogleSignInClick}
               disabled={isLoading}
-              className="group w-full flex items-center justify-center gap-3 py-3 px-5 rounded-2xl bg-white/90 hover:bg-white border border-slate-200/90 shadow-xs hover:shadow-sm transition-all duration-200 cursor-pointer disabled:opacity-60 active:scale-[0.99]"
+              className="group w-full flex items-center justify-center gap-3 py-3.5 px-5 rounded-2xl bg-white/95 hover:bg-white border border-slate-200/90 shadow-xs hover:shadow-sm transition-all duration-200 cursor-pointer disabled:opacity-60 active:scale-[0.99]"
             >
               <img 
                 src={getAssetUrl('google.svg')} 
@@ -402,7 +414,7 @@ export const SignInScreen = ({ isOpen, onClose, onSignInSuccess }: SignInScreenP
                 className="w-5 h-5 object-contain flex-shrink-0"
               />
               <span className="text-xs sm:text-sm font-semibold text-slate-700 group-hover:text-slate-900 font-sans">
-                {isLoading ? 'Signing in with Google...' : 'Trying to sign in with Google?'}
+                {isLoading ? 'Signing in with Google...' : 'Continue with Google'}
               </span>
             </button>
           </div>
