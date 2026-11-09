@@ -354,30 +354,62 @@ export const AddDeviceScreen = ({
       '/wifi'
     ];
 
+    let lastErrorMessage = '';
+
     for (const ep of endpoints) {
-      try {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 4000);
-        const res = await fetch(`http://192.168.4.1${ep}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(fullPayload),
-          signal: controller.signal,
-        });
-        clearTimeout(timeout);
-        if (res.ok) {
-          configureAccepted = true;
-          configureResponse = await res.json().catch(() => ({ status: 'accepted' }));
-          console.log(`Hardware accepted configuration on ${ep} (status ${res.status}):`, configureResponse);
-          break;
+      const url = `http://192.168.4.1${ep}`;
+      // Priority 1: Native Android HTTP bridge bound directly to the hardware Wi-Fi network
+      if (androidBridge?.httpPost) {
+        try {
+          console.log(`Attempting native httpPost to ${url}...`);
+          const rawResult = androidBridge.httpPost(url, JSON.stringify(fullPayload));
+          const parsed = JSON.parse(rawResult || '{}');
+          if (parsed.ok || (parsed.status >= 200 && parsed.status < 300)) {
+            configureAccepted = true;
+            try {
+              configureResponse = JSON.parse(parsed.body);
+            } catch {
+              configureResponse = { status: 'accepted', raw: parsed.body };
+            }
+            console.log(`Hardware accepted configuration via native bridge on ${ep}:`, configureResponse);
+            break;
+          } else {
+            console.warn(`Native bridge returned error on ${ep}:`, parsed);
+            if (parsed.error) lastErrorMessage = parsed.error;
+          }
+        } catch (nativeErr: any) {
+          console.warn(`Native httpPost attempt failed on ${ep}:`, nativeErr);
+          lastErrorMessage = nativeErr.message || String(nativeErr);
         }
-      } catch (epErr) {
-        console.warn(`Attempt on ${ep} failed:`, epErr);
+      }
+
+      // Priority 2: Standard fetch fallback
+      if (!configureAccepted) {
+        try {
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 4000);
+          const res = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(fullPayload),
+            signal: controller.signal,
+          });
+          clearTimeout(timeout);
+          if (res.ok) {
+            configureAccepted = true;
+            configureResponse = await res.json().catch(() => ({ status: 'accepted' }));
+            console.log(`Hardware accepted configuration via fetch on ${ep} (status ${res.status}):`, configureResponse);
+            break;
+          }
+        } catch (epErr: any) {
+          console.warn(`Fetch attempt on ${ep} failed:`, epErr);
+          if (!lastErrorMessage) lastErrorMessage = epErr.message || String(epErr);
+        }
       }
     }
 
     if (!configureAccepted) {
-      throw new Error('Hardware device did not respond at http://192.168.4.1/api/wifi/configure. Please ensure your phone is connected to the "NEURO-..." hotspot.');
+      throw new Error(`Hardware device did not respond at http://192.168.4.1/api/wifi/configure (${lastErrorMessage || 'connection refused/timed out'}). Please ensure mobile data is toggled off or phone is connected to "NEURO-..." hotspot.`);
     }
 
     // 2. Real-time verification: Poll GET http://192.168.4.1/api/provision/status
@@ -386,25 +418,41 @@ export const AddDeviceScreen = ({
     for (let attempt = 1; attempt <= maxPollAttempts; attempt++) {
       try {
         await new Promise(r => setTimeout(r, 1500));
-        const statusController = new AbortController();
-        const statusTimeout = setTimeout(() => statusController.abort(), 2000);
-        const statusRes = await fetch('http://192.168.4.1/api/provision/status', {
-          signal: statusController.signal,
-        });
-        clearTimeout(statusTimeout);
+        let statusData: any = null;
 
-        if (statusRes.ok) {
-          const statusData = await statusRes.json().catch(() => null);
+        // Try native bridge first
+        if (androidBridge?.httpGet) {
+          try {
+            const rawStatus = androidBridge.httpGet('http://192.168.4.1/api/provision/status');
+            const parsedStatus = JSON.parse(rawStatus || '{}');
+            if (parsedStatus.ok) {
+              statusData = JSON.parse(parsedStatus.body);
+            }
+          } catch {}
+        }
+
+        // Fallback to fetch
+        if (!statusData) {
+          const statusController = new AbortController();
+          const statusTimeout = setTimeout(() => statusController.abort(), 2000);
+          const statusRes = await fetch('http://192.168.4.1/api/provision/status', {
+            signal: statusController.signal,
+          });
+          clearTimeout(statusTimeout);
+          if (statusRes.ok) {
+            statusData = await statusRes.json().catch(() => null);
+          }
+        }
+
+        if (statusData) {
           console.log(`Provisioning status check (${attempt}/${maxPollAttempts}):`, statusData);
-          if (statusData) {
-            if (statusData.status === 'connected' || statusData.connected === true) {
-              verifiedIp = statusData.ip || statusData.ipAddress || '';
-              console.log('✅ Device confirmed connected to home Wi-Fi! Assigned IP:', verifiedIp);
-              break;
-            }
-            if (statusData.status === 'failed' || statusData.error) {
-              throw new Error(`Device Wi-Fi connection failed: ${statusData.error || statusData.message || 'Check your Wi-Fi password and router 2.4GHz network'}`);
-            }
+          if (statusData.status === 'connected' || statusData.connected === true) {
+            verifiedIp = statusData.ip || statusData.ipAddress || '';
+            console.log('✅ Device confirmed connected to home Wi-Fi! Assigned IP:', verifiedIp);
+            break;
+          }
+          if (statusData.status === 'failed' || statusData.error) {
+            throw new Error(`Device Wi-Fi connection failed: ${statusData.error || statusData.message || 'Check your Wi-Fi password and router 2.4GHz network'}`);
           }
         }
       } catch (pollErr: any) {

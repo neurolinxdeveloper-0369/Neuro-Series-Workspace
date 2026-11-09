@@ -147,7 +147,9 @@ public class MainActivity extends BridgeActivity {
                     for (Network net : cm.getAllNetworks()) {
                         NetworkCapabilities caps = cm.getNetworkCapabilities(net);
                         if (caps != null && caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) {
-                            return cm.bindProcessToNetwork(net);
+                            boolean bound = cm.bindProcessToNetwork(net);
+                            android.util.Log.d("AndroidWifiBridge", "bindProcessToNetwork result: " + bound + " for net: " + net);
+                            return bound;
                         }
                     }
                 }
@@ -155,6 +157,137 @@ public class MainActivity extends BridgeActivity {
                 e.printStackTrace();
             }
             return false;
+        }
+
+        @JavascriptInterface
+        public String httpPost(String urlString, String jsonBody) {
+            android.util.Log.d("AndroidWifiBridge", "httpPost requested for: " + urlString);
+            try {
+                ConnectivityManager cm = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
+                Network wifiNetwork = null;
+                if (cm != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    for (Network net : cm.getAllNetworks()) {
+                        NetworkCapabilities caps = cm.getNetworkCapabilities(net);
+                        if (caps != null && caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) {
+                            wifiNetwork = net;
+                            break;
+                        }
+                    }
+                }
+
+                java.net.URL url = new java.net.URL(urlString);
+                java.net.HttpURLConnection conn;
+                if (wifiNetwork != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                    conn = (java.net.HttpURLConnection) wifiNetwork.openConnection(url);
+                } else {
+                    conn = (java.net.HttpURLConnection) url.openConnection();
+                }
+
+                conn.setRequestMethod("POST");
+                conn.setRequestProperty("Content-Type", "application/json");
+                conn.setRequestProperty("Accept", "application/json");
+                conn.setConnectTimeout(5000);
+                conn.setReadTimeout(7000);
+                conn.setDoOutput(true);
+
+                if (jsonBody != null) {
+                    byte[] input = jsonBody.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                    try (java.io.OutputStream os = conn.getOutputStream()) {
+                        os.write(input, 0, input.length);
+                    }
+                }
+
+                int code = conn.getResponseCode();
+                java.io.InputStream is = (code >= 200 && code < 400) ? conn.getInputStream() : conn.getErrorStream();
+                String responseText = "";
+                if (is != null) {
+                    java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.InputStreamReader(is, java.nio.charset.StandardCharsets.UTF_8));
+                    StringBuilder sb = new StringBuilder();
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        sb.append(line);
+                    }
+                    reader.close();
+                    responseText = sb.toString();
+                }
+                JSONObject res = new JSONObject();
+                res.put("status", code);
+                res.put("ok", code >= 200 && code < 300);
+                res.put("body", responseText);
+                android.util.Log.d("AndroidWifiBridge", "httpPost success: " + code + " => " + responseText);
+                return res.toString();
+            } catch (Exception e) {
+                android.util.Log.e("AndroidWifiBridge", "httpPost exception: " + e.getMessage(), e);
+                try {
+                    JSONObject err = new JSONObject();
+                    err.put("status", 0);
+                    err.put("ok", false);
+                    err.put("error", e.getMessage() != null ? e.getMessage() : e.toString());
+                    return err.toString();
+                } catch (Exception ignored) {}
+                return "{\"status\":0,\"ok\":false,\"error\":\"Network error\"}";
+            }
+        }
+
+        @JavascriptInterface
+        public String httpGet(String urlString) {
+            android.util.Log.d("AndroidWifiBridge", "httpGet requested for: " + urlString);
+            try {
+                ConnectivityManager cm = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
+                Network wifiNetwork = null;
+                if (cm != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    for (Network net : cm.getAllNetworks()) {
+                        NetworkCapabilities caps = cm.getNetworkCapabilities(net);
+                        if (caps != null && caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) {
+                            wifiNetwork = net;
+                            break;
+                        }
+                    }
+                }
+
+                java.net.URL url = new java.net.URL(urlString);
+                java.net.HttpURLConnection conn;
+                if (wifiNetwork != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                    conn = (java.net.HttpURLConnection) wifiNetwork.openConnection(url);
+                } else {
+                    conn = (java.net.HttpURLConnection) url.openConnection();
+                }
+
+                conn.setRequestMethod("GET");
+                conn.setRequestProperty("Accept", "application/json");
+                conn.setConnectTimeout(5000);
+                conn.setReadTimeout(6000);
+
+                int code = conn.getResponseCode();
+                java.io.InputStream is = (code >= 200 && code < 400) ? conn.getInputStream() : conn.getErrorStream();
+                String responseText = "";
+                if (is != null) {
+                    java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.InputStreamReader(is, java.nio.charset.StandardCharsets.UTF_8));
+                    StringBuilder sb = new StringBuilder();
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        sb.append(line);
+                    }
+                    reader.close();
+                    responseText = sb.toString();
+                }
+                JSONObject res = new JSONObject();
+                res.put("status", code);
+                res.put("ok", code >= 200 && code < 300);
+                res.put("body", responseText);
+                android.util.Log.d("AndroidWifiBridge", "httpGet success: " + code + " => " + responseText);
+                return res.toString();
+            } catch (Exception e) {
+                android.util.Log.e("AndroidWifiBridge", "httpGet exception: " + e.getMessage(), e);
+                try {
+                    JSONObject err = new JSONObject();
+                    err.put("status", 0);
+                    err.put("ok", false);
+                    err.put("error", e.getMessage() != null ? e.getMessage() : e.toString());
+                    return err.toString();
+                } catch (Exception ignored) {}
+                return "{\"status\":0,\"ok\":false,\"error\":\"Network error\"}";
+            }
         }
     }
 
@@ -199,6 +332,11 @@ public class MainActivity extends BridgeActivity {
             settings.setMediaPlaybackRequiresUserGesture(false);
             settings.setSupportMultipleWindows(true);
             settings.setJavaScriptCanOpenWindowsAutomatically(true);
+
+            // Allow Mixed Content (http calls to 192.168.4.1 from https://localhost)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
+            }
 
             // 2. Google OAuth Compatibility: Strip 'wv' and 'Version/4.0' to prevent 403 disallowed_useragent
             String defaultUa = settings.getUserAgentString();
