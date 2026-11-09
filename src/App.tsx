@@ -22,7 +22,8 @@ import {
   Sparkles,
   Clock,
   Calendar,
-  User
+  User,
+  ArrowLeft
 } from 'lucide-react';
 import { ExploreCardSlider } from './components/ExploreCardSlider';
 import { QuickDevicesCard } from './components/QuickDevicesCard';
@@ -978,7 +979,7 @@ export function App() {
                         </button>
                       </div>
                     ) : (
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
                         {filtered.map((dev) => {
                           const devRoom = rooms.find(r => r.id === dev.room_id);
                           const roomLabel = devRoom ? devRoom.name : 'Living room';
@@ -987,62 +988,67 @@ export function App() {
                             <div
                               key={dev.id}
                               onClick={() => setSelectedDeviceForControl(dev)}
-                              className="bg-white/90 backdrop-blur-md rounded-3xl p-4 sm:p-4.5 shadow-sm border border-slate-100 hover:border-sky-300 hover:shadow-md transition-all cursor-pointer group active:scale-[0.99]"
+                              className="group relative overflow-hidden bg-white/95 backdrop-blur-md rounded-3xl shadow-sm border border-slate-100 hover:border-sky-300 hover:shadow-md transition-all cursor-pointer active:scale-[0.99] flex flex-col"
                             >
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-3">
-                                  <div className="w-11 h-11 rounded-2xl bg-sky-50 flex items-center justify-center p-1.5 border border-sky-100 shadow-xs group-hover:scale-105 transition-transform flex-shrink-0">
-                                    {dev.icon ? (
-                                      <img
-                                        src={getAssetUrl('ICONS/' + dev.icon)}
-                                        alt={dev.custom_name}
-                                        className="w-full h-full object-contain"
-                                      />
-                                    ) : (
-                                      <span className="font-bold font-mono text-xs text-[#0284c7]">
-                                        {dev.model_code}
-                                      </span>
+                              {/* Top 50% Hero Showcase: 8S.png filling with opacity + Room & RSSI status */}
+                              <div className="relative w-full h-36 sm:h-40 bg-gradient-to-b from-sky-50/70 via-sky-50/30 to-white/10 flex items-center justify-center overflow-hidden p-3 border-b border-slate-100/70">
+                                <img
+                                  src={getAssetUrl('8S.png')}
+                                  alt={dev.custom_name}
+                                  className="w-full h-full object-contain opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-300"
+                                />
+
+                                {/* Overlaid Room Name Pill (Top-Left) */}
+                                <div className="absolute top-3 left-3 flex items-center">
+                                  <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-white/90 backdrop-blur-md text-slate-700 shadow-xs border border-white/80 flex items-center gap-1.5">
+                                    <span>{getRoomEmoji(roomLabel)}</span>
+                                    <span>{roomLabel}</span>
+                                  </span>
+                                </div>
+
+                                {/* Overlaid RSSI Status Pill (Top-Right) */}
+                                <div className="absolute top-3 right-3 flex items-center">
+                                  <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold border flex items-center gap-1.5 backdrop-blur-md shadow-xs ${
+                                    dev.is_online
+                                      ? 'bg-emerald-50/95 text-emerald-700 border-emerald-200'
+                                      : 'bg-rose-50/95 text-rose-700 border-rose-200'
+                                  }`}>
+                                    <span className={`w-1.5 h-1.5 rounded-full ${
+                                      dev.is_online ? 'bg-emerald-500 animate-pulse' : 'bg-rose-400'
+                                    }`} />
+                                    {dev.is_online ? 'Online' : 'Offline'}
+                                    {dev.is_online && typeof dev.rssi === 'number' && (
+                                      <span className="text-[10px] text-emerald-700/80 font-mono ml-0.5">({dev.rssi} dBm)</span>
                                     )}
-                                  </div>
+                                  </span>
+                                </div>
+                              </div>
+
+                              {/* Bottom Details Section (Device name, model, Tap to Open Layout, no controls available text) */}
+                              <div className="p-4 flex-1 flex flex-col justify-between">
+                                <div className="flex items-center justify-between">
                                   <div>
                                     <div className="flex items-center gap-2">
                                       <h3 className="text-sm sm:text-base font-bold text-slate-900 group-hover:text-[#0284c7] transition-colors">
                                         {dev.custom_name}
                                       </h3>
                                       <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-50 text-[#0284c7] border border-sky-100 font-mono">
-                                        {dev.model_code}
+                                        {dev.model_code || 'TP8'}
                                       </span>
                                     </div>
-                                    <p className="text-xs text-slate-500 font-sans flex items-center gap-1.5 mt-0.5">
-                                      <span>{getRoomEmoji(roomLabel)}</span>
-                                      <span>{roomLabel}</span>
-                                      <span className="text-slate-300">&bull;</span>
-                                      <span className="font-mono text-slate-400">{dev.device_id || `NEURO-${dev.model_code}-${dev.mac_4}`}</span>
+                                    <p className="text-[11px] text-slate-400 font-mono mt-0.5">
+                                      {dev.device_id || `NEURO-${dev.model_code}-${dev.mac_4}`}
                                     </p>
                                   </div>
                                 </div>
-                                <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold border flex items-center gap-1 flex-shrink-0 ${
-                                  dev.is_online
-                                    ? 'bg-emerald-50 text-emerald-600 border-emerald-100'
-                                    : 'bg-rose-50 text-rose-600 border-rose-100'
-                                }`}>
-                                  <span className={`w-1.5 h-1.5 rounded-full ${
-                                    dev.is_online ? 'bg-emerald-500 animate-pulse' : 'bg-rose-400'
-                                  }`} />
-                                  {dev.is_online ? 'Online' : 'Offline'}
-                                  {dev.is_online && typeof dev.rssi === 'number' && (
-                                    <span className="text-[10px] text-emerald-700 font-mono ml-0.5">({dev.rssi} dBm)</span>
-                                  )}
-                                </span>
-                              </div>
 
-                              <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
-                                <span>{dev.endpoints?.length || 0} Controls Available</span>
-                                <span className={`font-bold flex items-center gap-1 group-hover:translate-x-0.5 transition-transform ${
-                                  dev.is_online ? 'text-[#0284c7]' : 'text-slate-400'
-                                }`}>
-                                  {dev.is_online ? 'Tap to Open Layout →' : 'Offline'}
-                                </span>
+                                <div className="mt-3 pt-2.5 border-t border-slate-100/80 flex items-center justify-end text-xs">
+                                  <span className={`font-bold flex items-center gap-1 group-hover:translate-x-0.5 transition-transform ${
+                                    dev.is_online ? 'text-[#0284c7]' : 'text-slate-400'
+                                  }`}>
+                                    {dev.is_online ? 'Tap to Open Layout →' : 'Offline'}
+                                  </span>
+                                </div>
                               </div>
                             </div>
                           );
@@ -1133,62 +1139,67 @@ export function App() {
                             <div
                               key={dev.id}
                               onClick={() => setSelectedDeviceForControl(dev)}
-                              className="bg-white/90 backdrop-blur-md rounded-3xl p-4 sm:p-5 shadow-sm border border-slate-200/80 hover:border-sky-400 hover:shadow-md transition-all cursor-pointer group active:scale-[0.99]"
+                              className="group relative overflow-hidden bg-white/95 backdrop-blur-md rounded-3xl shadow-sm border border-slate-100 hover:border-sky-300 hover:shadow-md transition-all cursor-pointer active:scale-[0.99] flex flex-col"
                             >
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-3">
-                                  <div className="w-12 h-12 rounded-2xl bg-sky-50 flex items-center justify-center p-2 border border-sky-100 shadow-xs group-hover:scale-105 transition-transform flex-shrink-0">
-                                    {dev.icon ? (
-                                      <img
-                                        src={getAssetUrl('ICONS/' + dev.icon)}
-                                        alt={dev.custom_name}
-                                        className="w-full h-full object-contain"
-                                      />
-                                    ) : (
-                                      <span className="font-bold font-mono text-xs text-[#0284c7]">
-                                        {dev.model_code}
-                                      </span>
+                              {/* Top 50% Hero Showcase: 8S.png filling with opacity + Room & RSSI status */}
+                              <div className="relative w-full h-36 sm:h-40 bg-gradient-to-b from-sky-50/70 via-sky-50/30 to-white/10 flex items-center justify-center overflow-hidden p-3 border-b border-slate-100/70">
+                                <img
+                                  src={getAssetUrl('8S.png')}
+                                  alt={dev.custom_name}
+                                  className="w-full h-full object-contain opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-300"
+                                />
+
+                                {/* Overlaid Room Name Pill (Top-Left) */}
+                                <div className="absolute top-3 left-3 flex items-center">
+                                  <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-white/90 backdrop-blur-md text-slate-700 shadow-xs border border-white/80 flex items-center gap-1.5">
+                                    <span>{getRoomEmoji(roomLabel)}</span>
+                                    <span>{roomLabel}</span>
+                                  </span>
+                                </div>
+
+                                {/* Overlaid RSSI Status Pill (Top-Right) */}
+                                <div className="absolute top-3 right-3 flex items-center">
+                                  <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold border flex items-center gap-1.5 backdrop-blur-md shadow-xs ${
+                                    dev.is_online
+                                      ? 'bg-emerald-50/95 text-emerald-700 border-emerald-200'
+                                      : 'bg-rose-50/95 text-rose-700 border-rose-200'
+                                  }`}>
+                                    <span className={`w-1.5 h-1.5 rounded-full ${
+                                      dev.is_online ? 'bg-emerald-500 animate-pulse' : 'bg-rose-400'
+                                    }`} />
+                                    {dev.is_online ? 'Online' : 'Offline'}
+                                    {dev.is_online && typeof dev.rssi === 'number' && (
+                                      <span className="text-[10px] text-emerald-700/80 font-mono ml-0.5">({dev.rssi} dBm)</span>
                                     )}
-                                  </div>
+                                  </span>
+                                </div>
+                              </div>
+
+                              {/* Bottom Details Section (Device name, model, Open Switch Layout, no controls available text) */}
+                              <div className="p-4 flex-1 flex flex-col justify-between">
+                                <div className="flex items-center justify-between">
                                   <div>
                                     <div className="flex items-center gap-2">
                                       <h3 className="text-sm sm:text-base font-bold text-slate-900 group-hover:text-[#0284c7] transition-colors">
                                         {dev.custom_name}
                                       </h3>
                                       <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-50 text-[#0284c7] border border-sky-100 font-mono">
-                                        {dev.model_code}
+                                        {dev.model_code || 'TP8'}
                                       </span>
                                     </div>
-                                    <p className="text-xs text-slate-500 font-sans flex items-center gap-1.5 mt-0.5">
-                                      <span>{getRoomEmoji(roomLabel)}</span>
-                                      <span>{roomLabel}</span>
-                                      <span className="text-slate-300">&bull;</span>
-                                      <span className="font-mono text-slate-400">{dev.device_id || `NEURO-${dev.model_code}-${dev.mac_4}`}</span>
+                                    <p className="text-[11px] text-slate-400 font-mono mt-0.5">
+                                      {dev.device_id || `NEURO-${dev.model_code}-${dev.mac_4}`}
                                     </p>
                                   </div>
                                 </div>
-                                <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold border flex items-center gap-1 flex-shrink-0 ${
-                                  dev.is_online
-                                    ? 'bg-emerald-50 text-emerald-600 border-emerald-100'
-                                    : 'bg-rose-50 text-rose-600 border-rose-100'
-                                }`}>
-                                  <span className={`w-1.5 h-1.5 rounded-full ${
-                                    dev.is_online ? 'bg-emerald-500 animate-pulse' : 'bg-rose-400'
-                                  }`} />
-                                  {dev.is_online ? 'Online' : 'Offline'}
-                                  {dev.is_online && typeof dev.rssi === 'number' && (
-                                    <span className="text-[10px] text-emerald-700 font-mono ml-0.5">({dev.rssi} dBm)</span>
-                                  )}
-                                </span>
-                              </div>
 
-                              <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
-                                <span>{dev.endpoints?.length || 0} Controls Available</span>
-                                <span className={`font-bold flex items-center gap-1 group-hover:translate-x-0.5 transition-transform ${
-                                  dev.is_online ? 'text-[#0284c7]' : 'text-slate-400'
-                                }`}>
-                                  {dev.is_online ? 'Open Switch Layout →' : 'Offline'}
-                                </span>
+                                <div className="mt-3 pt-2.5 border-t border-slate-100/80 flex items-center justify-end text-xs">
+                                  <span className={`font-bold flex items-center gap-1 group-hover:translate-x-0.5 transition-transform ${
+                                    dev.is_online ? 'text-[#0284c7]' : 'text-slate-400'
+                                  }`}>
+                                    {dev.is_online ? 'Open Switch Layout →' : 'Offline'}
+                                  </span>
+                                </div>
                               </div>
                             </div>
                           );
@@ -1516,110 +1527,104 @@ export function App() {
         }}
       />
 
-      {/* 14. Modal UI Layout for Hardware Device Control */}
+      {/* 14. Dedicated Full Screen Layout for Hardware Device Control ("New Screen") */}
       {selectedDeviceForControl && (() => {
         const devRoom = rooms.find(r => r.id === selectedDeviceForControl.room_id);
         const roomLabel = devRoom ? devRoom.name : 'Living room';
 
         return (
           <div 
-            className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/60 backdrop-blur-md animate-in fade-in duration-200 select-none pointer-events-auto"
-            onClick={() => setSelectedDeviceForControl(null)}
+            className="fixed inset-0 z-50 overflow-y-auto overflow-x-hidden flex flex-col select-none pointer-events-auto animate-in fade-in slide-in-from-right-3 duration-200"
+            style={{
+              backgroundColor: '#d4edf4',
+              backgroundImage: `
+                radial-gradient(circle at 10% 10%, rgba(255, 255, 255, 0.95) 0%, transparent 50%),
+                radial-gradient(circle at 90% 90%, rgba(255, 255, 255, 0.90) 0%, transparent 50%)
+              `,
+            }}
           >
-            {/* Modal Dialog Card */}
-            <div 
-              className="relative w-full max-w-xl max-h-[92vh] overflow-hidden flex flex-col rounded-3xl shadow-2xl border border-white/80 animate-in zoom-in-95 duration-200"
-              style={{
-                backgroundColor: '#d4edf4',
-                backgroundImage: `
-                  radial-gradient(circle at 10% 10%, rgba(255, 255, 255, 0.95) 0%, transparent 50%),
-                  radial-gradient(circle at 90% 90%, rgba(255, 255, 255, 0.90) 0%, transparent 50%)
-                `,
-              }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              {/* Modal Header */}
-              <header className="sticky top-0 z-20 w-full bg-[#d4edf4]/95 backdrop-blur-md px-4 sm:px-6 py-3.5 flex items-center justify-between border-b border-sky-200/60 shadow-xs flex-shrink-0">
+            {/* Top Navigation Bar: Back Button, Device Info, RSSI Badge */}
+            <header className="sticky top-0 z-30 w-full bg-[#d4edf4]/95 backdrop-blur-xl px-4 sm:px-8 py-3.5 flex items-center justify-between border-b border-sky-200/60 shadow-xs flex-shrink-0">
+              <div className="flex items-center gap-3 sm:gap-5">
+                <button
+                  type="button"
+                  onClick={() => setSelectedDeviceForControl(null)}
+                  className="h-10 px-3.5 sm:px-4 rounded-full bg-white/90 hover:bg-white text-slate-800 shadow-xs border border-white/80 flex items-center gap-2 cursor-pointer active:scale-95 transition-all group font-bold text-xs sm:text-sm"
+                  aria-label="Back to devices"
+                >
+                  <ArrowLeft className="w-4 h-4 text-slate-700 group-hover:-translate-x-0.5 transition-transform" strokeWidth={2.4} />
+                  <span>Back</span>
+                </button>
+
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-2xl bg-white shadow-xs border border-sky-100 flex items-center justify-center flex-shrink-0">
-                    {selectedDeviceForControl.icon ? (
-                      <img
-                        src={getAssetUrl('ICONS/' + selectedDeviceForControl.icon)}
-                        alt={selectedDeviceForControl.custom_name}
-                        className="w-7 h-7 object-contain"
-                      />
-                    ) : (
-                      <span className="font-bold font-mono text-xs text-[#0284c7]">
-                        {selectedDeviceForControl.model_code}
-                      </span>
-                    )}
+                  <div className="w-10 h-10 rounded-2xl bg-white shadow-xs border border-sky-100 flex items-center justify-center p-1.5 flex-shrink-0">
+                    <img
+                      src={getAssetUrl('8S.png')}
+                      alt={selectedDeviceForControl.custom_name}
+                      className="w-full h-full object-contain"
+                    />
                   </div>
                   <div>
-                    <h2 className="text-base sm:text-lg font-extrabold text-slate-900 tracking-tight leading-tight">
-                      {selectedDeviceForControl.custom_name}
-                    </h2>
+                    <div className="flex items-center gap-2">
+                      <h1 className="text-base sm:text-lg font-extrabold text-slate-900 tracking-tight leading-tight">
+                        {selectedDeviceForControl.custom_name}
+                      </h1>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-50 text-[#0284c7] border border-sky-100 font-mono">
+                        {selectedDeviceForControl.model_code || 'TP8'}
+                      </span>
+                    </div>
                     <p className="text-xs text-slate-500 font-sans flex items-center gap-1.5 mt-0.5">
                       <span>{getRoomEmoji(roomLabel)}</span>
                       <span className="font-semibold text-slate-700">{roomLabel}</span>
-                      <span className="text-slate-300">&bull;</span>
-                      <span className="font-mono text-[11px] text-[#0284c7] font-bold">{selectedDeviceForControl.model_code}</span>
                     </p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <span className={`px-2.5 py-1 rounded-full text-xs font-bold border flex items-center gap-1.5 shadow-xs ${
-                    selectedDeviceForControl.is_online !== false
-                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                      : 'bg-rose-50 text-rose-700 border-rose-200'
-                  }`}>
-                    <span className={`w-2 h-2 rounded-full ${
-                      selectedDeviceForControl.is_online !== false
-                        ? 'bg-emerald-500 animate-pulse'
-                        : 'bg-rose-400'
-                    }`} />
-                    {selectedDeviceForControl.is_online !== false ? 'Online' : 'Offline'}
-                    {selectedDeviceForControl.is_online !== false && typeof selectedDeviceForControl.rssi === 'number' && (
-                      <span className="text-[11px] text-emerald-700 font-mono">({selectedDeviceForControl.rssi} dBm)</span>
-                    )}
-                  </span>
-
-                  <button
-                    type="button"
-                    onClick={() => setSelectedDeviceForControl(null)}
-                    className="w-9 h-9 rounded-full bg-white/90 hover:bg-white text-slate-700 hover:text-slate-900 shadow-xs border border-slate-200 flex items-center justify-center cursor-pointer active:scale-95 transition-all"
-                    aria-label="Close modal"
-                  >
-                    <X className="w-5 h-5 text-slate-700" strokeWidth={2.5} />
-                  </button>
-                </div>
-              </header>
-
-              {/* Modal Meta Details */}
-              <div className="px-4 sm:px-6 pt-3 pb-1 flex-shrink-0">
-                <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-2 px-3.5 border border-sky-100/80 flex items-center justify-between text-xs font-mono text-slate-600 shadow-xs">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-slate-400 font-sans font-medium text-[11px]">Device ID:</span>
-                    <span className="font-bold text-[#0284c7]">{selectedDeviceForControl.device_id || `NEURO-${selectedDeviceForControl.model_code}-${selectedDeviceForControl.mac_4}`}</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-slate-400 font-sans font-medium text-[11px]">IP:</span>
-                    <span className="text-slate-700 font-semibold">{selectedDeviceForControl.ip_address || '192.168.1.x'}</span>
                   </div>
                 </div>
               </div>
 
-              {/* Modal Body: Switch Controls */}
-              <div className="flex-1 overflow-y-auto p-4 sm:p-6">
+              <div className="flex items-center gap-2">
+                <span className={`px-3 py-1 rounded-full text-xs font-bold border flex items-center gap-1.5 shadow-xs ${
+                  selectedDeviceForControl.is_online !== false
+                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                    : 'bg-rose-50 text-rose-700 border-rose-200'
+                }`}>
+                  <span className={`w-2 h-2 rounded-full ${
+                    selectedDeviceForControl.is_online !== false
+                      ? 'bg-emerald-500 animate-pulse'
+                      : 'bg-rose-400'
+                  }`} />
+                  {selectedDeviceForControl.is_online !== false ? 'Online' : 'Offline'}
+                  {selectedDeviceForControl.is_online !== false && typeof selectedDeviceForControl.rssi === 'number' && (
+                    <span className="text-[11px] text-emerald-700 font-mono">({selectedDeviceForControl.rssi} dBm)</span>
+                  )}
+                </span>
+              </div>
+            </header>
+
+            {/* Screen Content Body */}
+            <main className="w-full max-w-4xl mx-auto px-4 sm:px-6 py-5 sm:py-7 flex-1 flex flex-col gap-4">
+              {/* Meta details bar */}
+              <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-2.5 px-4 border border-sky-100/80 flex items-center justify-between text-xs font-mono text-slate-600 shadow-xs flex-wrap gap-2">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-slate-400 font-sans font-medium text-[11px]">Device ID:</span>
+                  <span className="font-bold text-[#0284c7]">{selectedDeviceForControl.device_id || `NEURO-${selectedDeviceForControl.model_code}-${selectedDeviceForControl.mac_4}`}</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-slate-400 font-sans font-medium text-[11px]">IP Address:</span>
+                  <span className="text-slate-700 font-semibold">{selectedDeviceForControl.ip_address || '192.168.1.x'}</span>
+                </div>
+              </div>
+
+              {/* Dynamic Switch Controls */}
+              <div className="bg-white/90 backdrop-blur-md rounded-3xl p-4 sm:p-6 shadow-sm border border-white/80">
                 <DynamicDeviceLayout 
-                  modelCode={selectedDeviceForControl.model_code}
+                  modelCode={selectedDeviceForControl.model_code || 'TP8'}
                   deviceName={selectedDeviceForControl.custom_name}
                   deviceId={selectedDeviceForControl.device_id || selectedDeviceForControl.id}
                   initialSwitches={selectedDeviceForControl.switches}
                   isOnline={selectedDeviceForControl.is_online !== false}
                 />
               </div>
-            </div>
+            </main>
           </div>
         );
       })()}
