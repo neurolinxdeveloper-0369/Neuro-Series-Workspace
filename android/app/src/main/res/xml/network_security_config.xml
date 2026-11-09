@@ -9,6 +9,7 @@
     <domain-config cleartextTrafficPermitted="true">
         <domain includeSubdomains="true">192.168.4.1</domain>
         <domain includeSubdomains="true">localhost</domain>
+        <domain includeSubdomains="true">neurolinx.in</domain>
         <domain includeSubdomains="true">api.neurolinx.in</domain>
     </domain-config>
 </network-security-config>

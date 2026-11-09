@@ -299,6 +299,7 @@ export const AddDeviceScreen = ({
     mqttPort?: number;
     ipAddress?: string;
   } | null>(null);
+  const [newlyProvisionedRecord, setNewlyProvisionedRecord] = useState<{ roomName: string; device: Device } | null>(null);
 
   // Helper to send Device ID, Wi-Fi credentials & MQTT details to hardware at 192.168.4.1/api/wifi/configure
   // and verify connection status via GET 192.168.4.1/api/provision/status
@@ -964,6 +965,7 @@ export const AddDeviceScreen = ({
       };
 
       setHardwareResponse(confirmation);
+      setNewlyProvisionedRecord({ roomName: finalRoomName, device: newlyCreatedDevice });
       onDeviceAdded(finalRoomName, newlyCreatedDevice);
       setCurrentView('provision_success');
 
@@ -2242,6 +2244,9 @@ export const AddDeviceScreen = ({
           <div className="pt-4 mt-auto">
             <button
               onClick={() => {
+                if (newlyProvisionedRecord) {
+                  onDeviceAdded(newlyProvisionedRecord.roomName, newlyProvisionedRecord.device);
+                }
                 setCurrentView('main');
                 onClose();
               }}
