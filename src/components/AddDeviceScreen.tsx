@@ -266,34 +266,31 @@ export const AddDeviceScreen = ({
     }
 
     const fullPayload = {
-      // Device ID
-      deviceId: payload.deviceId,
-      device_id: payload.deviceId,
-
-      // Wi-Fi Details
+      // Exact Firmware Specification
       ssid: payload.ssid,
       password: payload.password || '',
+      deviceId: payload.deviceId,
+      mqttHost: payload.mqttHost,
+      mqttPort: Number(payload.mqttPort) || 8883,
+      mqttUsername: payload.mqttUsername,
+      mqttPassword: payload.mqttPassword,
+
+      // Compatibility aliases (snake_case and nested)
+      device_id: payload.deviceId,
       wifi_ssid: payload.ssid,
       wifi_password: payload.password || '',
-
-      // MQTT Details (flat keys for standard microcontrollers / PubSubClient)
-      mqttHost: payload.mqttHost,
       mqtt_host: payload.mqttHost,
-      mqttPort: payload.mqttPort,
-      mqtt_port: payload.mqttPort,
-      mqttUsername: payload.mqttUsername,
+      mqtt_port: Number(payload.mqttPort) || 8883,
       mqtt_username: payload.mqttUsername,
       mqtt_user: payload.mqttUsername,
-      mqttPassword: payload.mqttPassword,
       mqtt_password: payload.mqttPassword,
       mqtt_pass: payload.mqttPassword,
       mqttTopicPrefix: 'neurolinx/devices',
       mqtt_topic_prefix: 'neurolinx/devices',
 
-      // MQTT Details (nested structured object for modern JSON firmware parsers)
       mqtt: {
         host: payload.mqttHost,
-        port: payload.mqttPort,
+        port: Number(payload.mqttPort) || 8883,
         username: payload.mqttUsername,
         password: payload.mqttPassword,
         clientId: payload.deviceId,
@@ -304,23 +301,33 @@ export const AddDeviceScreen = ({
       },
     };
 
-    console.log('Sending hardware configuration with Wi-Fi & MQTT details:', fullPayload);
+    console.log('Sending firmware provisioning payload to http://192.168.4.1/api/wifi/configure:', fullPayload);
 
-    // Send to hardware AP endpoints
-    const endpoints = ['/configure', '/api/configure', '/wifi'];
+    // Primary endpoint: POST http://192.168.4.1/api/wifi/configure (with multi-endpoint fallbacks)
+    const endpoints = [
+      '/api/wifi/configure',
+      '/configure',
+      '/api/configure',
+      '/wifi'
+    ];
     for (const ep of endpoints) {
       try {
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 2500);
-        await fetch(`http://192.168.4.1${ep}`, {
+        const timeout = setTimeout(() => controller.abort(), 3000);
+        const res = await fetch(`http://192.168.4.1${ep}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(fullPayload),
           signal: controller.signal,
         });
         clearTimeout(timeout);
-        break;
-      } catch {}
+        if (res.ok) {
+          console.log(`Hardware accepted configuration on ${ep} (status ${res.status})`);
+          break;
+        }
+      } catch (epErr) {
+        console.warn(`Attempt on ${ep} failed, trying next endpoint...`, epErr);
+      }
     }
   };
 
@@ -798,7 +805,7 @@ export const AddDeviceScreen = ({
       // Attempt to send hardware configuration even if backend connection is unavailable
       const fallbackDeviceId = generatedDeviceId;
       const fallbackMqttHost = 'api.neurolinx.in';
-      const fallbackMqttPort = 1887;
+      const fallbackMqttPort = 8883;
       const fallbackMqttUser = 'neuro_device_user';
       const fallbackMqttPass = 'NeuroSeriesEmqx2026!';
 

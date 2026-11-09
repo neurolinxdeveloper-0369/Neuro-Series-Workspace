@@ -16,7 +16,7 @@ export const ENV = {
   // EMQX MQTT Broker Configuration
   MQTT_BROKER_URL: process.env.MQTT_BROKER_URL || 'mqtt://127.0.0.1:1887',
   MQTT_PUBLIC_HOST: process.env.MQTT_PUBLIC_HOST || 'api.neurolinx.in',
-  MQTT_PUBLIC_PORT: parseInt(process.env.MQTT_PUBLIC_PORT || '1887', 10),
+  MQTT_PUBLIC_PORT: parseInt(process.env.MQTT_PUBLIC_PORT || '8883', 10),
   MQTT_CLIENT_ID: process.env.MQTT_CLIENT_ID || 'neuro-series-server-backend',
   MQTT_USERNAME: process.env.MQTT_USERNAME || 'neuro_device_user',
   MQTT_PASSWORD: process.env.MQTT_PASSWORD || 'NeuroSeriesEmqx2026!',
