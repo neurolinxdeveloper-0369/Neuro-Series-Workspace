@@ -17,12 +17,13 @@ import {
   Check,
   SlidersHorizontal,
   Layers,
-  ArrowLeft
+  ArrowLeft,
+  Sun,
+  Moon,
+  Sparkles
 } from 'lucide-react';
 import { ExploreCardSlider } from './components/ExploreCardSlider';
 import { QuickDevicesCard } from './components/QuickDevicesCard';
-import { DevicesMenuCard } from './components/DevicesMenuCard';
-import { RoutinesMenuCard } from './components/RoutinesMenuCard';
 import { MenuTabContent } from './components/MenuTabContent';
 import { SignInScreen } from './components/SignInScreen';
 import { SettingsScreen } from './components/SettingsScreen';
@@ -68,11 +69,8 @@ export function App() {
   const [isPlusMenuOpen, setIsPlusMenuOpen] = useState(false);
   const [isDotsMenuOpen, setIsDotsMenuOpen] = useState(false);
 
-  // Room Sub-Tabs & Banner Dismiss
+  // Room Sub-Tabs
   const [activeRoomTab, setActiveRoomTab] = useState<string>('all');
-  const [isExploreDismissed, setIsExploreDismissed] = useState(() => {
-    return typeof window !== 'undefined' && sessionStorage.getItem('neuro_explore_dismissed') === 'true';
-  });
 
   const [devices, setDevices] = useState<any[]>([]);
   const [selectedDeviceForControl, setSelectedDeviceForControl] = useState<any | null>(null);
@@ -742,118 +740,127 @@ export function App() {
               )
             )}
 
-            {/* Dismissable Explore devices banner strictly on Home view */}
-            {!isExploreDismissed && (
-              <ExploreCardSlider 
-                onDismiss={() => {
-                  setIsExploreDismissed(true);
-                  if (typeof window !== 'undefined') {
-                    sessionStorage.setItem('neuro_explore_dismissed', 'true');
-                  }
-                }} 
+            {/* When NO devices exist in home, show the Quick Devices onboarding card */}
+            {devices.length === 0 ? (
+              <QuickDevicesCard 
+                isLoggedIn={isSignedIn}
+                onAddDevice={() => handleProtectedAction(() => setIsAddDeviceOpen(true))} 
+                onExplore={() => handleProtectedAction(() => setActiveTab('explore'))} 
               />
-            )}
+            ) : (
+              /* Connected Devices View: No Explore banner or Quick card once devices exist */
+              (() => {
+                const filtered = activeRoomTab === 'all'
+                  ? devices
+                  : devices.filter(d => {
+                      const room = rooms.find(r => r.name === activeRoomTab);
+                      return room ? d.room_id === room.id : false;
+                    });
 
-            {/* Active Hardware Nodes in Room */}
-            {(() => {
-              const filtered = activeRoomTab === 'all'
-                ? devices
-                : devices.filter(d => {
-                    const room = rooms.find(r => r.name === activeRoomTab);
-                    return room ? d.room_id === room.id : false;
-                  });
+                if (filtered.length === 0) {
+                  return (
+                    <div className="w-full max-w-sm sm:max-w-md md:max-w-lg bg-white/70 backdrop-blur-md rounded-3xl p-6 text-center border border-white/80 shadow-xs pointer-events-auto">
+                      <p className="text-sm font-semibold text-slate-700">No devices in {activeRoomTab}</p>
+                      <p className="text-xs text-slate-400 mt-1">Assign devices to this room or add a new device</p>
+                      <button
+                        onClick={() => handleProtectedAction(() => setIsAddDeviceOpen(true))}
+                        className="mt-3.5 inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold bg-[#0284c7] text-white hover:bg-sky-600 transition-colors shadow-xs cursor-pointer"
+                      >
+                        + Add device
+                      </button>
+                    </div>
+                  );
+                }
 
-              if (filtered.length === 0) return null;
+                return (
+                  <div className="w-full max-w-sm sm:max-w-md md:max-w-lg space-y-3 pointer-events-auto">
+                    <div className="flex items-center justify-between px-1">
+                      <span className="text-xs font-bold uppercase tracking-wider text-slate-600 font-mono">
+                        Connected Devices ({filtered.length})
+                      </span>
+                      <button
+                        onClick={() => handleProtectedAction(() => setIsAddDeviceOpen(true))}
+                        className="text-xs font-bold text-[#0284c7] hover:underline cursor-pointer"
+                      >
+                        + Add device
+                      </button>
+                    </div>
 
-              return (
-                <div className="w-full max-w-sm sm:max-w-md md:max-w-lg space-y-3 pointer-events-auto">
-                  <div className="flex items-center justify-between px-1">
-                    <span className="text-xs font-bold uppercase tracking-wider text-slate-600 font-mono">
-                      Connected Devices ({filtered.length})
-                    </span>
-                    <button
-                      onClick={() => handleProtectedAction(() => setIsAddDeviceOpen(true))}
-                      className="text-xs font-bold text-[#0284c7] hover:underline cursor-pointer"
-                    >
-                      + Add device
-                    </button>
-                  </div>
+                    <div className="grid grid-cols-1 gap-2.5">
+                      {filtered.map((dev) => {
+                        const devRoom = rooms.find(r => r.id === dev.room_id);
+                        const roomLabel = devRoom ? devRoom.name : 'Living room';
 
-                  <div className="grid grid-cols-1 gap-2.5">
-                    {filtered.map((dev) => {
-                      const devRoom = rooms.find(r => r.id === dev.room_id);
-                      const roomLabel = devRoom ? devRoom.name : 'Living room';
-
-                      return (
-                        <div
-                          key={dev.id}
-                          onClick={() => setSelectedDeviceForControl(dev)}
-                          className="bg-white rounded-3xl p-4 sm:p-4.5 shadow-sm border border-slate-100 hover:border-sky-300 transition-all cursor-pointer group active:scale-[0.99]"
-                        >
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                              <div className="w-11 h-11 rounded-2xl bg-sky-50 flex items-center justify-center p-1.5 border border-sky-100 shadow-xs group-hover:scale-105 transition-transform flex-shrink-0">
-                                {dev.icon ? (
-                                  <img
-                                    src={getAssetUrl('ICONS/' + dev.icon)}
-                                    alt={dev.custom_name}
-                                    className="w-full h-full object-contain"
-                                  />
-                                ) : (
-                                  <span className="font-bold font-mono text-xs text-[#0284c7]">
-                                    {dev.model_code}
-                                  </span>
-                                )}
-                              </div>
-                              <div>
-                                <div className="flex items-center gap-2">
-                                  <h3 className="text-sm sm:text-base font-bold text-slate-900 group-hover:text-[#0284c7] transition-colors">
-                                    {dev.custom_name}
-                                  </h3>
-                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-50 text-[#0284c7] border border-sky-100 font-mono">
-                                    {dev.model_code}
-                                  </span>
+                        return (
+                          <div
+                            key={dev.id}
+                            onClick={() => setSelectedDeviceForControl(dev)}
+                            className="bg-white rounded-3xl p-4 sm:p-4.5 shadow-sm border border-slate-100 hover:border-sky-300 transition-all cursor-pointer group active:scale-[0.99]"
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-3">
+                                <div className="w-11 h-11 rounded-2xl bg-sky-50 flex items-center justify-center p-1.5 border border-sky-100 shadow-xs group-hover:scale-105 transition-transform flex-shrink-0">
+                                  {dev.icon ? (
+                                    <img
+                                      src={getAssetUrl('ICONS/' + dev.icon)}
+                                      alt={dev.custom_name}
+                                      className="w-full h-full object-contain"
+                                    />
+                                  ) : (
+                                    <span className="font-bold font-mono text-xs text-[#0284c7]">
+                                      {dev.model_code}
+                                    </span>
+                                  )}
                                 </div>
-                                <p className="text-xs text-slate-500 font-sans flex items-center gap-1.5 mt-0.5">
-                                  <span>{getRoomEmoji(roomLabel)}</span>
-                                  <span>{roomLabel}</span>
-                                  <span className="text-slate-300">&bull;</span>
-                                  <span className="font-mono text-slate-400">{dev.device_id || `NEURO-${dev.model_code}-${dev.mac_4}`}</span>
-                                </p>
+                                <div>
+                                  <div className="flex items-center gap-2">
+                                    <h3 className="text-sm sm:text-base font-bold text-slate-900 group-hover:text-[#0284c7] transition-colors">
+                                      {dev.custom_name}
+                                    </h3>
+                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-50 text-[#0284c7] border border-sky-100 font-mono">
+                                      {dev.model_code}
+                                    </span>
+                                  </div>
+                                  <p className="text-xs text-slate-500 font-sans flex items-center gap-1.5 mt-0.5">
+                                    <span>{getRoomEmoji(roomLabel)}</span>
+                                    <span>{roomLabel}</span>
+                                    <span className="text-slate-300">&bull;</span>
+                                    <span className="font-mono text-slate-400">{dev.device_id || `NEURO-${dev.model_code}-${dev.mac_4}`}</span>
+                                  </p>
+                                </div>
                               </div>
+                              <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-600 border border-emerald-100 flex items-center gap-1">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                Online
+                              </span>
                             </div>
-                            <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-600 border border-emerald-100 flex items-center gap-1">
-                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                              Online
-                            </span>
-                          </div>
 
-                          <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
-                            <span>{dev.endpoints?.length || 0} Controls Available</span>
-                            <span className="text-[#0284c7] font-bold flex items-center gap-1 group-hover:translate-x-0.5 transition-transform">
-                              Tap to Open Layout &rarr;
-                            </span>
+                            <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+                              <span>{dev.endpoints?.length || 0} Controls Available</span>
+                              <span className="text-[#0284c7] font-bold flex items-center gap-1 group-hover:translate-x-0.5 transition-transform">
+                                Tap to Open Layout &rarr;
+                              </span>
+                            </div>
                           </div>
-                        </div>
-                      );
-                    })}
+                        );
+                      })}
+                    </div>
                   </div>
-                </div>
-              );
-            })()}
-
-            {/* Reference 2 / Reference 1 White Device Card */}
-            <QuickDevicesCard 
-              isLoggedIn={isSignedIn}
-              onAddDevice={() => handleProtectedAction(() => setIsAddDeviceOpen(true))} 
-              onExplore={() => handleProtectedAction(() => setActiveTab('explore'))} 
-            />
+                );
+              })()
+            )}
           </>
         )}
 
         {activeTab === 'devices' && (
           <>
-            {devices.length > 0 && (
+            {devices.length === 0 ? (
+              <QuickDevicesCard 
+                isLoggedIn={isSignedIn}
+                onAddDevice={() => handleProtectedAction(() => setIsAddDeviceOpen(true))} 
+                onExplore={() => handleProtectedAction(() => setActiveTab('explore'))} 
+              />
+            ) : (
               <div className="w-full max-w-sm sm:max-w-md md:max-w-lg space-y-3 pointer-events-auto mb-2">
                 <div className="flex items-center justify-between px-1">
                   <span className="text-xs font-bold uppercase tracking-wider text-slate-600 font-mono">
@@ -928,23 +935,103 @@ export function App() {
                 </div>
               </div>
             )}
-
-            <DevicesMenuCard 
-              onAddDevice={() => handleProtectedAction(() => setIsAddDeviceOpen(true))}
-              onSupportedDevices={() => handleProtectedAction()}
-            />
           </>
         )}
 
         {activeTab === 'explore' && (
-          <ExploreCardSlider />
+          <>
+            {devices.length === 0 ? (
+              <QuickDevicesCard 
+                isLoggedIn={isSignedIn}
+                onAddDevice={() => handleProtectedAction(() => setIsAddDeviceOpen(true))} 
+                onExplore={() => handleProtectedAction(() => setActiveTab('explore'))} 
+              />
+            ) : (
+              <ExploreCardSlider />
+            )}
+          </>
         )}
 
         {activeTab === 'routines' && (
-          <RoutinesMenuCard 
-            onCreateRoutine={() => handleProtectedAction()}
-            onLearnRoutines={() => handleProtectedAction()}
-          />
+          <>
+            {devices.length === 0 ? (
+              <QuickDevicesCard 
+                isLoggedIn={isSignedIn}
+                onAddDevice={() => handleProtectedAction(() => setIsAddDeviceOpen(true))} 
+                onExplore={() => handleProtectedAction(() => setActiveTab('explore'))} 
+              />
+            ) : (
+              <div className="w-full max-w-sm sm:max-w-md md:max-w-lg space-y-3 pointer-events-auto">
+                <div className="flex items-center justify-between px-1">
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-600 font-mono">
+                    Smart Automations ({rooms.length || 1} Rooms)
+                  </span>
+                  <button
+                    onClick={() => handleProtectedAction()}
+                    className="text-xs font-bold text-[#0284c7] hover:underline cursor-pointer"
+                  >
+                    + New Routine
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 gap-2.5">
+                  <div className="bg-white rounded-3xl p-4 sm:p-4.5 shadow-sm border border-slate-100 flex items-center justify-between group">
+                    <div className="flex items-center gap-3">
+                      <div className="w-11 h-11 rounded-2xl bg-amber-50 flex items-center justify-center border border-amber-100 flex-shrink-0">
+                        <Sun className="w-5 h-5 text-amber-500" />
+                      </div>
+                      <div>
+                        <h4 className="text-sm sm:text-base font-bold text-slate-900">Good Morning</h4>
+                        <p className="text-xs text-slate-500">Turn on morning lighting across all rooms</p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => handleProtectedAction()}
+                      className="px-3.5 py-1.5 rounded-full text-xs font-bold bg-sky-50 text-[#0284c7] border border-sky-100 hover:bg-sky-100 transition-colors cursor-pointer"
+                    >
+                      Run
+                    </button>
+                  </div>
+
+                  <div className="bg-white rounded-3xl p-4 sm:p-4.5 shadow-sm border border-slate-100 flex items-center justify-between group">
+                    <div className="flex items-center gap-3">
+                      <div className="w-11 h-11 rounded-2xl bg-indigo-50 flex items-center justify-center border border-indigo-100 flex-shrink-0">
+                        <Moon className="w-5 h-5 text-indigo-500" />
+                      </div>
+                      <div>
+                        <h4 className="text-sm sm:text-base font-bold text-slate-900">All Switches Off</h4>
+                        <p className="text-xs text-slate-500">Instantly switch off all {devices.length} device(s)</p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => handleProtectedAction()}
+                      className="px-3.5 py-1.5 rounded-full text-xs font-bold bg-sky-50 text-[#0284c7] border border-sky-100 hover:bg-sky-100 transition-colors cursor-pointer"
+                    >
+                      Run
+                    </button>
+                  </div>
+
+                  <div className="bg-white rounded-3xl p-4 sm:p-4.5 shadow-sm border border-slate-100 flex items-center justify-between group">
+                    <div className="flex items-center gap-3">
+                      <div className="w-11 h-11 rounded-2xl bg-emerald-50 flex items-center justify-center border border-emerald-100 flex-shrink-0">
+                        <Sparkles className="w-5 h-5 text-emerald-500" />
+                      </div>
+                      <div>
+                        <h4 className="text-sm sm:text-base font-bold text-slate-900">Away / Energy Saver</h4>
+                        <p className="text-xs text-slate-500">Conserve power across all connected endpoints</p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => handleProtectedAction()}
+                      className="px-3.5 py-1.5 rounded-full text-xs font-bold bg-sky-50 text-[#0284c7] border border-sky-100 hover:bg-sky-100 transition-colors cursor-pointer"
+                    >
+                      Run
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
         )}
 
         {activeTab === 'menu' && (
