@@ -69,8 +69,11 @@ export function App() {
   const [isPlusMenuOpen, setIsPlusMenuOpen] = useState(false);
   const [isDotsMenuOpen, setIsDotsMenuOpen] = useState(false);
 
-  // Room Sub-Tabs
+  // Room Sub-Tabs & Explore Banner State
   const [activeRoomTab, setActiveRoomTab] = useState<string>('all');
+  const [isExploreDismissed, setIsExploreDismissed] = useState(() => {
+    return typeof window !== 'undefined' && sessionStorage.getItem('neuro_explore_dismissed') === 'true';
+  });
 
   const [devices, setDevices] = useState<any[]>([]);
   const [selectedDeviceForControl, setSelectedDeviceForControl] = useState<any | null>(null);
@@ -738,6 +741,18 @@ export function App() {
                   </div>
                 </div>
               )
+            )}
+
+            {/* "Explore" cards slider with dismiss (cross) button */}
+            {!isExploreDismissed && (
+              <ExploreCardSlider 
+                onDismiss={() => {
+                  setIsExploreDismissed(true);
+                  if (typeof window !== 'undefined') {
+                    sessionStorage.setItem('neuro_explore_dismissed', 'true');
+                  }
+                }} 
+              />
             )}
 
             {/* When NO devices exist in home, show the Quick Devices onboarding card */}

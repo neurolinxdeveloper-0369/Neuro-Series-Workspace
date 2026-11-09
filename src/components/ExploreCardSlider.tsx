@@ -96,17 +96,17 @@ export const ExploreCardSlider = ({ onDismiss }: ExploreCardSliderProps = {}) =>
           }}
         />
 
-        {/* Top-Right Dismiss (X) button if onDismiss is provided */}
+        {/* Top-Right Dismiss (X) cross button */}
         {onDismiss && (
           <button
             onClick={(e) => {
               e.stopPropagation();
               onDismiss();
             }}
-            className="absolute top-3.5 right-3.5 z-20 p-1.5 rounded-full bg-slate-900/10 hover:bg-slate-900/20 text-slate-700 hover:text-slate-900 transition-colors cursor-pointer"
-            aria-label="Dismiss banner"
+            className="absolute top-3 right-3 z-30 w-7 h-7 rounded-full bg-slate-200/80 hover:bg-slate-300 text-slate-700 hover:text-slate-900 flex items-center justify-center transition-colors shadow-xs cursor-pointer active:scale-95"
+            aria-label="Dismiss Explore banner"
           >
-            <X className="w-4 h-4" strokeWidth={2.2} />
+            <X className="w-4 h-4" strokeWidth={2.5} />
           </button>
         )}
 
