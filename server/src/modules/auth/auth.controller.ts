@@ -20,6 +20,38 @@ authRouter.post('/google', async (req, res) => {
   }
 });
 
+// POST /api/auth/send-otp
+authRouter.post('/send-otp', async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({ success: false, error: 'Email address is required' });
+    }
+
+    const result = await authService.sendEmailOtp(email);
+    return res.json(result);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Failed to send OTP';
+    return res.status(400).json({ success: false, error: message });
+  }
+});
+
+// POST /api/auth/verify-otp
+authRouter.post('/verify-otp', async (req, res) => {
+  try {
+    const { email, otp, fullName } = req.body;
+    if (!email || !otp) {
+      return res.status(400).json({ success: false, error: 'Email and verification code are required' });
+    }
+
+    const result = await authService.verifyEmailOtp(email, otp, fullName);
+    return res.json({ success: true, ...result });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'OTP verification failed';
+    return res.status(400).json({ success: false, error: message });
+  }
+});
+
 // POST /api/auth/phone
 authRouter.post('/phone', async (req, res) => {
   try {

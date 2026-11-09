@@ -21,4 +21,11 @@ export const ENV = {
   MQTT_USERNAME: process.env.MQTT_USERNAME || 'neuro_device_user',
   MQTT_PASSWORD: process.env.MQTT_PASSWORD || 'NeuroSeriesEmqx2026!',
   MQTT_TOPIC_PREFIX: process.env.MQTT_TOPIC_PREFIX || 'neurolinx/devices',
+
+  // Email / SMTP Configuration
+  SMTP_HOST: process.env.SMTP_HOST || 'smtp.gmail.com',
+  SMTP_PORT: parseInt(process.env.SMTP_PORT || '587', 10),
+  SMTP_USER: process.env.SMTP_USER || '',
+  SMTP_PASS: process.env.SMTP_PASS || '',
+  SMTP_FROM: process.env.SMTP_FROM || 'Neuro Series <noreply@neurolinx.in>',
 };

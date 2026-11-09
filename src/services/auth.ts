@@ -66,6 +66,20 @@ export const authApi = {
     return response;
   },
 
+  // Request 6-digit verification code to email
+  sendEmailOtp: async (email: string): Promise<{ success: boolean; message: string; debugOtp?: string }> => {
+    return api.post<{ success: boolean; message: string; debugOtp?: string }>('/auth/send-otp', { email });
+  },
+
+  // Verify email OTP and authenticate
+  verifyEmailOtp: async (email: string, otp: string, fullName?: string): Promise<AuthResponse> => {
+    const response = await api.post<AuthResponse>('/auth/verify-otp', { email, otp, fullName });
+    if (response.success && response.token && response.user) {
+      authStorage.setSession(response.token, response.user);
+    }
+    return response;
+  },
+
   // Phone number login / registration
   loginWithPhone: async (phoneNumber: string, fullName?: string): Promise<AuthResponse> => {
     const response = await api.post<AuthResponse>('/auth/phone', { phoneNumber, fullName });

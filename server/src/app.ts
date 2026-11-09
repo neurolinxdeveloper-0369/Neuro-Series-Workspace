@@ -4,12 +4,16 @@ import helmet from 'helmet';
 import { authRouter } from './modules/auth/auth.controller.js';
 import { deviceRouter } from './modules/devices/device.controller.js';
 import { homeRouter } from './modules/homes/home.controller.js';
+import { authService } from './modules/auth/auth.service.js';
 import { homeService } from './modules/homes/home.service.js';
 import { deviceService } from './modules/devices/device.service.js';
 
 export const app = express();
 
 // Initialize tables on boot
+authService.ensureTablesExist().catch((err) => {
+  console.error('Error verifying auth tables on boot:', err);
+});
 homeService.ensureTableExists().catch((err) => {
   console.error('Error verifying tables on boot:', err);
 });
