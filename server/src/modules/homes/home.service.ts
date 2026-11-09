@@ -1,5 +1,5 @@
 import { db } from '../../config/database.js';
-import { encryptSecret } from '../../utils/crypto.js';
+import { encryptSecret, decryptSecret } from '../../utils/crypto.js';
 import jwt from 'jsonwebtoken';
 import { ENV } from '../../config/env.js';
 import type { Home, CreateHomeDTO, UpdateHomeDTO, Room, HomeInvitation } from './home.types.js';
@@ -121,6 +121,34 @@ export const homeService = {
       floor_count: Number(row.floor_count) || 1,
       latitude: row.latitude ? Number(row.latitude) : null,
       longitude: row.longitude ? Number(row.longitude) : null,
+    };
+  },
+
+  /**
+   * Get decrypted Wi-Fi credentials for hardware provisioning
+   */
+  getHomeWifiCredentials: async (homeId: string, ownerId: string): Promise<{ ssid: string; password: string }> => {
+    const query = `
+      SELECT default_wifi_ssid, wifi_password_encrypted
+      FROM homes
+      WHERE id = $1 AND owner_id = $2
+    `;
+    const result = await db.query(query, [homeId, ownerId]);
+    if (result.rows.length === 0) {
+      return { ssid: '', password: '' };
+    }
+    const row = result.rows[0];
+    let password = '';
+    if (row.wifi_password_encrypted) {
+      try {
+        password = decryptSecret(row.wifi_password_encrypted);
+      } catch {
+        password = '';
+      }
+    }
+    return {
+      ssid: row.default_wifi_ssid || '',
+      password: password,
     };
   },
 

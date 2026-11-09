@@ -24,6 +24,23 @@ homeRouter.get('/', async (req: AuthenticatedRequest, res: Response) => {
   }
 });
 
+// GET /api/homes/:id/wifi - Get saved home Wi-Fi credentials for hardware provisioning
+homeRouter.get('/:id/wifi', async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const userId = req.user?.id;
+    const homeId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    if (!userId || !homeId) {
+      return res.status(401).json({ success: false, error: 'Unauthorized' });
+    }
+
+    const wifi = await homeService.getHomeWifiCredentials(homeId, userId);
+    return res.json({ success: true, wifi });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Failed to fetch home Wi-Fi';
+    return res.status(500).json({ success: false, error: message });
+  }
+});
+
 // POST /api/homes - Create a new home
 homeRouter.post('/', async (req: AuthenticatedRequest, res: Response) => {
   try {

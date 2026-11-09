@@ -7,6 +7,7 @@ export interface Device {
   model_code: string;
   mac_4: string;
   custom_name: string;
+  icon?: string;
   device_id: string;
   ip_address?: string;
   firmware_version?: string;
@@ -41,6 +42,7 @@ export interface ProvisionInput {
   modelCode: string;
   mac4: string;
   customName: string;
+  icon?: string;
   wifiSsid: string;
   wifiPassword?: string;
   firmwareVersion?: string;

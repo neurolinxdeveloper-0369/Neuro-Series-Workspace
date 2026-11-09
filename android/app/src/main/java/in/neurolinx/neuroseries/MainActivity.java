@@ -99,6 +99,43 @@ public class MainActivity extends BridgeActivity {
         }
 
         @JavascriptInterface
+        public void connectToWifi(String ssid, String password) {
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    android.net.wifi.WifiNetworkSpecifier.Builder builder = new android.net.wifi.WifiNetworkSpecifier.Builder()
+                        .setSsid(ssid);
+                    if (password != null && !password.isEmpty()) {
+                        builder.setWpa2Passphrase(password);
+                    }
+                    android.net.wifi.WifiNetworkSpecifier specifier = builder.build();
+
+                    android.net.NetworkRequest request = new android.net.NetworkRequest.Builder()
+                        .addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
+                        .removeCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                        .setNetworkSpecifier(specifier)
+                        .build();
+
+                    ConnectivityManager cm = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
+                    if (cm != null) {
+                        cm.requestNetwork(request, new ConnectivityManager.NetworkCallback() {
+                            @Override
+                            public void onAvailable(Network network) {
+                                super.onAvailable(network);
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                                    cm.bindProcessToNetwork(network);
+                                }
+                            }
+                        });
+                        return;
+                    }
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+            openWifiSettings();
+        }
+
+        @JavascriptInterface
         public boolean bindProcessToWifi() {
             try {
                 ConnectivityManager cm = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);

@@ -68,6 +68,7 @@ class DeviceService {
 
       CREATE INDEX IF NOT EXISTS idx_devices_room_id ON devices(room_id);
       CREATE INDEX IF NOT EXISTS idx_devices_home_id ON devices(home_id);
+      ALTER TABLE devices ADD COLUMN IF NOT EXISTS icon VARCHAR(255);
 
       CREATE TABLE IF NOT EXISTS device_endpoints (
           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -233,8 +234,8 @@ class DeviceService {
     // 1. Insert Parent Device Record
     const deviceQuery = `
       INSERT INTO devices (
-        home_id, room_id, device_id, mac_4, model_code, custom_name, wifi_ssid, ip_address, firmware_version, is_online
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, true)
+        home_id, room_id, device_id, mac_4, model_code, custom_name, icon, wifi_ssid, ip_address, firmware_version, is_online
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, true)
       RETURNING *;
     `;
     const deviceValues = [
@@ -244,6 +245,7 @@ class DeviceService {
       mac4,
       modelCode,
       dto.customName.trim(),
+      dto.icon || null,
       dto.wifiSsid.trim(),
       dto.ipAddress || '192.168.4.1',
       dto.firmwareVersion || 'v1.2.4-neuro',

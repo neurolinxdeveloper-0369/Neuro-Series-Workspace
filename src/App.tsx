@@ -28,7 +28,7 @@ import { SettingsScreen } from './components/SettingsScreen';
 import { SetupHomeScreen } from './components/SetupHomeScreen';
 import { LocationQrModal } from './components/LocationQrModal';
 import { InviteMemberModal } from './components/InviteMemberModal';
-import { AddDeviceScreen } from './components/AddDeviceScreen';
+import { AddDeviceScreen, getRoomEmoji } from './components/AddDeviceScreen';
 import { NeuroLoader } from './components/NeuroLoader';
 import { getAssetUrl } from './utils/assets';
 import { authStorage, authApi, type UserProfile } from './services/auth';
@@ -759,15 +759,33 @@ export function App() {
                         >
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-3">
-                              <div className="w-10 h-10 rounded-2xl bg-sky-50 text-[#0284c7] flex items-center justify-center font-bold font-mono text-xs sm:text-sm group-hover:scale-105 transition-transform">
-                                {dev.model_code}
+                              <div className="w-11 h-11 rounded-2xl bg-sky-50 flex items-center justify-center p-1.5 border border-sky-100 shadow-xs group-hover:scale-105 transition-transform flex-shrink-0">
+                                {dev.icon ? (
+                                  <img
+                                    src={getAssetUrl('ICONS/' + dev.icon)}
+                                    alt={dev.custom_name}
+                                    className="w-full h-full object-contain"
+                                  />
+                                ) : (
+                                  <span className="font-bold font-mono text-xs text-[#0284c7]">
+                                    {dev.model_code}
+                                  </span>
+                                )}
                               </div>
                               <div>
-                                <h3 className="text-sm sm:text-base font-bold text-slate-900 group-hover:text-[#0284c7] transition-colors">
-                                  {dev.custom_name}
-                                </h3>
-                                <p className="text-xs text-slate-500 font-sans">
-                                  {roomLabel} &bull; <span className="font-mono text-slate-400">{dev.device_id || `NEURO-${dev.model_code}-${dev.mac_4}`}</span>
+                                <div className="flex items-center gap-2">
+                                  <h3 className="text-sm sm:text-base font-bold text-slate-900 group-hover:text-[#0284c7] transition-colors">
+                                    {dev.custom_name}
+                                  </h3>
+                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-50 text-[#0284c7] border border-sky-100 font-mono">
+                                    {dev.model_code}
+                                  </span>
+                                </div>
+                                <p className="text-xs text-slate-500 font-sans flex items-center gap-1.5 mt-0.5">
+                                  <span>{getRoomEmoji(roomLabel)}</span>
+                                  <span>{roomLabel}</span>
+                                  <span className="text-slate-300">&bull;</span>
+                                  <span className="font-mono text-slate-400">{dev.device_id || `NEURO-${dev.model_code}-${dev.mac_4}`}</span>
                                 </p>
                               </div>
                             </div>
@@ -829,15 +847,33 @@ export function App() {
                       >
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-2xl bg-sky-50 text-[#0284c7] flex items-center justify-center font-bold font-mono text-xs sm:text-sm group-hover:scale-105 transition-transform">
-                              {dev.model_code}
+                            <div className="w-11 h-11 rounded-2xl bg-sky-50 flex items-center justify-center p-1.5 border border-sky-100 shadow-xs group-hover:scale-105 transition-transform flex-shrink-0">
+                              {dev.icon ? (
+                                <img
+                                  src={getAssetUrl('ICONS/' + dev.icon)}
+                                  alt={dev.custom_name}
+                                  className="w-full h-full object-contain"
+                                />
+                              ) : (
+                                <span className="font-bold font-mono text-xs text-[#0284c7]">
+                                  {dev.model_code}
+                                </span>
+                              )}
                             </div>
                             <div>
-                              <h3 className="text-sm sm:text-base font-bold text-slate-900 group-hover:text-[#0284c7] transition-colors">
-                                {dev.custom_name}
-                              </h3>
-                              <p className="text-xs text-slate-500 font-sans">
-                                {roomLabel} &bull; <span className="font-mono text-slate-400">{dev.device_id || `NEURO-${dev.model_code}-${dev.mac_4}`}</span>
+                              <div className="flex items-center gap-2">
+                                <h3 className="text-sm sm:text-base font-bold text-slate-900 group-hover:text-[#0284c7] transition-colors">
+                                  {dev.custom_name}
+                                </h3>
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-50 text-[#0284c7] border border-sky-100 font-mono">
+                                  {dev.model_code}
+                                </span>
+                              </div>
+                              <p className="text-xs text-slate-500 font-sans flex items-center gap-1.5 mt-0.5">
+                                <span>{getRoomEmoji(roomLabel)}</span>
+                                <span>{roomLabel}</span>
+                                <span className="text-slate-300">&bull;</span>
+                                <span className="font-mono text-slate-400">{dev.device_id || `NEURO-${dev.model_code}-${dev.mac_4}`}</span>
                               </p>
                             </div>
                           </div>

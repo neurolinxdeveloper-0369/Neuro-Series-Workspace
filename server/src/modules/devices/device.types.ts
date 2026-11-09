@@ -25,6 +25,7 @@ export interface DeviceRecord {
   mac_4: string;
   model_code: string;
   custom_name: string;
+  icon?: string | null;
   wifi_ssid: string;
   rssi?: number | null;
   ip_address?: string | null;
@@ -52,6 +53,7 @@ export interface ProvisionDeviceDTO {
   modelCode: string;
   mac4: string;
   customName: string;
+  icon?: string;
   wifiSsid: string;
   wifiPassword?: string;
   firmwareVersion?: string;

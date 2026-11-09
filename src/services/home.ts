@@ -108,6 +108,16 @@ export const homeApi = {
     };
   },
 
+  // Get saved home Wi-Fi credentials for hardware provisioning
+  getHomeWifiCredentials: async (homeId: string): Promise<{ ssid: string; password: string }> => {
+    try {
+      const res = await api.get<{ success: boolean; wifi: { ssid: string; password: string } }>(`/homes/${homeId}/wifi`);
+      return res.success && res.wifi ? res.wifi : { ssid: '', password: '' };
+    } catch {
+      return { ssid: '', password: '' };
+    }
+  },
+
   // Get all rooms for a home
   getRooms: async (homeId: string): Promise<Room[]> => {
     const res = await api.get<{ success: boolean; rooms: Room[] }>(`/homes/${homeId}/rooms`);

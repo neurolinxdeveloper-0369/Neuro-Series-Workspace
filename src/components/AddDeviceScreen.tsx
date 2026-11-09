@@ -30,13 +30,18 @@ import {
   RefreshCw,
   Radio,
   Bluetooth,
-  Layers
+  Layers,
+  Eye,
+  EyeOff,
+  Image as ImageIcon
 } from 'lucide-react';
 import { Camera } from '@capacitor/camera';
 import { Capacitor } from '@capacitor/core';
 import { deviceApi, type Device } from '../services/device';
 import { homeApi, type Home, type Room } from '../services/home';
 import { DynamicDeviceLayout, resolveDeviceFromSsid } from './DynamicDeviceLayout';
+import { HARDWARE_ICONS } from '../utils/icons';
+import { getAssetUrl } from '../utils/assets';
 
 export interface DeviceModelItem {
   id: string;
@@ -46,6 +51,34 @@ export interface DeviceModelItem {
   ssidFormat: string;
   type: 'switch' | 'light' | 'thermostat' | 'fan' | 'sensor';
   icon: typeof Sliders;
+}
+
+export const ROOM_ICONS: Record<string, { label: string; emoji: string }> = {
+  'living room': { label: 'Living Room', emoji: '🛋️' },
+  'bedroom': { label: 'Bedroom', emoji: '🛏️' },
+  'master bedroom': { label: 'Master Bedroom', emoji: '🛏️' },
+  'guest bedroom': { label: 'Guest Bedroom', emoji: '🛏️' },
+  'kitchen': { label: 'Kitchen', emoji: '🍳' },
+  'dining room': { label: 'Dining Room', emoji: '🍽️' },
+  'dining': { label: 'Dining', emoji: '🍽️' },
+  'bathroom': { label: 'Bathroom', emoji: '🚿' },
+  'balcony': { label: 'Balcony', emoji: '🌅' },
+  'office': { label: 'Office', emoji: '💼' },
+  'study': { label: 'Study', emoji: '📚' },
+  'garage': { label: 'Garage', emoji: '🚗' },
+  'garden': { label: 'Garden', emoji: '🌿' },
+  'terrace': { label: 'Terrace', emoji: '🪴' },
+  'hall': { label: 'Hall', emoji: '🚪' },
+  'pooja': { label: 'Pooja Room', emoji: '🪔' },
+};
+
+export function getRoomEmoji(roomName?: string): string {
+  if (!roomName) return '🏠';
+  const lower = roomName.toLowerCase();
+  for (const [key, val] of Object.entries(ROOM_ICONS)) {
+    if (lower.includes(key)) return val.emoji;
+  }
+  return '🏠';
 }
 
 const CATEGORIES = [
@@ -189,6 +222,8 @@ export const AddDeviceScreen = ({
 
   // Provisioning Form State
   const [customDeviceName, setCustomDeviceName] = useState('');
+  const [selectedDeviceIcon, setSelectedDeviceIcon] = useState<string>('');
+  const [isIconPickerOpen, setIsIconPickerOpen] = useState(false);
   const [selectedRoomId, setSelectedRoomId] = useState('');
   const [selectedRoomName, setSelectedRoomName] = useState('Living room');
   const [newRoomName, setNewRoomName] = useState('');
@@ -197,7 +232,9 @@ export const AddDeviceScreen = ({
   // Wi-Fi Configuration
   const [wifiSsid, setWifiSsid] = useState('');
   const [wifiPassword, setWifiPassword] = useState('');
+  const [showWifiPassword, setShowWifiPassword] = useState(false);
   const [isCustomWifi, setIsCustomWifi] = useState(false);
+  const [hasLoadedSavedWifi, setHasLoadedSavedWifi] = useState(false);
 
   // Provisioning In-Progress & Hardware Response State
   const [isProvisioning, setIsProvisioning] = useState(false);
@@ -234,6 +271,7 @@ export const AddDeviceScreen = ({
     setMac4(m4);
     setGeneratedDeviceId(devId);
     setCustomDeviceName(`${model.name}`);
+    setSelectedDeviceIcon('');
     
     // Default room
     if (rooms.length > 0) {
@@ -246,13 +284,58 @@ export const AddDeviceScreen = ({
     setIsCreatingNewRoom(false);
     setNewRoomName('');
 
-    // Default Wi-Fi
+    // Default Wi-Fi credentials from Home or DB
     setWifiSsid(defaultWifiSsid || 'HomeWiFi');
     setWifiPassword('');
     setIsCustomWifi(false);
 
+    if (homeId) {
+      homeApi.getHomeWifiCredentials(homeId).then((creds) => {
+        if (creds.ssid) {
+          setWifiSsid(creds.ssid);
+          setHasLoadedSavedWifi(true);
+        }
+        if (creds.password) setWifiPassword(creds.password);
+      }).catch(() => {});
+    }
+
     stopCamera();
     setCurrentView('provision_form');
+  };
+
+  // Native Setup Flow triggered from Discovered Hotspot card ("Set up" button)
+  const handleSetUpDevice = async (dev: { model: DeviceModelItem; mac4: string; ssid: string }) => {
+    // 1. Android native Wi-Fi connection trigger to device AP
+    const androidBridge = typeof window !== 'undefined' ? (window as any).AndroidWifiBridge : null;
+    if (androidBridge?.connectToWifi) {
+      try {
+        androidBridge.connectToWifi(dev.ssid, '');
+      } catch (e) {
+        console.warn('connectToWifi bridge call error:', e);
+      }
+    }
+
+    // 2. Load saved Wi-Fi credentials from database
+    let dbSsid = defaultWifiSsid || 'HomeWiFi';
+    let dbPassword = '';
+    if (homeId) {
+      try {
+        const creds = await homeApi.getHomeWifiCredentials(homeId);
+        if (creds.ssid) {
+          dbSsid = creds.ssid;
+          setHasLoadedSavedWifi(true);
+        }
+        if (creds.password) dbPassword = creds.password;
+      } catch (e) {
+        console.warn('Failed to load DB credentials:', e);
+      }
+    }
+    setWifiSsid(dbSsid);
+    setWifiPassword(dbPassword);
+    setIsCustomWifi(false);
+
+    // 3. Launch configuration form
+    initiateDeviceFromSsid(dev.ssid);
   };
 
   const [manualSsidInput, setManualSsidInput] = useState('');
@@ -574,6 +657,7 @@ export const AddDeviceScreen = ({
         modelCode: activeModel.modelCode,
         mac4: mac4,
         customName: customDeviceName.trim() || activeModel.name,
+        icon: selectedDeviceIcon || undefined,
         wifiSsid: wifiSsid.trim(),
         wifiPassword: wifiPassword,
         firmwareVersion: 'v1.2.4-neuro',
@@ -618,6 +702,7 @@ export const AddDeviceScreen = ({
         model_code: activeModel.modelCode,
         mac_4: mac4,
         custom_name: customDeviceName.trim() || activeModel.name,
+        icon: selectedDeviceIcon || undefined,
         device_id: generatedDeviceId,
         ip_address: '192.168.4.1',
         firmware_version: 'v1.2.4-neuro',
@@ -645,6 +730,7 @@ export const AddDeviceScreen = ({
         model_code: activeModel.modelCode,
         mac_4: mac4,
         custom_name: customDeviceName.trim() || activeModel.name,
+        icon: selectedDeviceIcon || undefined,
         device_id: generatedDeviceId,
         ip_address: '192.168.4.1',
         firmware_version: 'v1.2.4-neuro',
@@ -1119,7 +1205,7 @@ export const AddDeviceScreen = ({
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold text-slate-700 uppercase tracking-wide flex items-center gap-1.5">
                     <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-                    Discovered Hotspot SSID
+                    Configuration Device
                   </span>
                   <span className="text-[11px] font-semibold text-[#0284c7] bg-sky-50 px-2 py-0.5 rounded-full">
                     Ready to Configure
@@ -1127,25 +1213,28 @@ export const AddDeviceScreen = ({
                 </div>
 
                 <div className="divide-y divide-slate-100">
-                  {nearbyFoundDevices.map((dev, idx) => (
-                    <div key={idx} className="py-2.5 flex items-center justify-between first:pt-1 last:pb-1">
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-xl bg-sky-50 flex items-center justify-center text-[#0284c7]">
-                          <Wifi className="w-4 h-4" />
+                  {nearbyFoundDevices.map((dev, idx) => {
+                    const DevIcon = dev.model.icon || Sliders;
+                    return (
+                      <div key={idx} className="py-2.5 flex items-center justify-between first:pt-1 last:pb-1">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-2xl bg-sky-50 flex items-center justify-center text-[#0284c7] border border-sky-100 shadow-xs">
+                            <DevIcon className="w-5 h-5 text-[#0284c7]" strokeWidth={2.2} />
+                          </div>
+                          <div>
+                            <div className="text-sm font-bold text-slate-900 font-mono">{dev.ssid}</div>
+                            <div className="text-xs text-slate-400">{dev.model.name} &bull; MAC: {dev.mac4}</div>
+                          </div>
                         </div>
-                        <div>
-                          <div className="text-sm font-bold text-slate-900 font-mono">{dev.ssid}</div>
-                          <div className="text-xs text-slate-400">{dev.model.name} &bull; MAC: {dev.mac4}</div>
-                        </div>
+                        <button
+                          onClick={() => handleSetUpDevice(dev)}
+                          className="px-4 py-1.5 rounded-full bg-[#0284c7] text-white text-xs font-bold hover:bg-[#0369a1] transition-colors cursor-pointer shadow-sm active:scale-95"
+                        >
+                          Set up
+                        </button>
                       </div>
-                      <button
-                        onClick={() => initiateDeviceFromSsid(dev.ssid)}
-                        className="px-4 py-1.5 rounded-full bg-[#0284c7] text-white text-xs font-bold hover:bg-[#0369a1] transition-colors cursor-pointer shadow-sm"
-                      >
-                        Set up
-                      </button>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -1298,13 +1387,29 @@ export const AddDeviceScreen = ({
               <div className="w-10" />
             </div>
 
-            {/* Device Info Badge matching Hotspot SSID format and ntxx-mac4-Code */}
+            {/* Device Info Badge with Device Icon and Change Icon option */}
             <div className="bg-white rounded-[28px] p-5 shadow-sm border border-slate-100/90 mb-4">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-2xl bg-sky-50 flex items-center justify-center text-[#0284c7]">
-                    <Wifi className="w-5 h-5" />
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsIconPickerOpen(true)}
+                    className="w-12 h-12 rounded-2xl bg-sky-50 flex items-center justify-center text-[#0284c7] border border-sky-100 shadow-xs relative group cursor-pointer hover:bg-sky-100/80 transition-colors"
+                    title="Tap to change device icon"
+                  >
+                    {selectedDeviceIcon ? (
+                      <img 
+                        src={getAssetUrl('ICONS/' + selectedDeviceIcon)} 
+                        alt="Selected Icon" 
+                        className="w-8 h-8 object-contain"
+                      />
+                    ) : (
+                      <activeModel.icon className="w-6 h-6 text-[#0284c7]" strokeWidth={2.2} />
+                    )}
+                    <span className="absolute -bottom-1 -right-1 w-5 h-5 bg-[#0284c7] text-white rounded-full flex items-center justify-center text-[9px] font-bold shadow-xs">
+                      ✎
+                    </span>
+                  </button>
                   <div>
                     <h2 className="text-sm sm:text-base font-bold text-slate-900">{activeModel.name}</h2>
                     <p className="text-xs font-mono text-slate-400">
@@ -1312,9 +1417,18 @@ export const AddDeviceScreen = ({
                     </p>
                   </div>
                 </div>
-                <span className="text-xs font-bold text-[#0284c7] bg-sky-50 px-2.5 py-1 rounded-full">
-                  {activeModel.modelCode}
-                </span>
+                <div className="flex flex-col items-end gap-1">
+                  <span className="text-xs font-bold text-[#0284c7] bg-sky-50 px-2.5 py-1 rounded-full border border-sky-100">
+                    {activeModel.modelCode}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setIsIconPickerOpen(true)}
+                    className="text-[11px] font-bold text-[#0284c7] hover:underline cursor-pointer"
+                  >
+                    Change Icon
+                  </button>
+                </div>
               </div>
 
               <div className="border-t border-slate-100 pt-3 flex items-center justify-between text-xs">
@@ -1350,13 +1464,24 @@ export const AddDeviceScreen = ({
                 <label className="text-xs font-bold text-slate-600 block mb-1">
                   Device Name
                 </label>
-                <input
-                  type="text"
-                  value={customDeviceName}
-                  onChange={(e) => setCustomDeviceName(e.target.value)}
-                  placeholder="e.g. Living Room 4-Gang"
-                  className="w-full px-3.5 py-2.5 rounded-2xl border border-slate-200 text-sm text-slate-800 outline-none focus:border-[#0284c7] font-sans"
-                />
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={customDeviceName}
+                    onChange={(e) => setCustomDeviceName(e.target.value)}
+                    placeholder="e.g. Living Room 4-Gang"
+                    className="flex-1 px-3.5 py-2.5 rounded-2xl border border-slate-200 text-sm text-slate-800 outline-none focus:border-[#0284c7] font-sans"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setIsIconPickerOpen(true)}
+                    className="px-3 py-2.5 rounded-2xl border border-slate-200 hover:border-sky-400 bg-slate-50 text-slate-700 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                    title="Select device icon"
+                  >
+                    <ImageIcon className="w-4 h-4 text-[#0284c7]" />
+                    <span>Icon</span>
+                  </button>
+                </div>
               </div>
 
               {/* Floor Selection (Visible if property has multiple floors) */}
@@ -1395,18 +1520,19 @@ export const AddDeviceScreen = ({
                 </div>
               )}
 
-              {/* Assign to Room */}
+              {/* Assign to Room with Room Icons */}
               <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="text-xs font-bold text-slate-600">
-                    Assign to Room {hasMultipleFloors ? `(${selectedFloor})` : ''}
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-bold text-slate-600 flex items-center gap-1.5">
+                    <span>Assign to Room</span>
+                    <span className="text-sm">{getRoomEmoji(selectedRoomName)}</span>
                   </label>
                   <button
                     type="button"
                     onClick={() => setIsCreatingNewRoom(!isCreatingNewRoom)}
                     className="text-xs font-semibold text-[#0284c7] hover:underline cursor-pointer"
                   >
-                    {isCreatingNewRoom ? 'Choose existing' : '+ Add new room'}
+                    {isCreatingNewRoom ? 'Choose from list' : '+ Add custom room'}
                   </button>
                 </div>
 
@@ -1423,63 +1549,156 @@ export const AddDeviceScreen = ({
                     autoFocus
                   />
                 ) : (
-                  <select
-                    value={selectedRoomId}
-                    onChange={(e) => {
-                      setSelectedRoomId(e.target.value);
-                      const found = rooms.find(r => r.id === e.target.value);
-                      if (found) setSelectedRoomName(found.name);
-                    }}
-                    className="w-full px-3.5 py-2.5 rounded-2xl border border-slate-200 text-sm text-slate-800 outline-none focus:border-[#0284c7] bg-white cursor-pointer font-sans"
-                  >
-                    {rooms.length === 0 && (
-                      <option value="">Living room (Default)</option>
+                  <div className="space-y-2">
+                    {/* Room selection chips with icons */}
+                    <div className="flex flex-wrap gap-1.5">
+                      {[
+                        { name: 'Living room', emoji: '🛋️' },
+                        { name: 'Bedroom', emoji: '🛏️' },
+                        { name: 'Kitchen', emoji: '🍳' },
+                        { name: 'Dining', emoji: '🍽️' },
+                        { name: 'Bathroom', emoji: '🚿' },
+                        { name: 'Balcony', emoji: '🌅' },
+                        { name: 'Office', emoji: '💼' },
+                      ].map((preset) => {
+                        const isSel = selectedRoomName.toLowerCase() === preset.name.toLowerCase();
+                        return (
+                          <button
+                            key={preset.name}
+                            type="button"
+                            onClick={() => {
+                              setSelectedRoomName(preset.name);
+                              const found = rooms.find(r => r.name.toLowerCase() === preset.name.toLowerCase());
+                              setSelectedRoomId(found ? found.id : '');
+                            }}
+                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                              isSel 
+                                ? 'bg-[#0284c7] text-white shadow-xs' 
+                                : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                            }`}
+                          >
+                            <span>{preset.emoji}</span>
+                            <span>{preset.name}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {/* If database has additional rooms */}
+                    {rooms.length > 0 && (
+                      <select
+                        value={selectedRoomId}
+                        onChange={(e) => {
+                          setSelectedRoomId(e.target.value);
+                          const found = rooms.find(r => r.id === e.target.value);
+                          if (found) setSelectedRoomName(found.name);
+                        }}
+                        className="w-full px-3.5 py-2 rounded-xl border border-slate-200 text-xs text-slate-700 outline-none focus:border-[#0284c7] bg-slate-50 cursor-pointer font-sans"
+                      >
+                        <option value="">Or select from existing rooms...</option>
+                        {rooms.map((rm) => (
+                          <option key={rm.id} value={rm.id}>
+                            {getRoomEmoji(rm.name)} {rm.name}
+                          </option>
+                        ))}
+                      </select>
                     )}
-                    {rooms.map((rm) => (
-                      <option key={rm.id} value={rm.id}>{rm.name}</option>
-                    ))}
-                  </select>
+                  </div>
                 )}
               </div>
 
-              {/* Wi-Fi Configuration Section */}
+              {/* Wi-Fi Details Choice (Saved from DB Table vs Add New SSID) */}
               <div className="border-t border-slate-100 pt-3">
-                <div className="flex items-center justify-between mb-1.5">
+                <div className="flex items-center justify-between mb-2">
                   <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
                     <Wifi className="w-3.5 h-3.5 text-[#0284c7]" />
-                    <span>Wi-Fi Network (2.4GHz)</span>
+                    <span>Send Wi-Fi Details (2.4GHz)</span>
                   </label>
                   <button
                     type="button"
                     onClick={() => setIsCustomWifi(!isCustomWifi)}
                     className="text-xs font-semibold text-[#0284c7] hover:underline cursor-pointer"
                   >
-                    {isCustomWifi ? 'Use Default' : '+ Add another'}
+                    {isCustomWifi ? 'Use Saved Wi-Fi' : '+ Add new SSID'}
                   </button>
                 </div>
 
-                {isCustomWifi ? (
-                  <input
-                    type="text"
-                    value={wifiSsid}
-                    onChange={(e) => setWifiSsid(e.target.value)}
-                    placeholder="Enter Wi-Fi SSID"
-                    className="w-full px-3.5 py-2.5 rounded-2xl border border-slate-200 text-sm text-slate-800 outline-none focus:border-[#0284c7] font-sans mb-2"
-                  />
+                {!isCustomWifi ? (
+                  /* Option 1: Saved Wi-Fi Credentials from Database Table */
+                  <div className="p-3.5 rounded-2xl bg-sky-50/70 border border-sky-100 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                        <span className="text-xs font-bold text-slate-800 font-mono">
+                          {wifiSsid || defaultWifiSsid || 'HomeWiFi'}
+                        </span>
+                      </div>
+                      <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded-full">
+                        {hasLoadedSavedWifi ? 'Saved in DB Table' : 'Home Default Wi-Fi'}
+                      </span>
+                    </div>
+
+                    <div className="relative flex items-center">
+                      <input
+                        type={showWifiPassword ? 'text' : 'password'}
+                        value={wifiPassword}
+                        onChange={(e) => setWifiPassword(e.target.value)}
+                        placeholder="Saved Wi-Fi password"
+                        className="w-full px-3 py-2 pr-10 rounded-xl bg-white border border-slate-200 text-xs font-mono text-slate-800 outline-none focus:border-[#0284c7]"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowWifiPassword(!showWifiPassword)}
+                        className="absolute right-2.5 text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+                        title={showWifiPassword ? 'Hide password' : 'Show password'}
+                      >
+                        {showWifiPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                      </button>
+                    </div>
+
+                    <p className="text-[11px] text-slate-500 leading-snug">
+                      Phone will send these credentials to the hardware device via <span className="font-mono text-[#0284c7] font-semibold">http://192.168.4.1/configure</span> to join your home network.
+                    </p>
+                  </div>
                 ) : (
-                  <div className="px-3.5 py-2.5 rounded-2xl bg-slate-50 border border-slate-100 text-sm font-semibold text-slate-800 mb-2 flex items-center justify-between">
-                    <span>{wifiSsid || 'HomeWiFi'}</span>
-                    <span className="text-[11px] text-slate-400 font-normal">2.4 GHz</span>
+                  /* Option 2: Add New SSID */
+                  <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 space-y-2.5">
+                    <div>
+                      <span className="text-[11px] font-bold text-slate-600 block mb-1">
+                        New Wi-Fi SSID
+                      </span>
+                      <input
+                        type="text"
+                        value={wifiSsid}
+                        onChange={(e) => setWifiSsid(e.target.value)}
+                        placeholder="Enter Wi-Fi network name"
+                        className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-xs text-slate-800 outline-none focus:border-[#0284c7] font-sans"
+                      />
+                    </div>
+
+                    <div>
+                      <span className="text-[11px] font-bold text-slate-600 block mb-1">
+                        Wi-Fi Password
+                      </span>
+                      <div className="relative flex items-center">
+                        <input
+                          type={showWifiPassword ? 'text' : 'password'}
+                          value={wifiPassword}
+                          onChange={(e) => setWifiPassword(e.target.value)}
+                          placeholder="Enter Wi-Fi password"
+                          className="w-full px-3 py-2 pr-10 rounded-xl bg-white border border-slate-200 text-xs font-mono text-slate-800 outline-none focus:border-[#0284c7]"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowWifiPassword(!showWifiPassword)}
+                          className="absolute right-2.5 text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+                        >
+                          {showWifiPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 )}
-
-                <input
-                  type="password"
-                  value={wifiPassword}
-                  onChange={(e) => setWifiPassword(e.target.value)}
-                  placeholder="Enter Wi-Fi password"
-                  className="w-full px-3.5 py-2.5 rounded-2xl border border-slate-200 text-sm text-slate-800 outline-none focus:border-[#0284c7] font-sans"
-                />
               </div>
 
             </div>
@@ -1498,9 +1717,71 @@ export const AddDeviceScreen = ({
                   <span>Configuring Hardware (192.168.4.1)...</span>
                 </>
               ) : (
-                <span>Continue</span>
+                <span>Send Wi-Fi Details & Finish Setup</span>
               )}
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* ------------------- MODAL: DEVICE ICON PICKER ------------------- */}
+      {isIconPickerOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in select-none">
+          <div className="w-full max-w-md bg-white rounded-3xl p-5 shadow-2xl border border-slate-100 max-h-[85vh] flex flex-col">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-3">
+              <div>
+                <h3 className="text-base font-bold text-slate-900">Select Device Icon</h3>
+                <p className="text-xs text-slate-400">Choose an icon for this hardware node</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsIconPickerOpen(false)}
+                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-600 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between pb-2 mb-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedDeviceIcon('');
+                  setIsIconPickerOpen(false);
+                }}
+                className="text-xs font-bold text-[#0284c7] hover:underline cursor-pointer"
+              >
+                Reset to Default Model Icon
+              </button>
+              <span className="text-[11px] text-slate-400 font-mono">
+                {HARDWARE_ICONS.length} Icons available
+              </span>
+            </div>
+
+            <div className="flex-1 overflow-y-auto grid grid-cols-4 sm:grid-cols-5 gap-3 p-1">
+              {HARDWARE_ICONS.slice(0, 60).map((iconFile, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => {
+                    setSelectedDeviceIcon(iconFile);
+                    setIsIconPickerOpen(false);
+                  }}
+                  className={`aspect-square rounded-2xl p-2 flex flex-col items-center justify-center transition-all cursor-pointer border ${
+                    selectedDeviceIcon === iconFile
+                      ? 'bg-sky-50 border-[#0284c7] ring-2 ring-sky-400/40'
+                      : 'bg-slate-50 border-slate-200/70 hover:border-sky-300 hover:bg-sky-50/50'
+                  }`}
+                >
+                  <img
+                    src={getAssetUrl('ICONS/' + iconFile)}
+                    alt={`Icon ${idx}`}
+                    className="w-9 h-9 object-contain"
+                    loading="lazy"
+                  />
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       )}
