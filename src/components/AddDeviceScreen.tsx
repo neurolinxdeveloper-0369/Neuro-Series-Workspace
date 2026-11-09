@@ -235,6 +235,57 @@ export const AddDeviceScreen = ({
   const [showWifiPassword, setShowWifiPassword] = useState(false);
   const [isCustomWifi, setIsCustomWifi] = useState(false);
   const [hasLoadedSavedWifi, setHasLoadedSavedWifi] = useState(false);
+  const [savedDbWifi, setSavedDbWifi] = useState<{ ssid: string; password?: string } | null>(null);
+
+  // Scanned 2.4GHz Wi-Fi networks near the device (Home Router selection)
+  const [scanned24GhzNetworks, setScanned24GhzNetworks] = useState<Array<{
+    ssid: string;
+    bssid: string;
+    level: number;
+    frequency?: number;
+  }>>([]);
+  const [isScanningWifi, setIsScanningWifi] = useState(false);
+
+  const scanAll24GhzNetworks = () => {
+    const androidBridge = typeof window !== 'undefined' ? (window as any).AndroidWifiBridge : null;
+    if (androidBridge?.getScanResults) {
+      setIsScanningWifi(true);
+      try {
+        const scanJson = androidBridge.getScanResults();
+        if (scanJson) {
+          const results = JSON.parse(scanJson);
+          if (Array.isArray(results)) {
+            // Filter ALL 2.4GHz Wi-Fi networks (approx 2400 - 2500 MHz, or undefined frequency)
+            // Exclude empty SSIDs and hardware AP hotspots starting with or containing capital NEURO
+            const filtered = results.filter((r: any) => {
+              if (!r.ssid || !r.ssid.trim()) return false;
+              if (r.ssid === '<unknown ssid>') return false;
+              if (r.ssid.startsWith('NEURO') || r.ssid.includes('NEURO')) return false;
+              if (r.frequency && (r.frequency < 2400 || r.frequency > 2500)) return false;
+              return true;
+            });
+
+            // Deduplicate by SSID, keeping strongest signal strength (level)
+            const map = new Map<string, any>();
+            for (const item of filtered) {
+              const existing = map.get(item.ssid);
+              if (!existing || (item.level && item.level > existing.level)) {
+                map.set(item.ssid, item);
+              }
+            }
+
+            // Sort by signal strength descending (all 2.4GHz networks, no top 5 truncation)
+            const list = Array.from(map.values()).sort((a, b) => (b.level || -100) - (a.level || -100));
+            setScanned24GhzNetworks(list);
+          }
+        }
+      } catch (err) {
+        console.warn('Wi-Fi 2.4GHz scan error:', err);
+      } finally {
+        setTimeout(() => setIsScanningWifi(false), 400);
+      }
+    }
+  };
 
   // Provisioning In-Progress & Hardware Response State
   const [isProvisioning, setIsProvisioning] = useState(false);
@@ -380,6 +431,7 @@ export const AddDeviceScreen = ({
         if (creds.ssid) {
           setWifiSsid(creds.ssid);
           setHasLoadedSavedWifi(true);
+          setSavedDbWifi({ ssid: creds.ssid, password: creds.password || '' });
         }
         if (creds.password) setWifiPassword(creds.password);
       }).catch(() => {});
@@ -410,6 +462,7 @@ export const AddDeviceScreen = ({
         if (creds.ssid) {
           dbSsid = creds.ssid;
           setHasLoadedSavedWifi(true);
+          setSavedDbWifi({ ssid: creds.ssid, password: creds.password || '' });
         }
         if (creds.password) dbPassword = creds.password;
       } catch (e) {
@@ -553,6 +606,13 @@ export const AddDeviceScreen = ({
     }
   }, [isOpen, currentView, activeNearbyMode]);
 
+  // Auto-scan all 2.4GHz Wi-Fi networks when entering provision form
+  useEffect(() => {
+    if (isOpen && currentView === 'provision_form') {
+      scanAll24GhzNetworks();
+    }
+  }, [isOpen, currentView]);
+
   const runNearbyScan = async (mode: 'auto' | 'ap' | 'ble') => {
     setIsNearbyScanning(true);
     setNearbyFoundDevices([]);
@@ -603,10 +663,10 @@ export const AddDeviceScreen = ({
           androidBridge.bindProcessToWifi();
         } catch {}
 
-        // Check if phone is already connected to a NEURO device Wi-Fi
+        // Check if phone is already connected to a NEURO device Wi-Fi (Strictly capital NEURO)
         try {
           const connectedSsid = androidBridge.getConnectedSsid?.();
-          if (connectedSsid && (connectedSsid.toUpperCase().startsWith('NEURO') || connectedSsid.toUpperCase().includes('NEURO'))) {
+          if (connectedSsid && (connectedSsid.startsWith('NEURO') || connectedSsid.includes('NEURO'))) {
             const resolved = resolveDeviceFromSsid(connectedSsid);
             const matched = DEVICE_CATALOG.find(d => d.modelCode.toUpperCase() === resolved.modelCode.toUpperCase()) || activeModel;
             setNearbyFoundDevices([{
@@ -621,14 +681,24 @@ export const AddDeviceScreen = ({
           }
         } catch {}
 
-        // Check native Wi-Fi scan results from phone's Wi-Fi list
+        // Check native Wi-Fi scan results from phone's Wi-Fi list (Strictly capital NEURO only)
         try {
           const scanJson = androidBridge.getScanResults?.();
           if (scanJson) {
             const results = JSON.parse(scanJson);
-            const neuroSsids = results.filter((r: any) => r.ssid && (r.ssid.toUpperCase().startsWith('NEURO') || r.ssid.toUpperCase().includes('NEURO')));
+            // Strictly case-sensitive: ONLY SSIDs containing or starting with capital "NEURO"
+            const neuroSsids = results.filter((r: any) => r.ssid && (r.ssid.startsWith('NEURO') || r.ssid.includes('NEURO')));
             if (neuroSsids.length > 0) {
-              const discovered = neuroSsids.map((r: any) => {
+              // Deduplicate by SSID, keeping the strongest RSSI (level)
+              const devMap = new Map<string, any>();
+              for (const r of neuroSsids) {
+                const existing = devMap.get(r.ssid);
+                if (!existing || (r.level && r.level > existing.level)) {
+                  devMap.set(r.ssid, r);
+                }
+              }
+              const uniqueNeuroSsids = Array.from(devMap.values()).sort((a, b) => (b.level || -100) - (a.level || -100));
+              const discovered = uniqueNeuroSsids.map((r: any) => {
                 const resolved = resolveDeviceFromSsid(r.ssid);
                 const matched = DEVICE_CATALOG.find(d => d.modelCode.toUpperCase() === resolved.modelCode.toUpperCase()) || activeModel;
                 return {
@@ -1710,98 +1780,215 @@ export const AddDeviceScreen = ({
                 )}
               </div>
 
-              {/* Wi-Fi Details Choice (Saved from DB Table vs Add New SSID) */}
-              <div className="border-t border-slate-100 pt-3">
-                <div className="flex items-center justify-between mb-2">
+              {/* Wi-Fi Details Choice (All 2.4GHz Networks / Saved DB Wi-Fi / Manual SSID) */}
+              <div className="border-t border-slate-100 pt-3 space-y-3">
+                <div className="flex items-center justify-between">
                   <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
                     <Wifi className="w-3.5 h-3.5 text-[#0284c7]" />
                     <span>Send Wi-Fi Details (2.4GHz)</span>
                   </label>
-                  <button
-                    type="button"
-                    onClick={() => setIsCustomWifi(!isCustomWifi)}
-                    className="text-xs font-semibold text-[#0284c7] hover:underline cursor-pointer"
-                  >
-                    {isCustomWifi ? 'Use Saved Wi-Fi' : '+ Add new SSID'}
-                  </button>
-                </div>
-
-                {!isCustomWifi ? (
-                  /* Option 1: Saved Wi-Fi Credentials from Database Table */
-                  <div className="p-3.5 rounded-2xl bg-sky-50/70 border border-sky-100 space-y-2.5">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                        <span className="text-xs font-bold text-slate-800 font-mono">
-                          {wifiSsid || defaultWifiSsid || 'HomeWiFi'}
-                        </span>
-                      </div>
-                      <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded-full">
-                        {hasLoadedSavedWifi ? 'Saved in DB Table' : 'Home Default Wi-Fi'}
-                      </span>
-                    </div>
-
-                    <div className="relative flex items-center">
-                      <input
-                        type={showWifiPassword ? 'text' : 'password'}
-                        value={wifiPassword}
-                        onChange={(e) => setWifiPassword(e.target.value)}
-                        placeholder="Saved Wi-Fi password"
-                        className="w-full px-3 py-2 pr-10 rounded-xl bg-white border border-slate-200 text-xs font-mono text-slate-800 outline-none focus:border-[#0284c7]"
-                      />
+                  <div className="flex items-center gap-2">
+                    {typeof window !== 'undefined' && (window as any).AndroidWifiBridge && (
                       <button
                         type="button"
-                        onClick={() => setShowWifiPassword(!showWifiPassword)}
-                        className="absolute right-2.5 text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
-                        title={showWifiPassword ? 'Hide password' : 'Show password'}
+                        onClick={scanAll24GhzNetworks}
+                        disabled={isScanningWifi}
+                        className="text-[11px] font-semibold text-[#0284c7] hover:text-[#0369a1] flex items-center gap-1 cursor-pointer"
+                        title="Re-scan 2.4GHz Wi-Fi networks"
                       >
-                        {showWifiPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                        <RefreshCw className={`w-3 h-3 ${isScanningWifi ? 'animate-spin' : ''}`} />
+                        <span>Refresh</span>
                       </button>
-                    </div>
-
-                    <p className="text-[11px] text-slate-500 leading-snug">
-                      Phone will send these credentials to the hardware device via <span className="font-mono text-[#0284c7] font-semibold">http://192.168.4.1/configure</span> to join your home network.
-                    </p>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setIsCustomWifi(!isCustomWifi)}
+                      className="text-[11px] font-semibold text-slate-500 hover:text-slate-800 hover:underline cursor-pointer"
+                    >
+                      {isCustomWifi ? 'Show Networks' : '+ Enter Manually'}
+                    </button>
                   </div>
-                ) : (
-                  /* Option 2: Add New SSID */
-                  <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 space-y-2.5">
+                </div>
+
+                {/* If User clicked Enter Manually */}
+                {isCustomWifi ? (
+                  <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 space-y-2.5 animate-in fade-in">
                     <div>
                       <span className="text-[11px] font-bold text-slate-600 block mb-1">
-                        New Wi-Fi SSID
+                        Wi-Fi Network SSID (2.4GHz)
                       </span>
                       <input
                         type="text"
                         value={wifiSsid}
                         onChange={(e) => setWifiSsid(e.target.value)}
-                        placeholder="Enter Wi-Fi network name"
+                        placeholder="Enter 2.4GHz Wi-Fi network name"
                         className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 text-xs text-slate-800 outline-none focus:border-[#0284c7] font-sans"
                       />
                     </div>
-
-                    <div>
-                      <span className="text-[11px] font-bold text-slate-600 block mb-1">
-                        Wi-Fi Password
-                      </span>
-                      <div className="relative flex items-center">
-                        <input
-                          type={showWifiPassword ? 'text' : 'password'}
-                          value={wifiPassword}
-                          onChange={(e) => setWifiPassword(e.target.value)}
-                          placeholder="Enter Wi-Fi password"
-                          className="w-full px-3 py-2 pr-10 rounded-xl bg-white border border-slate-200 text-xs font-mono text-slate-800 outline-none focus:border-[#0284c7]"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setShowWifiPassword(!showWifiPassword)}
-                          className="absolute right-2.5 text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
-                        >
-                          {showWifiPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                        </button>
+                  </div>
+                ) : (
+                  /* Available 2.4GHz Networks List + Saved DB Network */
+                  <div className="space-y-2.5">
+                    {/* Quick Saved Wi-Fi Chip (if available from DB) */}
+                    {hasLoadedSavedWifi && savedDbWifi?.ssid && (
+                      <div 
+                        onClick={() => {
+                          setWifiSsid(savedDbWifi.ssid);
+                          if (savedDbWifi.password) setWifiPassword(savedDbWifi.password);
+                        }}
+                        className={`p-3 rounded-2xl border transition-all cursor-pointer flex items-center justify-between ${
+                          wifiSsid === savedDbWifi.ssid 
+                            ? 'bg-sky-50/80 border-[#0284c7] shadow-xs' 
+                            : 'bg-slate-50 hover:bg-slate-100/70 border-slate-200'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <span className={`w-2.5 h-2.5 rounded-full ${wifiSsid === savedDbWifi.ssid ? 'bg-[#0284c7] ring-2 ring-sky-200' : 'bg-slate-300'}`} />
+                          <div>
+                            <span className="text-xs font-bold text-slate-800 font-mono block">
+                              {savedDbWifi.ssid}
+                            </span>
+                            <span className="text-[10px] text-emerald-600 font-medium">
+                              Saved in Home Settings &bull; Auto-configured
+                            </span>
+                          </div>
+                        </div>
+                        <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded-full">
+                          Saved DB Wi-Fi
+                        </span>
                       </div>
-                    </div>
+                    )}
+
+                    {/* All Scanned 2.4GHz Networks List (Show ALL networks, not top 5) */}
+                    {scanned24GhzNetworks.length > 0 ? (
+                      <div>
+                        <div className="flex items-center justify-between px-1 mb-1.5">
+                          <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wide">
+                            All Nearby 2.4GHz Networks ({scanned24GhzNetworks.length})
+                          </span>
+                          <span className="text-[10px] text-slate-400 font-medium">
+                            Select router to connect
+                          </span>
+                        </div>
+                        <div className="max-h-52 overflow-y-auto rounded-2xl border border-slate-200 bg-white divide-y divide-slate-100 shadow-xs">
+                          {scanned24GhzNetworks.map((net, idx) => {
+                            const isSelected = wifiSsid === net.ssid;
+                            const isStrong = (net.level || -100) > -65;
+                            const isMedium = (net.level || -100) > -78;
+                            return (
+                              <button
+                                key={`${net.ssid}-${idx}`}
+                                type="button"
+                                onClick={() => {
+                                  setWifiSsid(net.ssid);
+                                  if (savedDbWifi?.ssid === net.ssid && savedDbWifi?.password) {
+                                    setWifiPassword(savedDbWifi.password);
+                                  }
+                                }}
+                                className={`w-full px-3.5 py-2.5 flex items-center justify-between text-left transition-colors cursor-pointer ${
+                                  isSelected ? 'bg-sky-50/70 font-semibold text-slate-900' : 'hover:bg-slate-50 text-slate-700'
+                                }`}
+                              >
+                                <div className="flex items-center gap-2.5 min-w-0 pr-2">
+                                  <Wifi className={`w-4 h-4 flex-shrink-0 ${
+                                    isSelected 
+                                      ? 'text-[#0284c7]' 
+                                      : isStrong 
+                                        ? 'text-emerald-500' 
+                                        : isMedium 
+                                          ? 'text-sky-500' 
+                                          : 'text-slate-400'
+                                  }`} />
+                                  <div className="min-w-0">
+                                    <span className="text-xs font-mono font-bold block truncate">
+                                      {net.ssid}
+                                    </span>
+                                    <span className="text-[10px] text-slate-400 block">
+                                      Signal: {net.level || -60} dBm &bull; 2.4GHz
+                                    </span>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-2 flex-shrink-0">
+                                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-sky-100/60 text-[#0284c7]">
+                                    2.4GHz
+                                  </span>
+                                  {isSelected ? (
+                                    <span className="w-5 h-5 rounded-full bg-[#0284c7] text-white flex items-center justify-center">
+                                      <Check className="w-3 h-3" strokeWidth={3} />
+                                    </span>
+                                  ) : (
+                                    <span className="w-4 h-4 rounded-full border border-slate-300" />
+                                  )}
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ) : (
+                      /* Fallback when scan results haven't loaded yet or on web */
+                      <div className="p-3.5 rounded-2xl bg-sky-50/70 border border-sky-100 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                            <span className="text-xs font-bold text-slate-800 font-mono">
+                              {wifiSsid || defaultWifiSsid || 'HomeWiFi'}
+                            </span>
+                          </div>
+                          <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded-full">
+                            {hasLoadedSavedWifi ? 'Saved in DB Table' : 'Home Default Wi-Fi'}
+                          </span>
+                        </div>
+                        {typeof window !== 'undefined' && (window as any).AndroidWifiBridge && (
+                          <button
+                            type="button"
+                            onClick={scanAll24GhzNetworks}
+                            disabled={isScanningWifi}
+                            className="text-xs font-semibold text-[#0284c7] hover:underline flex items-center gap-1.5 pt-1 cursor-pointer"
+                          >
+                            <RefreshCw className={`w-3.5 h-3.5 ${isScanningWifi ? 'animate-spin' : ''}`} />
+                            <span>Scan for 2.4GHz Wi-Fi networks</span>
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
+
+                {/* Wi-Fi Password Input (shared for both selected & custom SSID) */}
+                <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-slate-700">
+                      Wi-Fi Password for <span className="font-mono text-[#0284c7]">{wifiSsid || 'Selected Network'}</span>
+                    </span>
+                    {hasLoadedSavedWifi && savedDbWifi?.password && wifiPassword === savedDbWifi.password && (
+                      <span className="text-[10px] font-semibold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">
+                        Saved password
+                      </span>
+                    )}
+                  </div>
+                  <div className="relative flex items-center">
+                    <input
+                      type={showWifiPassword ? 'text' : 'password'}
+                      value={wifiPassword}
+                      onChange={(e) => setWifiPassword(e.target.value)}
+                      placeholder="Enter Wi-Fi password"
+                      className="w-full px-3 py-2 pr-10 rounded-xl bg-white border border-slate-200 text-xs font-mono text-slate-800 outline-none focus:border-[#0284c7]"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowWifiPassword(!showWifiPassword)}
+                      className="absolute right-2.5 text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+                      title={showWifiPassword ? 'Hide password' : 'Show password'}
+                    >
+                      {showWifiPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
+                </div>
+
+                <p className="text-[11px] text-slate-500 leading-snug px-1">
+                  Phone will send these credentials to the hardware device via <span className="font-mono text-[#0284c7] font-semibold">http://192.168.4.1/api/wifi/configure</span> to join your 2.4GHz home network.
+                </p>
               </div>
 
               {/* MQTT Broker Configuration Info */}

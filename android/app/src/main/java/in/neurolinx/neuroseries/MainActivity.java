@@ -66,6 +66,9 @@ public class MainActivity extends BridgeActivity {
             try {
                 WifiManager wm = (WifiManager) context.getApplicationContext().getSystemService(Context.WIFI_SERVICE);
                 if (wm != null) {
+                    try {
+                        wm.startScan();
+                    } catch (Exception ignored) {}
                     List<ScanResult> results = wm.getScanResults();
                     JSONArray arr = new JSONArray();
                     if (results != null) {
@@ -75,6 +78,7 @@ public class MainActivity extends BridgeActivity {
                                 obj.put("ssid", r.SSID);
                                 obj.put("bssid", r.BSSID);
                                 obj.put("level", r.level);
+                                obj.put("frequency", r.frequency);
                                 arr.put(obj);
                             }
                         }
