@@ -324,6 +324,136 @@ export function App() {
     }
   };
 
+  // Real-time Clock View with Date, Time, Day & Right-side User Details
+  const renderRealTimeHeader = () => (
+    <div 
+      className="w-full max-w-sm sm:max-w-md md:max-w-2xl lg:max-w-5xl rounded-3xl p-4 sm:p-5 shadow-xl select-none pointer-events-auto transition-all"
+      style={{
+        background: 'rgba(255, 255, 255, 0.88)',
+        backdropFilter: 'blur(24px) saturate(190%)',
+        WebkitBackdropFilter: 'blur(24px) saturate(190%)',
+        border: '1px solid rgba(255, 255, 255, 0.95)',
+        boxShadow: '0 20px 45px -10px rgba(0, 0, 0, 0.12), 0 4px 14px rgba(0, 0, 0, 0.04)',
+      }}
+    >
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        {/* Left: Clock Graphic + Live Time + Day + Date */}
+        <div className="flex items-center gap-3.5 sm:gap-4.5">
+          <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-gradient-to-tr from-[#0284c7] to-[#38bdf8] p-2.5 text-white flex items-center justify-center shadow-md flex-shrink-0">
+            <Clock className="w-6 h-6 sm:w-7 sm:h-7" strokeWidth={2.3} />
+          </div>
+          <div>
+            <div className="flex items-baseline gap-2">
+              <span className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight font-mono">
+                {timeFormatted}
+              </span>
+            </div>
+            <p className="text-xs sm:text-sm font-semibold text-slate-600 flex items-center gap-1.5 mt-0.5">
+              <Calendar className="w-3.5 h-3.5 text-[#0284c7]" />
+              <span>{dayName}, {dateFormatted}</span>
+              <span className="text-slate-300">&bull;</span>
+              <span className="text-[#0284c7] font-bold">{timeGreeting}</span>
+            </p>
+          </div>
+        </div>
+
+        {/* Right: User Details */}
+        <div className="flex items-center gap-3 p-2 sm:px-3.5 sm:py-2 rounded-2xl bg-slate-100/80 border border-slate-200/90 w-full sm:w-auto justify-between sm:justify-start">
+          <div className="flex items-center gap-3">
+            {currentUser?.avatar_url ? (
+              <img 
+                src={currentUser.avatar_url} 
+                alt="User Avatar" 
+                className="w-10 h-10 rounded-full object-cover border-2 border-[#0284c7]/40 shadow-xs flex-shrink-0"
+              />
+            ) : (
+              <div className="w-10 h-10 rounded-full bg-sky-100 border-2 border-sky-200 flex items-center justify-center text-[#0284c7] flex-shrink-0">
+                <User className="w-5 h-5" />
+              </div>
+            )}
+            <div>
+              <div className="flex items-center gap-1.5">
+                <h3 className="text-xs sm:text-sm font-bold text-slate-900 truncate max-w-[140px] sm:max-w-[180px]">
+                  {currentUser?.full_name || (isSignedIn ? 'User' : 'Guest Mode')}
+                </h3>
+                {isSignedIn && (
+                  <span className="px-1.5 py-0.5 rounded-md bg-sky-100 text-[#0284c7] text-[10px] font-bold">
+                    Owner
+                  </span>
+                )}
+              </div>
+              <p className="text-[11px] text-slate-500 font-sans truncate max-w-[150px] sm:max-w-[200px]">
+                {currentUser?.email || (isSignedIn ? 'Authenticated' : 'Tap to sign in')}
+              </p>
+              <div className="flex items-center gap-1.5 text-[10px] sm:text-[11px] text-slate-600 font-medium mt-0.5">
+                <span className="flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  {devices.length} {devices.length === 1 ? 'Device' : 'Devices'}
+                </span>
+                <span className="text-slate-300">&bull;</span>
+                <span className="truncate max-w-[100px] text-slate-700 font-semibold">
+                  {activeHome?.name || 'Home'}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  // Room Sub-Tabs bar matching uploaded image
+  const renderRoomTabsBar = () => {
+    if (!isSignedIn) return null;
+    if (rooms.length === 0) {
+      return (
+        <div className="w-full max-w-sm sm:max-w-md md:max-w-2xl lg:max-w-5xl px-2 py-1 select-none pointer-events-auto">
+          <h2 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight font-sans">
+            Devices
+          </h2>
+        </div>
+      );
+    }
+    return (
+      <div className="w-full max-w-sm sm:max-w-md md:max-w-2xl lg:max-w-5xl flex items-center gap-3.5 px-2 py-0.5 select-none pointer-events-auto overflow-x-auto no-scrollbar">
+        <button 
+          onClick={() => {}}
+          className="p-1 rounded-full hover:bg-white/40 text-slate-700 transition-colors cursor-pointer flex-shrink-0"
+          aria-label="Search devices"
+        >
+          <Search className="w-5 h-5 text-slate-800" strokeWidth={2.4} />
+        </button>
+
+        <div className="flex items-center gap-5 text-sm sm:text-base font-bold tracking-tight whitespace-nowrap">
+          <button
+            onClick={() => setActiveRoomTab('all')}
+            className={`transition-colors cursor-pointer pb-0.5 ${
+              activeRoomTab === 'all' 
+                ? 'text-slate-900 border-b-2 border-slate-900 font-extrabold' 
+                : 'text-slate-400 hover:text-slate-600 font-medium'
+            }`}
+          >
+            All devices
+          </button>
+
+          {rooms.map((room) => (
+            <button
+              key={room.id}
+              onClick={() => setActiveRoomTab(room.name)}
+              className={`transition-colors cursor-pointer pb-0.5 ${
+                activeRoomTab === room.name 
+                  ? 'text-slate-900 border-b-2 border-slate-900 font-extrabold' 
+                  : 'text-slate-400 hover:text-slate-600 font-medium'
+              }`}
+            >
+              {room.name}
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="bg-app-container fixed inset-0 w-screen h-screen overflow-hidden select-none cursor-none font-sans">
       
@@ -710,129 +840,11 @@ export function App() {
       <main className="explore-slider-wrapper fixed inset-x-0 top-[4.5rem] sm:top-20 bottom-20 sm:bottom-6 overflow-y-auto overflow-x-hidden flex flex-col items-center justify-start pointer-events-none z-20 px-4 sm:px-6 sm:pl-24 pb-8 space-y-3.5">
         {activeTab === 'home' && (
           <>
-            {/* Clock View with Date, Time, Day & Right-side User Details */}
-            <div 
-              className="w-full max-w-sm sm:max-w-md md:max-w-2xl lg:max-w-5xl rounded-3xl p-4 sm:p-5 shadow-xl select-none pointer-events-auto transition-all"
-              style={{
-                background: 'rgba(255, 255, 255, 0.88)',
-                backdropFilter: 'blur(24px) saturate(190%)',
-                WebkitBackdropFilter: 'blur(24px) saturate(190%)',
-                border: '1px solid rgba(255, 255, 255, 0.95)',
-                boxShadow: '0 20px 45px -10px rgba(0, 0, 0, 0.12), 0 4px 14px rgba(0, 0, 0, 0.04)',
-              }}
-            >
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                {/* Left: Clock Graphic + Live Time + Day + Date */}
-                <div className="flex items-center gap-3.5 sm:gap-4.5">
-                  <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-gradient-to-tr from-[#0284c7] to-[#38bdf8] p-2.5 text-white flex items-center justify-center shadow-md flex-shrink-0">
-                    <Clock className="w-6 h-6 sm:w-7 sm:h-7" strokeWidth={2.3} />
-                  </div>
-                  <div>
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight font-mono">
-                        {timeFormatted}
-                      </span>
-                    </div>
-                    <p className="text-xs sm:text-sm font-semibold text-slate-600 flex items-center gap-1.5 mt-0.5">
-                      <Calendar className="w-3.5 h-3.5 text-[#0284c7]" />
-                      <span>{dayName}, {dateFormatted}</span>
-                      <span className="text-slate-300">&bull;</span>
-                      <span className="text-[#0284c7] font-bold">{timeGreeting}</span>
-                    </p>
-                  </div>
-                </div>
+            {/* Real-time Clock View & User Details */}
+            {renderRealTimeHeader()}
 
-                {/* Right: User Details */}
-                <div className="flex items-center gap-3 p-2 sm:px-3.5 sm:py-2 rounded-2xl bg-slate-100/80 border border-slate-200/90 w-full sm:w-auto justify-between sm:justify-start">
-                  <div className="flex items-center gap-3">
-                    {currentUser?.avatar_url ? (
-                      <img 
-                        src={currentUser.avatar_url} 
-                        alt="User Avatar" 
-                        className="w-10 h-10 rounded-full object-cover border-2 border-[#0284c7]/40 shadow-xs flex-shrink-0"
-                      />
-                    ) : (
-                      <div className="w-10 h-10 rounded-full bg-sky-100 border-2 border-sky-200 flex items-center justify-center text-[#0284c7] flex-shrink-0">
-                        <User className="w-5 h-5" />
-                      </div>
-                    )}
-                    <div>
-                      <div className="flex items-center gap-1.5">
-                        <h3 className="text-xs sm:text-sm font-bold text-slate-900 truncate max-w-[140px] sm:max-w-[180px]">
-                          {currentUser?.full_name || (isSignedIn ? 'User' : 'Guest Mode')}
-                        </h3>
-                        {isSignedIn && (
-                          <span className="px-1.5 py-0.5 rounded-md bg-sky-100 text-[#0284c7] text-[10px] font-bold">
-                            Owner
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-[11px] text-slate-500 font-sans truncate max-w-[150px] sm:max-w-[200px]">
-                        {currentUser?.email || (isSignedIn ? 'Authenticated' : 'Tap to sign in')}
-                      </p>
-                      <div className="flex items-center gap-1.5 text-[10px] sm:text-[11px] text-slate-600 font-medium mt-0.5">
-                        <span className="flex items-center gap-1">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                          {devices.length} {devices.length === 1 ? 'Device' : 'Devices'}
-                        </span>
-                        <span className="text-slate-300">&bull;</span>
-                        <span className="truncate max-w-[100px] text-slate-700 font-semibold">
-                          {activeHome?.name || 'Home'}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Reference 2 Room Sub-Tabs bar */}
-            {isSignedIn && (
-              rooms.length === 0 ? (
-                <div className="w-full max-w-sm sm:max-w-md md:max-w-2xl lg:max-w-5xl px-2 py-1 select-none pointer-events-auto">
-                  <h2 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight font-sans">
-                    Devices
-                  </h2>
-                </div>
-              ) : (
-                <div className="w-full max-w-sm sm:max-w-md md:max-w-2xl lg:max-w-5xl flex items-center gap-3.5 px-2 py-0.5 select-none pointer-events-auto overflow-x-auto no-scrollbar">
-                  <button 
-                    onClick={() => {}}
-                    className="p-1 rounded-full hover:bg-white/40 text-slate-700 transition-colors cursor-pointer flex-shrink-0"
-                    aria-label="Search devices"
-                  >
-                    <Search className="w-5 h-5 text-slate-800" strokeWidth={2.4} />
-                  </button>
-
-                  <div className="flex items-center gap-5 text-sm sm:text-base font-bold tracking-tight whitespace-nowrap">
-                    <button
-                      onClick={() => setActiveRoomTab('all')}
-                      className={`transition-colors cursor-pointer pb-0.5 ${
-                        activeRoomTab === 'all' 
-                          ? 'text-slate-900 border-b-2 border-slate-900 font-extrabold' 
-                          : 'text-slate-400 hover:text-slate-600 font-medium'
-                      }`}
-                    >
-                      All devices
-                    </button>
-
-                    {rooms.map((room) => (
-                      <button
-                        key={room.id}
-                        onClick={() => setActiveRoomTab(room.name)}
-                        className={`transition-colors cursor-pointer pb-0.5 ${
-                          activeRoomTab === room.name 
-                            ? 'text-slate-900 border-b-2 border-slate-900 font-extrabold' 
-                            : 'text-slate-400 hover:text-slate-600 font-medium'
-                        }`}
-                      >
-                        {room.name}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )
-            )}
+            {/* Room Sub-Tabs bar matching reference image */}
+            {renderRoomTabsBar()}
 
             {/* "Explore" cards slider with dismiss (cross) button */}
             {!isExploreDismissed && (
@@ -960,6 +972,12 @@ export function App() {
 
         {activeTab === 'devices' && (
           <>
+            {/* Real-time Clock View & User Details */}
+            {renderRealTimeHeader()}
+
+            {/* Room Sub-Tabs bar matching reference image */}
+            {renderRoomTabsBar()}
+
             {devices.length === 0 ? (
               <QuickDevicesCard 
                 isLoggedIn={isSignedIn}
@@ -967,79 +985,105 @@ export function App() {
                 onExplore={() => handleProtectedAction(() => setActiveTab('explore'))} 
               />
             ) : (
-              <div className="w-full max-w-sm sm:max-w-md md:max-w-2xl lg:max-w-5xl space-y-3 pointer-events-auto mb-2">
-                <div className="flex items-center justify-between px-1">
-                  <span className="text-xs font-bold uppercase tracking-wider text-slate-700 font-mono">
-                    All Hardware Devices ({devices.length})
-                  </span>
-                  <button
-                    onClick={() => handleProtectedAction(() => setIsAddDeviceOpen(true))}
-                    className="text-xs font-bold text-[#0284c7] hover:underline cursor-pointer"
-                  >
-                    + Add device
-                  </button>
-                </div>
+              (() => {
+                const filtered = activeRoomTab === 'all'
+                  ? devices
+                  : devices.filter(d => {
+                      const room = rooms.find(r => r.name === activeRoomTab);
+                      return room ? d.room_id === room.id : false;
+                    });
 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {devices.map((dev) => {
-                    const devRoom = rooms.find(r => r.id === dev.room_id);
-                    const roomLabel = devRoom ? devRoom.name : 'Living room';
-
-                    return (
-                      <div
-                        key={dev.id}
-                        onClick={() => setSelectedDeviceForControl(dev)}
-                        className="bg-white/90 backdrop-blur-md rounded-3xl p-4 sm:p-5 shadow-sm border border-slate-200/80 hover:border-sky-400 hover:shadow-md transition-all cursor-pointer group active:scale-[0.99]"
+                if (filtered.length === 0) {
+                  return (
+                    <div className="w-full max-w-sm sm:max-w-md md:max-w-2xl lg:max-w-5xl bg-white/80 backdrop-blur-md rounded-3xl p-6 text-center border border-white/80 shadow-xs pointer-events-auto">
+                      <p className="text-sm font-semibold text-slate-700">No devices in {activeRoomTab}</p>
+                      <p className="text-xs text-slate-400 mt-1">Assign devices to this room or add a new device</p>
+                      <button
+                        onClick={() => handleProtectedAction(() => setIsAddDeviceOpen(true))}
+                        className="mt-3.5 inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold bg-[#0284c7] text-white hover:bg-sky-600 transition-colors shadow-xs cursor-pointer"
                       >
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-3">
-                            <div className="w-12 h-12 rounded-2xl bg-sky-50 flex items-center justify-center p-2 border border-sky-100 shadow-xs group-hover:scale-105 transition-transform flex-shrink-0">
-                              {dev.icon ? (
-                                <img
-                                  src={getAssetUrl('ICONS/' + dev.icon)}
-                                  alt={dev.custom_name}
-                                  className="w-full h-full object-contain"
-                                />
-                              ) : (
-                                <span className="font-bold font-mono text-xs text-[#0284c7]">
-                                  {dev.model_code}
-                                </span>
-                              )}
-                            </div>
-                            <div>
-                              <div className="flex items-center gap-2">
-                                <h3 className="text-sm sm:text-base font-bold text-slate-900 group-hover:text-[#0284c7] transition-colors">
-                                  {dev.custom_name}
-                                </h3>
-                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-50 text-[#0284c7] border border-sky-100 font-mono">
-                                  {dev.model_code}
-                                </span>
+                        + Add device
+                      </button>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="w-full max-w-sm sm:max-w-md md:max-w-2xl lg:max-w-5xl space-y-3 pointer-events-auto mb-2">
+                    <div className="flex items-center justify-between px-1">
+                      <span className="text-xs font-bold uppercase tracking-wider text-slate-700 font-mono">
+                        Hardware Devices ({filtered.length})
+                      </span>
+                      <button
+                        onClick={() => handleProtectedAction(() => setIsAddDeviceOpen(true))}
+                        className="text-xs font-bold text-[#0284c7] hover:underline cursor-pointer"
+                      >
+                        + Add device
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                      {filtered.map((dev) => {
+                        const devRoom = rooms.find(r => r.id === dev.room_id);
+                        const roomLabel = devRoom ? devRoom.name : 'Living room';
+
+                        return (
+                          <div
+                            key={dev.id}
+                            onClick={() => setSelectedDeviceForControl(dev)}
+                            className="bg-white/90 backdrop-blur-md rounded-3xl p-4 sm:p-5 shadow-sm border border-slate-200/80 hover:border-sky-400 hover:shadow-md transition-all cursor-pointer group active:scale-[0.99]"
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-3">
+                                <div className="w-12 h-12 rounded-2xl bg-sky-50 flex items-center justify-center p-2 border border-sky-100 shadow-xs group-hover:scale-105 transition-transform flex-shrink-0">
+                                  {dev.icon ? (
+                                    <img
+                                      src={getAssetUrl('ICONS/' + dev.icon)}
+                                      alt={dev.custom_name}
+                                      className="w-full h-full object-contain"
+                                    />
+                                  ) : (
+                                    <span className="font-bold font-mono text-xs text-[#0284c7]">
+                                      {dev.model_code}
+                                    </span>
+                                  )}
+                                </div>
+                                <div>
+                                  <div className="flex items-center gap-2">
+                                    <h3 className="text-sm sm:text-base font-bold text-slate-900 group-hover:text-[#0284c7] transition-colors">
+                                      {dev.custom_name}
+                                    </h3>
+                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-50 text-[#0284c7] border border-sky-100 font-mono">
+                                      {dev.model_code}
+                                    </span>
+                                  </div>
+                                  <p className="text-xs text-slate-500 font-sans flex items-center gap-1.5 mt-0.5">
+                                    <span>{getRoomEmoji(roomLabel)}</span>
+                                    <span>{roomLabel}</span>
+                                    <span className="text-slate-300">&bull;</span>
+                                    <span className="font-mono text-slate-400">{dev.device_id || `NEURO-${dev.model_code}-${dev.mac_4}`}</span>
+                                  </p>
+                                </div>
                               </div>
-                              <p className="text-xs text-slate-500 font-sans flex items-center gap-1.5 mt-0.5">
-                                <span>{getRoomEmoji(roomLabel)}</span>
-                                <span>{roomLabel}</span>
-                                <span className="text-slate-300">&bull;</span>
-                                <span className="font-mono text-slate-400">{dev.device_id || `NEURO-${dev.model_code}-${dev.mac_4}`}</span>
-                              </p>
+                              <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-600 border border-emerald-100 flex items-center gap-1 flex-shrink-0">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                Online
+                              </span>
+                            </div>
+
+                            <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+                              <span>{dev.endpoints?.length || 0} Controls Available</span>
+                              <span className="text-[#0284c7] font-bold flex items-center gap-1 group-hover:translate-x-0.5 transition-transform">
+                                Open Switch Layout &rarr;
+                              </span>
                             </div>
                           </div>
-                          <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-600 border border-emerald-100 flex items-center gap-1 flex-shrink-0">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                            Online
-                          </span>
-                        </div>
-
-                        <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
-                          <span>{dev.endpoints?.length || 0} Controls Available</span>
-                          <span className="text-[#0284c7] font-bold flex items-center gap-1 group-hover:translate-x-0.5 transition-transform">
-                            Open Switch Layout &rarr;
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()
             )}
           </>
         )}
@@ -1060,6 +1104,9 @@ export function App() {
 
         {activeTab === 'routines' && (
           <>
+            {/* Real-time Clock View & User Details */}
+            {renderRealTimeHeader()}
+
             {devices.length === 0 ? (
               <QuickDevicesCard 
                 isLoggedIn={isSignedIn}
@@ -1067,7 +1114,7 @@ export function App() {
                 onExplore={() => handleProtectedAction(() => setActiveTab('explore'))} 
               />
             ) : (
-              <div className="w-full max-w-sm sm:max-w-md md:max-w-lg space-y-3 pointer-events-auto">
+              <div className="w-full max-w-sm sm:max-w-md md:max-w-2xl lg:max-w-4xl space-y-3 pointer-events-auto">
                 <div className="flex items-center justify-between px-1">
                   <span className="text-xs font-bold uppercase tracking-wider text-slate-600 font-mono">
                     Smart Automations ({rooms.length || 1} Rooms)
