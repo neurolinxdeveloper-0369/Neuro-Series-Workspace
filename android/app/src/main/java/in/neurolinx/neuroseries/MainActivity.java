@@ -160,6 +160,21 @@ public class MainActivity extends BridgeActivity {
         }
 
         @JavascriptInterface
+        public boolean unbindProcessFromNetwork() {
+            try {
+                ConnectivityManager cm = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
+                if (cm != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    boolean result = cm.bindProcessToNetwork(null);
+                    android.util.Log.d("AndroidWifiBridge", "unbindProcessFromNetwork result: " + result);
+                    return result;
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+            return false;
+        }
+
+        @JavascriptInterface
         public String httpPost(String urlString, String jsonBody) {
             android.util.Log.d("AndroidWifiBridge", "httpPost requested for: " + urlString);
             try {

@@ -312,13 +312,7 @@ export const AddDeviceScreen = ({
     mqttUsername: string;
     mqttPassword: string;
   }): Promise<{ success: boolean; ipAddress: string }> => {
-    // 1. If on native Android, ensure network is bound to device Wi-Fi
     const androidBridge = typeof window !== 'undefined' ? (window as any).AndroidWifiBridge : null;
-    if (androidBridge?.bindProcessToWifi) {
-      try {
-        androidBridge.bindProcessToWifi();
-      } catch {}
-    }
 
     const fullPayload = {
       // Exact Firmware Specification
@@ -916,24 +910,48 @@ export const AddDeviceScreen = ({
 
       const actualIp = hardwareRes.ipAddress || '192.168.4.1';
 
+      // Restore normal internet routing if process was bound to device Wi-Fi
+      const androidBridge = typeof window !== 'undefined' ? (window as any).AndroidWifiBridge : null;
+      if (androidBridge?.unbindProcessFromNetwork) {
+        try {
+          androidBridge.unbindProcessFromNetwork();
+        } catch {}
+      }
+
       // Step 2: Provision device in PostgreSQL backend
       // Creates parent record in `devices` with real IP and child endpoints in `device_endpoints`
       let provisionResult: any = null;
-      try {
-        provisionResult = await deviceApi.provisionDevice({
-          homeId: homeId || '00000000-0000-0000-0000-000000000000',
-          roomId: finalRoomId || null,
-          modelCode: activeModel.modelCode,
-          mac4: mac4,
-          customName: customDeviceName.trim() || activeModel.name,
-          icon: selectedDeviceIcon || undefined,
-          wifiSsid: wifiSsid.trim(),
-          wifiPassword: wifiPassword,
-          firmwareVersion: 'v1.2.4-neuro',
-          ipAddress: actualIp,
-        });
-      } catch (backendErr) {
-        console.warn('Backend device record creation warning:', backendErr);
+      let backendErrorDetail = '';
+      
+      for (let retry = 0; retry < 3; retry++) {
+        try {
+          if (retry > 0) {
+            await new Promise(r => setTimeout(r, 1500));
+          }
+          provisionResult = await deviceApi.provisionDevice({
+            homeId: homeId || '00000000-0000-0000-0000-000000000000',
+            roomId: finalRoomId || null,
+            modelCode: activeModel.modelCode,
+            mac4: mac4,
+            customName: customDeviceName.trim() || activeModel.name,
+            icon: selectedDeviceIcon || undefined,
+            wifiSsid: wifiSsid.trim(),
+            wifiPassword: wifiPassword,
+            firmwareVersion: 'v1.2.4-neuro',
+            ipAddress: actualIp,
+          });
+          if (provisionResult) {
+            console.log('✅ Device successfully saved to PostgreSQL database:', provisionResult);
+            break;
+          }
+        } catch (backendErr: any) {
+          backendErrorDetail = backendErr.message || String(backendErr);
+          console.warn(`Backend device record creation attempt ${retry + 1} failed:`, backendErr);
+        }
+      }
+
+      if (!provisionResult) {
+        console.warn('Backend provisioning could not complete after retries:', backendErrorDetail);
       }
 
       // Step 3: Hardware confirmation verified

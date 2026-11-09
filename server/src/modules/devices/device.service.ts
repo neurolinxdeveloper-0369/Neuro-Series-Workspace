@@ -242,11 +242,20 @@ class DeviceService {
     const modelCode = (dto.modelCode || 'TP8').toUpperCase();
     const deviceId = this.generateDeviceId(mac4, modelCode);
 
-    // 1. Insert Parent Device Record
+    // 1. Insert or Update Parent Device Record
     const deviceQuery = `
       INSERT INTO devices (
         home_id, room_id, device_id, mac_4, model_code, custom_name, icon, wifi_ssid, ip_address, firmware_version, is_online
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, true)
+      ON CONFLICT (device_id) DO UPDATE SET
+        home_id = EXCLUDED.home_id,
+        room_id = EXCLUDED.room_id,
+        custom_name = EXCLUDED.custom_name,
+        icon = EXCLUDED.icon,
+        wifi_ssid = EXCLUDED.wifi_ssid,
+        ip_address = EXCLUDED.ip_address,
+        is_online = true,
+        updated_at = CURRENT_TIMESTAMP
       RETURNING *;
     `;
     const deviceValues = [
@@ -275,6 +284,9 @@ class DeviceService {
         INSERT INTO device_endpoints (
           device_id, endpoint_index, name, endpoint_type, state, is_favorite
         ) VALUES ($1, $2, $3, $4, $5, false)
+        ON CONFLICT (device_id, endpoint_index) DO UPDATE SET
+          name = EXCLUDED.name,
+          endpoint_type = EXCLUDED.endpoint_type
         RETURNING *;
       `;
       const epResult = await db.query(epQuery, [
