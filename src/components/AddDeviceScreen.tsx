@@ -39,7 +39,7 @@ import { Camera } from '@capacitor/camera';
 import { Capacitor } from '@capacitor/core';
 import { deviceApi, type Device } from '../services/device';
 import { homeApi, type Home, type Room } from '../services/home';
-import { DynamicDeviceLayout, resolveDeviceFromSsid } from './DynamicDeviceLayout';
+import { resolveDeviceFromSsid } from './DynamicDeviceLayout';
 import { HARDWARE_ICONS } from '../utils/icons';
 import { getAssetUrl } from '../utils/assets';
 
@@ -1654,9 +1654,9 @@ export const AddDeviceScreen = ({
               <div className="w-10" />
             </div>
 
-            {/* Device Info Badge with Device Icon and Change Icon option */}
+            {/* Clean Device Name & Model Card */}
             <div className="bg-white rounded-[28px] p-5 shadow-sm border border-slate-100/90 mb-4">
-              <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-3">
                   <button
                     type="button"
@@ -1678,57 +1678,21 @@ export const AddDeviceScreen = ({
                     </span>
                   </button>
                   <div>
-                    <h2 className="text-sm sm:text-base font-bold text-slate-900">{activeModel.name}</h2>
-                    <p className="text-xs font-mono text-slate-400">
-                      Hotspot: <span className="text-slate-700 font-bold">{activeModel.ssidFormat.replace('[MAC4]', mac4)}</span>
-                    </p>
+                    <h2 className="text-base font-bold text-slate-900">{customDeviceName.trim() || activeModel.name}</h2>
+                    <span className="inline-flex items-center text-xs font-mono font-bold text-[#0284c7] bg-sky-50 px-2 py-0.5 rounded-md border border-sky-100 mt-0.5">
+                      Model: {activeModel.modelCode}
+                    </span>
                   </div>
                 </div>
-                <div className="flex flex-col items-end gap-1">
-                  <span className="text-xs font-bold text-[#0284c7] bg-sky-50 px-2.5 py-1 rounded-full border border-sky-100">
-                    {activeModel.modelCode}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setIsIconPickerOpen(true)}
-                    className="text-[11px] font-bold text-[#0284c7] hover:underline cursor-pointer"
-                  >
-                    Change Icon
-                  </button>
-                </div>
-              </div>
 
-              <div className="border-t border-slate-100 pt-3 flex items-center justify-between text-xs">
-                <span className="text-slate-500 font-medium">Generated Device ID:</span>
-                <span className="font-mono font-bold text-slate-800 bg-slate-50 px-2.5 py-1 rounded-xl border border-slate-100">
-                  {generatedDeviceId}
-                </span>
-              </div>
-            </div>
-
-            {/* Dynamic UI Layout Resolved from SSID before Room Assignment */}
-            <div className="mb-4 space-y-2">
-              <div className="flex items-center justify-between px-1">
-                <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                  <Sparkles className="w-3.5 h-3.5 text-sky-500" />
-                  <span>Hardware UI Layout (Resolved from SSID: {activeModel.ssidFormat.replace('[MAC4]', mac4)})</span>
-                </span>
-                <span className="text-[11px] font-mono text-[#0284c7] font-semibold bg-sky-50 px-2.5 py-0.5 rounded-full border border-sky-100">
+                <span className="text-xs font-bold text-[#0284c7] bg-sky-50 px-3 py-1 rounded-full border border-sky-100">
                   {activeModel.modelCode}
                 </span>
               </div>
-              <DynamicDeviceLayout 
-                modelCode={activeModel.modelCode} 
-                deviceName={customDeviceName}
-              />
-            </div>
 
-            {/* Form Inputs */}
-            <div className="bg-white rounded-[28px] p-5 shadow-sm border border-slate-100/90 space-y-4 mb-4">
-              
-              {/* Custom Device Name */}
+              {/* Custom Device Name Input */}
               <div>
-                <label className="text-xs font-bold text-slate-600 block mb-1">
+                <label className="text-xs font-bold text-slate-600 block mb-1.5">
                   Device Name
                 </label>
                 <div className="flex items-center gap-2">
@@ -1736,7 +1700,7 @@ export const AddDeviceScreen = ({
                     type="text"
                     value={customDeviceName}
                     onChange={(e) => setCustomDeviceName(e.target.value)}
-                    placeholder="e.g. Living Room 4-Gang"
+                    placeholder={`e.g. Living Room ${activeModel.modelCode}`}
                     className="flex-1 px-3.5 py-2.5 rounded-2xl border border-slate-200 text-sm text-slate-800 outline-none focus:border-[#0284c7] font-sans"
                   />
                   <button
@@ -1750,7 +1714,10 @@ export const AddDeviceScreen = ({
                   </button>
                 </div>
               </div>
+            </div>
 
+            {/* Room Assignment & Connection Inputs */}
+            <div className="bg-white rounded-[28px] p-5 shadow-sm border border-slate-100/90 space-y-4 mb-4">
               {/* Floor Selection (Visible if property has multiple floors) */}
               {hasMultipleFloors && (
                 <div>

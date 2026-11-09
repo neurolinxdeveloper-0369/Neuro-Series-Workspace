@@ -453,146 +453,183 @@ export const TouchPanelLayout = ({
     !iconSearch || f.toLowerCase().includes(iconSearch.toLowerCase())
   );
 
+  // Group switches into lines matching user's layout specification (3 in line 1, 3 in line 2, 2 in line 3 for 8-gang)
+  const getSwitchRows = (totalCount: number): number[][] => {
+    if (totalCount === 8) {
+      return [
+        [0, 1, 2], // 3 in line 1
+        [3, 4, 5], // 3 in line 2
+        [6, 7],    // 2 in line 3 (centered)
+      ];
+    }
+    if (totalCount === 6) {
+      return [
+        [0, 1, 2],
+        [3, 4, 5],
+      ];
+    }
+    if (totalCount === 4) {
+      return [
+        [0, 1],
+        [2, 3],
+      ];
+    }
+    if (totalCount === 12) {
+      return [
+        [0, 1, 2],
+        [3, 4, 5],
+        [6, 7, 8],
+        [9, 10, 11],
+      ];
+    }
+    if (totalCount <= 3) {
+      return [Array.from({ length: totalCount }, (_, i) => i)];
+    }
+    const rows: number[][] = [];
+    for (let i = 0; i < totalCount; i += 3) {
+      const row: number[] = [];
+      for (let j = i; j < Math.min(i + 3, totalCount); j++) {
+        row.push(j);
+      }
+      rows.push(row);
+    }
+    return rows;
+  };
+
+  const switchRows = getSwitchRows(switches.length);
+
+  const renderApplianceIcon = (sw: SwitchItemConfig, idx: number, isOn: boolean) => {
+    if (sw.iconPath) {
+      return (
+        <img 
+          src={getAssetUrl(`ICONS/${sw.iconPath}`)} 
+          alt=""
+          className={`w-8 h-8 sm:w-10 sm:h-10 object-contain transition-all duration-300 pointer-events-none ${
+            isOn 
+              ? 'filter drop-shadow-[0_0_10px_rgba(56,189,248,1)] brightness-150' 
+              : 'opacity-40 grayscale contrast-125'
+          }`}
+        />
+      );
+    }
+
+    const lower = sw.name.toLowerCase();
+    let IconComp = Power;
+    if (lower.includes('fan') || lower.includes('exhaust')) IconComp = Wind;
+    else if (lower.includes('light') || lower.includes('lamp') || lower.includes('bulb') || lower.includes('spot') || lower.includes('chandelier')) IconComp = Lightbulb;
+    else if (lower.includes('plug') || lower.includes('socket')) IconComp = Zap;
+    else if (lower.includes('tv')) IconComp = Tv;
+    else if (lower.includes('ac')) IconComp = Waves;
+    else if (idx === 0) IconComp = Lightbulb;
+    else if (idx === 1) IconComp = Wind;
+    else if (idx === 2) IconComp = Lightbulb;
+    else if (idx === 3) IconComp = Zap;
+    else if (idx === 4) IconComp = Lightbulb;
+    else if (idx === 5) IconComp = Tv;
+    else if (idx === 6) IconComp = Lightbulb;
+    else if (idx === 7) IconComp = Power;
+
+    return (
+      <IconComp 
+        className={`w-7 h-7 sm:w-8 sm:h-8 transition-all duration-300 pointer-events-none ${
+          isOn 
+            ? 'text-white drop-shadow-[0_0_12px_rgba(56,189,248,1)]' 
+            : 'text-slate-400 group-hover:text-slate-300'
+        }`}
+        strokeWidth={2.3}
+      />
+    );
+  };
+
   return (
-    <div className="bg-gradient-to-b from-slate-900 to-slate-950 text-white rounded-3xl p-4 sm:p-5 border border-slate-800 shadow-xl select-none">
-      {/* Top Header */}
-      <div className="flex items-center justify-between mb-3 pb-3 border-b border-slate-800/80">
-        <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-xl bg-sky-500/20 text-sky-400 flex items-center justify-center border border-sky-500/30">
-            <ToggleRight className="w-4 h-4" />
+    <div className="bg-white/80 backdrop-blur-xl rounded-[36px] p-5 sm:p-7 border border-white/90 shadow-[0_20px_50px_rgba(2,132,199,0.08),0_4px_16px_rgba(0,0,0,0.04)] select-none">
+      {/* Top Header Card: Model Display & Quick Batch Actions */}
+      <div className="flex items-center justify-between mb-6 pb-4 border-b border-sky-100/80">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-2xl bg-sky-50 text-[#0284c7] flex items-center justify-center border border-sky-100 shadow-xs">
+            <ToggleRight className="w-5 h-5" />
           </div>
           <div>
-            <div className="text-xs font-bold uppercase tracking-wider text-sky-400 font-mono">
-              {modelCode} • Capacitive Touch Panel
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-extrabold uppercase tracking-wider text-[#0284c7] font-mono bg-sky-50 px-2 py-0.5 rounded-md border border-sky-200/60 shadow-2xs">
+                {modelCode}
+              </span>
+              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider font-sans">
+                Capacitive Touch Panel
+              </span>
             </div>
-            <div className="text-sm font-extrabold text-white">
-              {deviceName || `${switchCount} Gang Switches Layout`}
+            <div className="text-base sm:text-lg font-extrabold text-slate-900 tracking-tight mt-0.5">
+              {deviceName || `${switchCount} Gang Switches`}
             </div>
           </div>
         </div>
 
         {/* Quick Batch Actions */}
-        <div className="flex items-center gap-1.5 text-[11px] font-bold">
+        <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={allOn}
-            className="px-2.5 py-1 rounded-lg bg-sky-500/20 text-sky-300 hover:bg-sky-500/30 border border-sky-500/40 transition-colors cursor-pointer"
+            className="px-3.5 py-1.5 rounded-full bg-[#0284c7] hover:bg-[#0369a1] text-white text-xs font-bold shadow-xs active:scale-95 transition-all cursor-pointer"
           >
             All ON
           </button>
           <button
             type="button"
             onClick={allOff}
-            className="px-2.5 py-1 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 border border-slate-700 transition-colors cursor-pointer"
+            className="px-3.5 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold border border-slate-200/80 shadow-xs active:scale-95 transition-all cursor-pointer"
           >
             All OFF
           </button>
         </div>
       </div>
 
-      {/* Helpful Hint */}
-      <div className="flex items-center justify-between text-[11px] text-slate-400 font-sans mb-3 px-1">
-        <span className="flex items-center gap-1.5 text-slate-400">
-          <Info className="w-3.5 h-3.5 text-sky-400" />
-          <span>Tap to toggle • <strong>Long press</strong> to rename & change icon</span>
-        </span>
-        <span className="text-[10px] text-sky-400 font-mono bg-sky-950/60 px-2 py-0.5 rounded-full border border-sky-800/60">
-          8 Touch Plates
-        </span>
+      {/* Circular Switches Rows (3 in line 1, 3 in line 2, 2 in line 3 for 8-gang) */}
+      <div className="flex flex-col items-center gap-5 sm:gap-8 py-3 my-2">
+        {switchRows.map((rowIndices, rowIdx) => (
+          <div key={rowIdx} className="flex items-center justify-center gap-4 sm:gap-7 w-full">
+            {rowIndices.map((idx) => {
+              const sw = switches[idx];
+              if (!sw) return null;
+              const isOn = sw.state;
+
+              return (
+                <div
+                  key={idx}
+                  onTouchStart={() => handleTouchStart(idx)}
+                  onTouchEnd={handleTouchEnd}
+                  onTouchCancel={handleTouchEnd}
+                  onClick={() => handleClick(idx)}
+                  className={`group relative rounded-full aspect-square w-[76px] h-[76px] sm:w-24 sm:h-24 flex items-center justify-center cursor-pointer select-none transition-all duration-300 ease-out active:scale-90 ${
+                    isOn
+                      ? 'bg-[#0b1424] border-2 border-white ring-4 ring-[#38bdf8] shadow-[0_0_26px_rgba(56,189,248,0.9),0_0_50px_rgba(14,165,233,0.45),inset_0_0_16px_rgba(56,189,248,0.4)]'
+                      : 'bg-[#181a1f] hover:bg-[#20232a] border-2 border-[#2f333c] shadow-[0_8px_20px_rgba(0,0,0,0.35),inset_0_2px_4px_rgba(255,255,255,0.06)]'
+                  }`}
+                  title={`${sw.name} • Tap to toggle, Long-press to edit`}
+                >
+                  {/* Luminous Inner Glow Aura when ON */}
+                  {isOn && (
+                    <div className="absolute inset-1 rounded-full bg-radial from-sky-400/25 via-transparent to-transparent pointer-events-none animate-pulse" />
+                  )}
+
+                  {/* Centered Appliance Icon - NO TEXT */}
+                  <div className="relative z-10 flex items-center justify-center">
+                    {renderApplianceIcon(sw, idx, isOn)}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ))}
       </div>
 
-      {/* Dynamic Grid of 8 Switches based on switchCount */}
-      <div className={`grid gap-2.5 ${
-        switchCount <= 2 ? 'grid-cols-2' :
-        switchCount <= 4 ? 'grid-cols-2' :
-        switchCount <= 8 ? 'grid-cols-2 sm:grid-cols-4' :
-        'grid-cols-3 sm:grid-cols-4'
-      }`}>
-        {switches.map((sw, idx) => {
-          const isOn = sw.state;
-
-          return (
-            <div
-              key={idx}
-              onTouchStart={() => handleTouchStart(idx)}
-              onTouchEnd={handleTouchEnd}
-              onTouchCancel={handleTouchEnd}
-              onClick={() => handleClick(idx)}
-              className={`group relative flex flex-col justify-between p-3 rounded-2xl border transition-all duration-300 text-left cursor-pointer overflow-hidden ${
-                isOn
-                  ? 'bg-gradient-to-br from-sky-500/20 via-sky-950/40 to-slate-900 border-sky-400/60 shadow-[0_0_18px_rgba(14,165,233,0.35)]'
-                  : 'bg-slate-800/60 hover:bg-slate-800 border-slate-700/60 text-slate-400 opacity-90'
-              }`}
-            >
-              {/* Top Row: Switch Number + Edit trigger + Glowing Neon LED */}
-              <div className="flex items-center justify-between w-full mb-3">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[10px] font-mono font-bold text-slate-400">
-                    SW {idx + 1}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      openCustomizeModal(idx);
-                    }}
-                    className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-white/10 text-slate-400 hover:text-white transition-opacity"
-                    title="Customize switch"
-                  >
-                    <Edit2 className="w-2.5 h-2.5" />
-                  </button>
-                </div>
-                
-                {/* Capacitive Touch Glowing LED */}
-                <div className={`w-3 h-3 rounded-full transition-all duration-300 flex items-center justify-center ${
-                  isOn 
-                    ? 'bg-sky-400 shadow-[0_0_10px_#38bdf8]' 
-                    : 'bg-slate-700 border border-slate-600'
-                }`}>
-                  {isOn && <div className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />}
-                </div>
-              </div>
-
-              {/* Icon & Custom Label */}
-              <div className="space-y-1.5">
-                <div className={`w-8 h-8 rounded-lg flex items-center justify-center p-1 transition-colors ${
-                  isOn ? 'bg-sky-400/20 text-sky-300 shadow-sm border border-sky-400/40' : 'bg-slate-700/60 text-slate-400'
-                }`}>
-                  {sw.iconPath ? (
-                    <img 
-                      src={getAssetUrl(`ICONS/${sw.iconPath}`)} 
-                      alt={sw.name}
-                      className="w-full h-full object-contain filter drop-shadow-[0_1px_3px_rgba(0,0,0,0.5)]"
-                    />
-                  ) : (
-                    <Power className="w-4 h-4" strokeWidth={2.5} />
-                  )}
-                </div>
-
-                <div className={`text-xs font-bold tracking-tight truncate ${isOn ? 'text-white' : 'text-slate-300'}`}>
-                  {sw.name}
-                </div>
-                <div className="text-[10px] font-mono">
-                  {isOn ? (
-                    <span className="text-sky-300 font-bold">ON</span>
-                  ) : (
-                    <span className="text-slate-500">OFF</span>
-                  )}
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Footer Status Bar */}
-      <div className="mt-4 pt-2.5 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400">
-        <span className="flex items-center gap-1.5">
-          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-          <span className="text-emerald-400 font-semibold">Capacitive Grid Active</span>
+      {/* Footer Status Hint */}
+      <div className="mt-6 pt-3.5 border-t border-sky-100/80 flex items-center justify-between text-xs text-slate-500 font-sans">
+        <span className="flex items-center gap-1.5 text-slate-600">
+          <Info className="w-3.5 h-3.5 text-[#0284c7]" />
+          <span>Tap circle to toggle &bull; Long-press to customize</span>
         </span>
-        <span className="font-mono">
-          {switches.filter(s => s.state).length} of {switchCount} Powered ON
+        <span className="font-mono font-bold text-[#0284c7]">
+          {switches.filter(s => s.state).length} / {switchCount} ON
         </span>
       </div>
 
