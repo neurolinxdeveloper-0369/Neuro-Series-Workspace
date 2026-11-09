@@ -102,6 +102,8 @@ public class MainActivity extends BridgeActivity {
             }
         }
 
+        private ConnectivityManager.NetworkCallback activeNetworkCallback = null;
+
         @JavascriptInterface
         public void connectToWifi(String ssid, String password) {
             try {
@@ -121,15 +123,22 @@ public class MainActivity extends BridgeActivity {
 
                     ConnectivityManager cm = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
                     if (cm != null) {
-                        cm.requestNetwork(request, new ConnectivityManager.NetworkCallback() {
+                        if (activeNetworkCallback != null) {
+                            try { cm.unregisterNetworkCallback(activeNetworkCallback); } catch (Exception ignored) {}
+                            activeNetworkCallback = null;
+                        }
+
+                        activeNetworkCallback = new ConnectivityManager.NetworkCallback() {
                             @Override
                             public void onAvailable(Network network) {
                                 super.onAvailable(network);
                                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                                     cm.bindProcessToNetwork(network);
+                                    android.util.Log.d("AndroidWifiBridge", "Process bound to specifier network: " + network);
                                 }
                             }
-                        });
+                        };
+                        cm.requestNetwork(request, activeNetworkCallback);
                         return;
                     }
                 }
@@ -163,10 +172,19 @@ public class MainActivity extends BridgeActivity {
         public boolean unbindProcessFromNetwork() {
             try {
                 ConnectivityManager cm = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
-                if (cm != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                    boolean result = cm.bindProcessToNetwork(null);
-                    android.util.Log.d("AndroidWifiBridge", "unbindProcessFromNetwork result: " + result);
-                    return result;
+                if (cm != null) {
+                    if (activeNetworkCallback != null) {
+                        try {
+                            cm.unregisterNetworkCallback(activeNetworkCallback);
+                            android.util.Log.d("AndroidWifiBridge", "activeNetworkCallback unregistered successfully");
+                        } catch (Exception ignored) {}
+                        activeNetworkCallback = null;
+                    }
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        boolean result = cm.bindProcessToNetwork(null);
+                        android.util.Log.d("AndroidWifiBridge", "unbindProcessFromNetwork result: " + result);
+                        return result;
+                    }
                 }
             } catch (Exception e) {
                 e.printStackTrace();
@@ -294,6 +312,63 @@ public class MainActivity extends BridgeActivity {
                 return res.toString();
             } catch (Exception e) {
                 android.util.Log.e("AndroidWifiBridge", "httpGet exception: " + e.getMessage(), e);
+                try {
+                    JSONObject err = new JSONObject();
+                    err.put("status", 0);
+                    err.put("ok", false);
+                    err.put("error", e.getMessage() != null ? e.getMessage() : e.toString());
+                    return err.toString();
+                } catch (Exception ignored) {}
+                return "{\"status\":0,\"ok\":false,\"error\":\"Network error\"}";
+            }
+        }
+
+        @JavascriptInterface
+        public String nativeApiCall(String urlString, String method, String jsonBody, String authToken) {
+            android.util.Log.d("AndroidWifiBridge", "nativeApiCall requested: " + method + " " + urlString);
+            try {
+                java.net.URL url = new java.net.URL(urlString);
+                java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();
+                conn.setRequestMethod(method.toUpperCase());
+                conn.setRequestProperty("Content-Type", "application/json");
+                conn.setRequestProperty("Accept", "application/json");
+                if (authToken != null && !authToken.isEmpty()) {
+                    conn.setRequestProperty("Authorization", "Bearer " + authToken);
+                }
+                conn.setConnectTimeout(8000);
+                conn.setReadTimeout(10000);
+
+                if ("POST".equalsIgnoreCase(method) || "PATCH".equalsIgnoreCase(method) || "PUT".equalsIgnoreCase(method)) {
+                    conn.setDoOutput(true);
+                    if (jsonBody != null) {
+                        byte[] input = jsonBody.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                        try (java.io.OutputStream os = conn.getOutputStream()) {
+                            os.write(input, 0, input.length);
+                        }
+                    }
+                }
+
+                int code = conn.getResponseCode();
+                java.io.InputStream is = (code >= 200 && code < 400) ? conn.getInputStream() : conn.getErrorStream();
+                String responseText = "";
+                if (is != null) {
+                    java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.InputStreamReader(is, java.nio.charset.StandardCharsets.UTF_8));
+                    StringBuilder sb = new StringBuilder();
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        sb.append(line);
+                    }
+                    reader.close();
+                    responseText = sb.toString();
+                }
+                JSONObject res = new JSONObject();
+                res.put("status", code);
+                res.put("ok", code >= 200 && code < 300);
+                res.put("body", responseText);
+                android.util.Log.d("AndroidWifiBridge", "nativeApiCall success: " + code + " => " + responseText);
+                return res.toString();
+            } catch (Exception e) {
+                android.util.Log.e("AndroidWifiBridge", "nativeApiCall exception: " + e.getMessage(), e);
                 try {
                     JSONObject err = new JSONObject();
                     err.put("status", 0);

@@ -85,6 +85,29 @@ export const deviceApi = {
   },
 
   provisionDevice: async (input: ProvisionInput): Promise<ProvisionResult> => {
+    // 1. Check if on native Android bridge
+    const androidBridge = typeof window !== 'undefined' ? (window as any).AndroidWifiBridge : null;
+    if (androidBridge?.nativeApiCall) {
+      try {
+        const token = typeof window !== 'undefined' ? localStorage.getItem('neuro_auth_token') || '' : '';
+        const rawRes = androidBridge.nativeApiCall(
+          'https://neurolinx.in/neuro-series/api/devices/provision',
+          'POST',
+          JSON.stringify(input),
+          token
+        );
+        const parsed = JSON.parse(rawRes || '{}');
+        if (parsed.ok || (parsed.status >= 200 && parsed.status < 300)) {
+          const bodyData = JSON.parse(parsed.body);
+          if (bodyData.success && bodyData.deviceId) {
+            return bodyData;
+          }
+        }
+      } catch (nativeErr) {
+        console.warn('nativeApiCall attempt on provisionDevice note:', nativeErr);
+      }
+    }
+
     const res = await api.post<ProvisionResult>('/devices/provision', input);
     if (!res.success || !res.deviceId) {
       throw new Error('Failed to provision device');
