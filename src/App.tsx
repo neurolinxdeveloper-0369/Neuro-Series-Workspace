@@ -35,6 +35,7 @@ import { authStorage, authApi, type UserProfile } from './services/auth';
 import { homeApi, homeStorage, type Home as UserHome, type Room } from './services/home';
 import { deviceApi } from './services/device';
 import { DynamicDeviceLayout } from './components/DynamicDeviceLayout';
+import { realtimeSocket } from './services/socket';
 import { SplashScreen } from '@capacitor/splash-screen';
 
 export function App() {
@@ -103,6 +104,37 @@ export function App() {
       setDevices([]);
     }
   }, [activeHome?.id]);
+
+  // Real-time WebSocket listener for physical hardware switch telemetry & heartbeats
+  useEffect(() => {
+    const unsubscribe = realtimeSocket.subscribe((deviceId, incomingState) => {
+      setDevices(prev => prev.map(dev => {
+        if (dev.device_id === deviceId) {
+          return {
+            ...dev,
+            is_online: incomingState.is_online !== undefined ? incomingState.is_online : dev.is_online,
+            rssi: incomingState.rssi !== undefined ? incomingState.rssi : dev.rssi,
+            switches: incomingState.switches ? { ...dev.switches, ...incomingState.switches } : dev.switches,
+          };
+        }
+        return dev;
+      }));
+
+      setSelectedDeviceForControl((prev: any) => {
+        if (prev && prev.device_id === deviceId) {
+          return {
+            ...prev,
+            is_online: incomingState.is_online !== undefined ? incomingState.is_online : prev.is_online,
+            rssi: incomingState.rssi !== undefined ? incomingState.rssi : prev.rssi,
+            switches: incomingState.switches ? { ...prev.switches, ...incomingState.switches } : prev.switches,
+          };
+        }
+        return prev;
+      });
+    });
+
+    return unsubscribe;
+  }, []);
 
   // Load user homes and trigger onboarding if 0 homes exist
   const loadHomes = async (openSetupIfEmpty = true) => {
@@ -1163,6 +1195,8 @@ export function App() {
             <DynamicDeviceLayout 
               modelCode={selectedDeviceForControl.model_code}
               deviceName={selectedDeviceForControl.custom_name}
+              deviceId={selectedDeviceForControl.device_id}
+              initialSwitches={selectedDeviceForControl.switches}
             />
           </div>
         </div>

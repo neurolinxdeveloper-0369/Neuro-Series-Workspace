@@ -69,6 +69,8 @@ class DeviceService {
       CREATE INDEX IF NOT EXISTS idx_devices_room_id ON devices(room_id);
       CREATE INDEX IF NOT EXISTS idx_devices_home_id ON devices(home_id);
       ALTER TABLE devices ADD COLUMN IF NOT EXISTS icon VARCHAR(255);
+      ALTER TABLE devices ADD COLUMN IF NOT EXISTS switches JSONB DEFAULT '{}';
+      ALTER TABLE devices ADD COLUMN IF NOT EXISTS uptime_sec INT DEFAULT NULL;
 
       CREATE TABLE IF NOT EXISTS device_endpoints (
           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -87,6 +89,15 @@ class DeviceService {
     try {
       await db.query(query);
       console.log('✅ Devices and Device Endpoints tables verified in PostgreSQL');
+
+      // Register MQTT Handlers for incoming hardware telemetry & heartbeats
+      emqxService.onTelemetry(async (deviceId, payload) => {
+        await this.handleTelemetryUpdate(deviceId, payload);
+      });
+
+      emqxService.onHeartbeat(async (deviceId, payload) => {
+        await this.handleHeartbeat(deviceId, payload);
+      });
     } catch (err) {
       console.error('❌ Failed to initialize devices tables:', err);
     }
@@ -361,6 +372,186 @@ class DeviceService {
     this.devices.set(id, newDevice);
     socketManager.broadcastDeviceUpdate(id, newDevice.state);
     return newDevice;
+  }
+
+  /**
+   * Processes incoming hardware telemetry published on nt/v1/{deviceId}/stat/telemetry
+   * Example payload:
+   * {
+   *   "deviceId": "{deviceId}",
+   *   "type": "switch_8",
+   *   "online": true,
+   *   "rssi": -55,
+   *   "switches": { "1": false, "2": true, ... }
+   * }
+   */
+  public async handleTelemetryUpdate(deviceId: string, data: {
+    switches?: Record<string, boolean>;
+    online?: boolean;
+    rssi?: number;
+    type?: string;
+  }): Promise<void> {
+    try {
+      const isOnline = data.online !== undefined ? data.online : true;
+      const rssi = typeof data.rssi === 'number' ? data.rssi : null;
+      const switches = data.switches || {};
+
+      // 1. Update devices table in PostgreSQL
+      await db.query(
+        `UPDATE devices 
+         SET switches = COALESCE(switches, '{}'::jsonb) || $1::jsonb,
+             is_online = $2,
+             rssi = COALESCE($3, rssi),
+             last_seen_at = CURRENT_TIMESTAMP,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE device_id = $4`,
+        [JSON.stringify(switches), isOnline, rssi, deviceId]
+      );
+
+      // 2. Update device_endpoints table for each switch channel
+      for (const [chStr, stateVal] of Object.entries(switches)) {
+        const chNum = parseInt(chStr, 10);
+        if (!isNaN(chNum)) {
+          const epState = JSON.stringify({
+            status: stateVal ? 'ON' : 'OFF',
+            power: stateVal,
+          });
+          await db.query(
+            `UPDATE device_endpoints 
+             SET state = $1::jsonb 
+             WHERE device_id = $2 AND endpoint_index = $3`,
+            [epState, deviceId, chNum]
+          );
+        }
+      }
+
+      // 3. Broadcast to all connected WebSocket clients in real time
+      socketManager.broadcastDeviceUpdate(deviceId, {
+        deviceId,
+        switches,
+        is_online: isOnline,
+        rssi,
+        last_seen_at: new Date().toISOString(),
+      });
+      console.log(`✅ [DB & WS UPDATED] Hardware Telemetry for ${deviceId}:`, switches);
+    } catch (err) {
+      console.error(`❌ Failed to process telemetry update for ${deviceId}:`, err);
+    }
+  }
+
+  /**
+   * Processes incoming hardware heartbeat published on devices/{deviceId}/heartbeat
+   */
+  public async handleHeartbeat(deviceId: string, data: {
+    online?: boolean;
+    rssi?: number;
+    uptime_sec?: number;
+  }): Promise<void> {
+    try {
+      const isOnline = data.online !== undefined ? data.online : true;
+      const rssi = typeof data.rssi === 'number' ? data.rssi : null;
+      const uptime = typeof data.uptime_sec === 'number' ? data.uptime_sec : null;
+
+      await db.query(
+        `UPDATE devices 
+         SET is_online = $1,
+             rssi = COALESCE($2, rssi),
+             uptime_sec = COALESCE($3, uptime_sec),
+             last_seen_at = CURRENT_TIMESTAMP,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE device_id = $4`,
+        [isOnline, rssi, uptime, deviceId]
+      );
+
+      socketManager.broadcastDeviceUpdate(deviceId, {
+        deviceId,
+        is_online: isOnline,
+        rssi,
+        uptime_sec: uptime,
+      });
+      console.log(`💓 [HEARTBEAT] Device ${deviceId} online:`, isOnline, `RSSI:`, rssi);
+    } catch (err) {
+      console.error(`❌ Failed to process heartbeat for ${deviceId}:`, err);
+    }
+  }
+
+  /**
+   * Controls a specific switch channel (1-8) for a device.
+   * Publishes command envelope to devices/{deviceId}/set via MQTT and updates DB + WebSockets.
+   */
+  public async controlSwitch(
+    identifier: string,
+    channel: number,
+    action: 'on' | 'off' | 'toggle'
+  ): Promise<{
+    deviceId: string;
+    channel: number;
+    state: boolean;
+    switches: Record<string, boolean>;
+  }> {
+    // 1. Fetch current device from database
+    const devRes = await db.query(
+      `SELECT id, device_id, model_code, switches FROM devices WHERE id::text = $1 OR device_id = $1 LIMIT 1`,
+      [identifier]
+    );
+    if (devRes.rows.length === 0) {
+      throw new Error(`Device ${identifier} not found in database`);
+    }
+
+    const device = devRes.rows[0];
+    const deviceId = device.device_id;
+    const currentSwitches = (device.switches as Record<string, boolean>) || {};
+    const currentVal = Boolean(currentSwitches[String(channel)]);
+
+    // Determine target boolean state
+    let targetState = false;
+    if (action === 'on') targetState = true;
+    else if (action === 'off') targetState = false;
+    else targetState = !currentVal;
+
+    // 2. Publish to EMQX MQTT using official hardware specification
+    await emqxService.sendSwitchCommand(deviceId, channel, targetState);
+
+    // 3. Update database
+    const updatedSwitches = {
+      ...currentSwitches,
+      [String(channel)]: targetState,
+    };
+
+    await db.query(
+      `UPDATE devices 
+       SET switches = $1::jsonb,
+           updated_at = CURRENT_TIMESTAMP 
+       WHERE device_id = $2`,
+      [JSON.stringify(updatedSwitches), deviceId]
+    );
+
+    // Update endpoint record in device_endpoints table
+    const epState = JSON.stringify({
+      status: targetState ? 'ON' : 'OFF',
+      power: targetState,
+    });
+    await db.query(
+      `UPDATE device_endpoints 
+       SET state = $1::jsonb 
+       WHERE device_id = $2 AND endpoint_index = $3`,
+      [epState, deviceId, channel]
+    );
+
+    // 4. Broadcast via WebSocket
+    socketManager.broadcastDeviceUpdate(deviceId, {
+      deviceId,
+      switches: updatedSwitches,
+      channel,
+      state: targetState,
+    });
+
+    return {
+      deviceId,
+      channel,
+      state: targetState,
+      switches: updatedSwitches,
+    };
   }
 }
 

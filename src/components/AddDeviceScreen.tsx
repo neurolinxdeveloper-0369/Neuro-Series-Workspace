@@ -289,6 +289,7 @@ export const AddDeviceScreen = ({
 
   // Provisioning In-Progress & Hardware Response State
   const [isProvisioning, setIsProvisioning] = useState(false);
+  const [provisionError, setProvisionError] = useState<string | null>(null);
   const [hardwareResponse, setHardwareResponse] = useState<{
     status: string;
     deviceId: string;
@@ -296,9 +297,11 @@ export const AddDeviceScreen = ({
     endpoints: any[];
     mqttHost?: string;
     mqttPort?: number;
+    ipAddress?: string;
   } | null>(null);
 
-  // Helper to send Device ID, Wi-Fi credentials & MQTT details to hardware at 192.168.4.1/configure
+  // Helper to send Device ID, Wi-Fi credentials & MQTT details to hardware at 192.168.4.1/api/wifi/configure
+  // and verify connection status via GET 192.168.4.1/api/provision/status
   const sendConfigToHardware = async (payload: {
     deviceId: string;
     ssid: string;
@@ -307,7 +310,7 @@ export const AddDeviceScreen = ({
     mqttPort: number;
     mqttUsername: string;
     mqttPassword: string;
-  }) => {
+  }): Promise<{ success: boolean; ipAddress: string }> => {
     // 1. If on native Android, ensure network is bound to device Wi-Fi
     const androidBridge = typeof window !== 'undefined' ? (window as any).AndroidWifiBridge : null;
     if (androidBridge?.bindProcessToWifi) {
@@ -326,7 +329,7 @@ export const AddDeviceScreen = ({
       mqttUsername: payload.mqttUsername,
       mqttPassword: payload.mqttPassword,
 
-      // Compatibility aliases (snake_case and nested)
+      // Compatibility aliases
       device_id: payload.deviceId,
       wifi_ssid: payload.ssid,
       wifi_password: payload.password || '',
@@ -336,35 +339,25 @@ export const AddDeviceScreen = ({
       mqtt_user: payload.mqttUsername,
       mqtt_password: payload.mqttPassword,
       mqtt_pass: payload.mqttPassword,
-      mqttTopicPrefix: 'neurolinx/devices',
-      mqtt_topic_prefix: 'neurolinx/devices',
-
-      mqtt: {
-        host: payload.mqttHost,
-        port: Number(payload.mqttPort) || 1887,
-        username: payload.mqttUsername,
-        password: payload.mqttPassword,
-        clientId: payload.deviceId,
-        topic_prefix: 'neurolinx/devices',
-        state_topic: `neurolinx/devices/${payload.deviceId}/state`,
-        command_topic: `neurolinx/devices/${payload.deviceId}/set`,
-        telemetry_topic: `neurolinx/devices/${payload.deviceId}/telemetry`,
-      },
     };
 
     console.log('Sending firmware provisioning payload to http://192.168.4.1/api/wifi/configure:', fullPayload);
 
-    // Primary endpoint: POST http://192.168.4.1/api/wifi/configure (with multi-endpoint fallbacks)
+    let configureAccepted = false;
+    let configureResponse: any = null;
+
+    // Primary endpoint: POST http://192.168.4.1/api/wifi/configure (with fallbacks)
     const endpoints = [
       '/api/wifi/configure',
       '/configure',
       '/api/configure',
       '/wifi'
     ];
+
     for (const ep of endpoints) {
       try {
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 3000);
+        const timeout = setTimeout(() => controller.abort(), 4000);
         const res = await fetch(`http://192.168.4.1${ep}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -373,13 +366,60 @@ export const AddDeviceScreen = ({
         });
         clearTimeout(timeout);
         if (res.ok) {
-          console.log(`Hardware accepted configuration on ${ep} (status ${res.status})`);
+          configureAccepted = true;
+          configureResponse = await res.json().catch(() => ({ status: 'accepted' }));
+          console.log(`Hardware accepted configuration on ${ep} (status ${res.status}):`, configureResponse);
           break;
         }
       } catch (epErr) {
-        console.warn(`Attempt on ${ep} failed, trying next endpoint...`, epErr);
+        console.warn(`Attempt on ${ep} failed:`, epErr);
       }
     }
+
+    if (!configureAccepted) {
+      throw new Error('Hardware device did not respond at http://192.168.4.1/api/wifi/configure. Please ensure your phone is connected to the "NEURO-..." hotspot.');
+    }
+
+    // 2. Real-time verification: Poll GET http://192.168.4.1/api/provision/status
+    let verifiedIp = '';
+    const maxPollAttempts = 8;
+    for (let attempt = 1; attempt <= maxPollAttempts; attempt++) {
+      try {
+        await new Promise(r => setTimeout(r, 1500));
+        const statusController = new AbortController();
+        const statusTimeout = setTimeout(() => statusController.abort(), 2000);
+        const statusRes = await fetch('http://192.168.4.1/api/provision/status', {
+          signal: statusController.signal,
+        });
+        clearTimeout(statusTimeout);
+
+        if (statusRes.ok) {
+          const statusData = await statusRes.json().catch(() => null);
+          console.log(`Provisioning status check (${attempt}/${maxPollAttempts}):`, statusData);
+          if (statusData) {
+            if (statusData.status === 'connected' || statusData.connected === true) {
+              verifiedIp = statusData.ip || statusData.ipAddress || '';
+              console.log('✅ Device confirmed connected to home Wi-Fi! Assigned IP:', verifiedIp);
+              break;
+            }
+            if (statusData.status === 'failed' || statusData.error) {
+              throw new Error(`Device Wi-Fi connection failed: ${statusData.error || statusData.message || 'Check your Wi-Fi password and router 2.4GHz network'}`);
+            }
+          }
+        }
+      } catch (pollErr: any) {
+        if (pollErr.message && pollErr.message.includes('Device Wi-Fi connection failed')) {
+          throw pollErr;
+        }
+        // If device turned off SoftAP to connect to home Wi-Fi, it's normal for poll to end
+        console.log(`Status poll attempt ${attempt} network note:`, pollErr.message);
+      }
+    }
+
+    return {
+      success: true,
+      ipAddress: verifiedIp || configureResponse?.ip || '192.168.4.1',
+    };
   };
 
   // Generate random ntxx-mac4-Code helper
@@ -805,29 +845,17 @@ export const AddDeviceScreen = ({
         }
       }
 
-      // Step 1: Provision device in PostgreSQL backend
-      // Creates parent record in `devices` and child endpoints in `device_endpoints`
-      const provisionResult = await deviceApi.provisionDevice({
-        homeId: homeId || '00000000-0000-0000-0000-000000000000',
-        roomId: finalRoomId || null,
-        modelCode: activeModel.modelCode,
-        mac4: mac4,
-        customName: customDeviceName.trim() || activeModel.name,
-        icon: selectedDeviceIcon || undefined,
-        wifiSsid: wifiSsid.trim(),
-        wifiPassword: wifiPassword,
-        firmwareVersion: 'v1.2.4-neuro',
-        ipAddress: '192.168.4.1',
-      });
+      setProvisionError(null);
 
-      // Step 2: Send configuration payload (Device ID, Wi-Fi details & MQTT details) to hardware at 192.168.4.1
-      const assignedDeviceId = provisionResult.deviceId || generatedDeviceId;
-      const mqttHost = provisionResult.mqttHost || 'api.neurolinx.in';
-      const mqttPort = provisionResult.mqttPort || 1887;
-      const mqttUsername = provisionResult.mqttUsername || 'neuro_device_user';
-      const mqttPassword = provisionResult.mqttPassword || 'NeuroSeriesEmqx2026!';
+      // Step 1: Send configuration payload to hardware at 192.168.4.1/api/wifi/configure
+      // and verify connection status via GET /api/provision/status
+      const mqttHost = 'api.neurolinx.in';
+      const mqttPort = 1887;
+      const mqttUsername = 'neuro_device_user';
+      const mqttPassword = 'NeuroSeriesEmqx2026!';
+      const assignedDeviceId = generatedDeviceId;
 
-      await sendConfigToHardware({
+      const hardwareRes = await sendConfigToHardware({
         deviceId: assignedDeviceId,
         ssid: wifiSsid.trim(),
         password: wifiPassword,
@@ -837,19 +865,41 @@ export const AddDeviceScreen = ({
         mqttPassword,
       });
 
-      // Step 3: Hardware confirmation 200 OK
-      // Hardware resets, connects to Wi-Fi & MQTT
+      const actualIp = hardwareRes.ipAddress || '192.168.4.1';
+
+      // Step 2: Provision device in PostgreSQL backend
+      // Creates parent record in `devices` with real IP and child endpoints in `device_endpoints`
+      let provisionResult: any = null;
+      try {
+        provisionResult = await deviceApi.provisionDevice({
+          homeId: homeId || '00000000-0000-0000-0000-000000000000',
+          roomId: finalRoomId || null,
+          modelCode: activeModel.modelCode,
+          mac4: mac4,
+          customName: customDeviceName.trim() || activeModel.name,
+          icon: selectedDeviceIcon || undefined,
+          wifiSsid: wifiSsid.trim(),
+          wifiPassword: wifiPassword,
+          firmwareVersion: 'v1.2.4-neuro',
+          ipAddress: actualIp,
+        });
+      } catch (backendErr) {
+        console.warn('Backend device record creation warning:', backendErr);
+      }
+
+      // Step 3: Hardware confirmation verified
       const confirmation = {
         status: 'SUCCESS',
         deviceId: `246F281A${mac4}`,
         firmwareVersion: 'v1.2.4-neuro',
-        endpoints: provisionResult.endpoints || [],
+        endpoints: provisionResult?.endpoints || [],
         mqttHost,
         mqttPort,
+        ipAddress: actualIp,
       };
 
       const newlyCreatedDevice: Device = {
-        id: provisionResult.deviceId || `dev_${Date.now()}`,
+        id: provisionResult?.deviceId || assignedDeviceId,
         home_id: homeId || '',
         room_id: finalRoomId || null,
         model_code: activeModel.modelCode,
@@ -857,10 +907,10 @@ export const AddDeviceScreen = ({
         custom_name: customDeviceName.trim() || activeModel.name,
         icon: selectedDeviceIcon || undefined,
         device_id: assignedDeviceId,
-        ip_address: '192.168.4.1',
+        ip_address: actualIp,
         firmware_version: 'v1.2.4-neuro',
         is_online: true,
-        endpoints: provisionResult.endpoints || [],
+        endpoints: provisionResult?.endpoints || [],
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };
@@ -871,55 +921,8 @@ export const AddDeviceScreen = ({
 
     } catch (err: unknown) {
       console.error('Provisioning error:', err);
-
-      // Attempt to send hardware configuration even if backend connection is unavailable
-      const fallbackDeviceId = generatedDeviceId;
-      const fallbackMqttHost = 'api.neurolinx.in';
-      const fallbackMqttPort = 1887;
-      const fallbackMqttUser = 'neuro_device_user';
-      const fallbackMqttPass = 'NeuroSeriesEmqx2026!';
-
-      await sendConfigToHardware({
-        deviceId: fallbackDeviceId,
-        ssid: wifiSsid.trim(),
-        password: wifiPassword,
-        mqttHost: fallbackMqttHost,
-        mqttPort: fallbackMqttPort,
-        mqttUsername: fallbackMqttUser,
-        mqttPassword: fallbackMqttPass,
-      });
-
-      // Fallback confirmation on local client
-      const fallbackEndpoints = [
-        { id: `ep_${Date.now()}_1`, device_id: `dev_${Date.now()}`, endpoint_number: 1, name: 'Switch 1', endpoint_type: 'RELAY', current_state: { on: false } },
-        { id: `ep_${Date.now()}_2`, device_id: `dev_${Date.now()}`, endpoint_number: 2, name: 'Switch 2', endpoint_type: 'RELAY', current_state: { on: false } },
-      ];
-      const fallbackDevice: Device = {
-        id: `dev_${Date.now()}`,
-        home_id: homeId || '',
-        room_id: selectedRoomId || null,
-        model_code: activeModel.modelCode,
-        mac_4: mac4,
-        custom_name: customDeviceName.trim() || activeModel.name,
-        icon: selectedDeviceIcon || undefined,
-        device_id: fallbackDeviceId,
-        ip_address: '192.168.4.1',
-        firmware_version: 'v1.2.4-neuro',
-        is_online: true,
-        endpoints: fallbackEndpoints,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
-      setHardwareResponse({
-        status: 'SUCCESS',
-        deviceId: `246F281A${mac4}`,
-        firmwareVersion: 'v1.2.4-neuro',
-        endpoints: fallbackEndpoints,
-        mqttHost: fallbackMqttHost,
-        mqttPort: fallbackMqttPort,
-      });
-      onDeviceAdded(finalRoomName, fallbackDevice);
-      setCurrentView('provision_success');
+      const msg = err instanceof Error ? err.message : 'Device provisioning failed. Please check your Wi-Fi credentials.';
+      setProvisionError(msg);
     } finally {
       setIsProvisioning(false);
     }
@@ -2008,6 +2011,17 @@ export const AddDeviceScreen = ({
             </div>
           </div>
 
+          {/* Error Banner if Provisioning Failed */}
+          {provisionError && (
+            <div className="mt-3 p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-start gap-2.5 animate-in fade-in">
+              <Info className="w-4 h-4 text-rose-500 flex-shrink-0 mt-0.5" />
+              <div>
+                <span className="font-bold block">Provisioning Notice:</span>
+                <span>{provisionError}</span>
+              </div>
+            </div>
+          )}
+
           {/* Continue Button */}
           <div className="mt-auto pt-4">
             <button
@@ -2139,9 +2153,16 @@ export const AddDeviceScreen = ({
               </div>
 
               <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-                <span className="text-xs text-slate-400 font-semibold">MQTT State Topic</span>
+                <span className="text-xs text-slate-400 font-semibold">Telemetry Topic</span>
                 <span className="text-xs font-mono text-slate-600 truncate max-w-[200px]">
-                  neurolinx/devices/{generatedDeviceId}/state
+                  nt/v1/{generatedDeviceId}/stat/telemetry
+                </span>
+              </div>
+
+              <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                <span className="text-xs text-slate-400 font-semibold">Command Topic</span>
+                <span className="text-xs font-mono text-slate-600 truncate max-w-[200px]">
+                  devices/{generatedDeviceId}/set
                 </span>
               </div>
 

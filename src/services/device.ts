@@ -107,4 +107,20 @@ export const deviceApi = {
     }
     return res.device;
   },
+
+  controlSwitch: async (id: string, channel: number, action: 'on' | 'off' | 'toggle'): Promise<{
+    success: boolean;
+    deviceId: string;
+    channel: number;
+    state: boolean;
+    switches: Record<string, boolean>;
+  }> => {
+    return api.post<{
+      success: boolean;
+      deviceId: string;
+      channel: number;
+      state: boolean;
+      switches: Record<string, boolean>;
+    }>(`/devices/${id}/action`, { channel, action });
+  },
 };

@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { 
   Zap, 
   Gauge, 
@@ -14,18 +14,20 @@ import {
   Router, 
   Sun, 
   Wind, 
-  Sparkles,
-  ShieldCheck,
-  Check,
-  RotateCw,
-  Edit2,
-  X,
-  Search,
-  CheckCircle2,
-  Info
+  Sparkles, 
+  ShieldCheck, 
+  Check, 
+  RotateCw, 
+  Edit2, 
+  X, 
+  Search, 
+  CheckCircle2, 
+  Info 
 } from 'lucide-react';
 import { getAssetUrl } from '../utils/assets';
 import { HARDWARE_ICONS } from '../utils/icons';
+import { deviceApi } from '../services/device';
+import { realtimeSocket } from '../services/socket';
 
 export interface ResolvedDeviceMeta {
   modelCode: string;
@@ -170,6 +172,8 @@ interface TouchPanelProps {
   switchCount: number;
   modelCode: string;
   deviceName?: string;
+  deviceId?: string;
+  initialSwitches?: Record<string, boolean>;
 }
 
 export interface SwitchItemConfig {
@@ -179,7 +183,13 @@ export interface SwitchItemConfig {
   state: boolean;
 }
 
-export const TouchPanelLayout = ({ switchCount, modelCode, deviceName }: TouchPanelProps) => {
+export const TouchPanelLayout = ({ 
+  switchCount, 
+  modelCode, 
+  deviceName, 
+  deviceId, 
+  initialSwitches 
+}: TouchPanelProps) => {
   // Initialize default switch names strictly as "Switch 1", "Switch 2", "Switch 3"...
   const [switches, setSwitches] = useState<SwitchItemConfig[]>(() => {
     try {
@@ -187,7 +197,12 @@ export const TouchPanelLayout = ({ switchCount, modelCode, deviceName }: TouchPa
       if (stored) {
         const parsed = JSON.parse(stored);
         if (Array.isArray(parsed) && parsed.length === switchCount) {
-          return parsed;
+          return parsed.map((item: any, i: number) => ({
+            ...item,
+            state: initialSwitches?.[String(i + 1)] !== undefined 
+              ? Boolean(initialSwitches[String(i + 1)]) 
+              : item.state,
+          }));
         }
       }
     } catch {
@@ -197,9 +212,39 @@ export const TouchPanelLayout = ({ switchCount, modelCode, deviceName }: TouchPa
       index: i,
       name: `Switch ${i + 1}`,
       iconPath: '',
-      state: i === 0 || i === 2,
+      state: initialSwitches?.[String(i + 1)] !== undefined ? Boolean(initialSwitches[String(i + 1)]) : false,
     }));
   });
+
+  // Sync state when initialSwitches from server changes
+  useEffect(() => {
+    if (initialSwitches) {
+      setSwitches(prev => prev.map((sw, i) => {
+        const chKey = String(i + 1);
+        if (initialSwitches[chKey] !== undefined) {
+          return { ...sw, state: Boolean(initialSwitches[chKey]) };
+        }
+        return sw;
+      }));
+    }
+  }, [initialSwitches]);
+
+  // Real-time synchronization when physical hardware publishes telemetry over MQTT/WebSocket
+  useEffect(() => {
+    if (!deviceId) return;
+    const unsubscribe = realtimeSocket.subscribe((incomingDeviceId, incomingState) => {
+      if (incomingDeviceId === deviceId && incomingState?.switches) {
+        setSwitches(prev => prev.map((sw, i) => {
+          const chKey = String(i + 1);
+          if (incomingState.switches[chKey] !== undefined) {
+            return { ...sw, state: Boolean(incomingState.switches[chKey]) };
+          }
+          return sw;
+        }));
+      }
+    });
+    return unsubscribe;
+  }, [deviceId]);
 
   // Long press timer & flag
   const pressTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -223,19 +268,47 @@ export const TouchPanelLayout = ({ switchCount, modelCode, deviceName }: TouchPa
     }
   };
 
-  const toggleSwitch = (index: number) => {
+  const toggleSwitch = async (index: number) => {
+    const currentState = switches[index]?.state || false;
+    const targetState = !currentState;
+    const channel = index + 1;
+
+    // 1. Optimistic UI update
     const updated = switches.map((sw, i) => 
-      i === index ? { ...sw, state: !sw.state } : sw
+      i === index ? { ...sw, state: targetState } : sw
     );
     persistSwitches(updated);
+
+    // 2. Call backend switch control API (publishes to devices/{deviceId}/set and saves in DB)
+    if (deviceId) {
+      try {
+        await deviceApi.controlSwitch(deviceId, channel, targetState ? 'on' : 'off');
+      } catch (err) {
+        console.warn(`Failed to control switch channel ${channel}:`, err);
+      }
+    }
   };
 
-  const allOn = () => {
+  const allOn = async () => {
     persistSwitches(switches.map(sw => ({ ...sw, state: true })));
+    if (deviceId) {
+      for (let i = 0; i < switches.length; i++) {
+        try {
+          await deviceApi.controlSwitch(deviceId, i + 1, 'on');
+        } catch {}
+      }
+    }
   };
 
-  const allOff = () => {
+  const allOff = async () => {
     persistSwitches(switches.map(sw => ({ ...sw, state: false })));
+    if (deviceId) {
+      for (let i = 0; i < switches.length; i++) {
+        try {
+          await deviceApi.controlSwitch(deviceId, i + 1, 'off');
+        } catch {}
+      }
+    }
   };
 
   // Long-press start
@@ -1514,9 +1587,16 @@ export const HubLayout = ({ modelCode }: { modelCode: string }) => {
 interface DynamicDeviceLayoutProps {
   modelCode: string;
   deviceName?: string;
+  deviceId?: string;
+  initialSwitches?: Record<string, boolean>;
 }
 
-export const DynamicDeviceLayout = ({ modelCode, deviceName }: DynamicDeviceLayoutProps) => {
+export const DynamicDeviceLayout = ({ 
+  modelCode, 
+  deviceName, 
+  deviceId, 
+  initialSwitches 
+}: DynamicDeviceLayoutProps) => {
   const registered = MODEL_REGISTRY[modelCode] || MODEL_REGISTRY['TP8'];
 
   switch (registered.layoutType) {
@@ -1526,6 +1606,8 @@ export const DynamicDeviceLayout = ({ modelCode, deviceName }: DynamicDeviceLayo
           switchCount={registered.switchCount || 8} 
           modelCode={modelCode}
           deviceName={deviceName}
+          deviceId={deviceId}
+          initialSwitches={initialSwitches}
         />
       );
     case 'energy_meter':

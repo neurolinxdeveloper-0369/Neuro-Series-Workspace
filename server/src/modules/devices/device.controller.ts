@@ -76,13 +76,42 @@ deviceRouter.get('/:id', (req, res) => {
   return res.json({ success: true, device });
 });
 
+// POST /api/devices/:id/action - Control hardware switch channel (e.g. {"action":"on","channel":3})
+deviceRouter.post('/:id/action', async (req, res) => {
+  try {
+    const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const { action, channel } = req.body;
+    if (channel === undefined || channel === null) {
+      return res.status(400).json({ success: false, error: 'Channel is required (1-8)' });
+    }
+    const chNum = parseInt(String(channel), 10);
+    const act = (action === 'on' || action === 'off' || action === 'toggle') ? action : 'toggle';
+
+    const result = await deviceService.controlSwitch(id, chNum, act);
+    return res.json({ success: true, ...result });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Switch control failed';
+    return res.status(400).json({ success: false, error: message });
+  }
+});
+
 // PATCH /api/devices/:id/state - Update device state & publish to EMQX
 deviceRouter.patch('/:id/state', async (req, res) => {
   try {
-    const updated = await deviceService.updateDeviceState(req.params.id, req.body);
+    const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    // Check if channel action was passed in body
+    if (req.body.channel !== undefined) {
+      const chNum = parseInt(String(req.body.channel), 10);
+      const action = req.body.action || (req.body.state === true ? 'on' : req.body.state === false ? 'off' : 'toggle');
+      const result = await deviceService.controlSwitch(id, chNum, action);
+      return res.json({ success: true, ...result });
+    }
+
+    const updated = await deviceService.updateDeviceState(id, req.body);
     return res.json({ success: true, device: updated });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Failed to update device';
     return res.status(400).json({ success: false, error: message });
   }
 });
+
