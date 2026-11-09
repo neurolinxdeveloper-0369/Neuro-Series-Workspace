@@ -12,12 +12,13 @@ deviceRouter.get('/', (_req, res) => {
 // POST /api/devices/provision - Provision physical device with parent and child endpoints
 deviceRouter.post('/provision', async (req, res) => {
   try {
-    const { homeId, roomId, modelCode, mac4, customName, icon, wifiSsid, wifiPassword, firmwareVersion, ipAddress } = req.body;
+    const { deviceId, homeId, roomId, modelCode, mac4, customName, icon, wifiSsid, wifiPassword, firmwareVersion, ipAddress } = req.body;
     if (!homeId || !modelCode || !customName || !wifiSsid) {
       return res.status(400).json({ success: false, error: 'homeId, modelCode, customName and wifiSsid are required' });
     }
 
     const result = await deviceService.provisionDevice({
+      deviceId: deviceId ? String(deviceId).trim() : undefined,
       homeId,
       roomId,
       modelCode,

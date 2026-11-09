@@ -233,14 +233,27 @@ export const TouchPanelLayout = ({
   useEffect(() => {
     if (!deviceId) return;
     const unsubscribe = realtimeSocket.subscribe((incomingDeviceId, incomingState) => {
-      if (incomingDeviceId === deviceId && incomingState?.switches) {
-        setSwitches(prev => prev.map((sw, i) => {
-          const chKey = String(i + 1);
-          if (incomingState.switches[chKey] !== undefined) {
-            return { ...sw, state: Boolean(incomingState.switches[chKey]) };
+      if (incomingDeviceId === deviceId && incomingState) {
+        const switchMap = incomingState.switches || incomingState.payload || (typeof incomingState.state === 'object' ? incomingState.state : null);
+        if (switchMap && typeof switchMap === 'object') {
+          setSwitches(prev => prev.map((sw, i) => {
+            const chKey = String(i + 1);
+            if (switchMap[chKey] !== undefined) {
+              return { ...sw, state: Boolean(switchMap[chKey]) };
+            }
+            return sw;
+          }));
+        } else if (incomingState.channel !== undefined && incomingState.state !== undefined) {
+          const chNum = parseInt(String(incomingState.channel), 10);
+          if (!isNaN(chNum)) {
+            setSwitches(prev => prev.map((sw, i) => {
+              if (i + 1 === chNum) {
+                return { ...sw, state: Boolean(incomingState.state) };
+              }
+              return sw;
+            }));
           }
-          return sw;
-        }));
+        }
       }
     });
     return unsubscribe;
@@ -282,7 +295,16 @@ export const TouchPanelLayout = ({
     // 2. Call backend switch control API (publishes to devices/{deviceId}/set and saves in DB)
     if (deviceId) {
       try {
-        await deviceApi.controlSwitch(deviceId, channel, targetState ? 'on' : 'off');
+        const res = await deviceApi.controlSwitch(deviceId, channel, targetState ? 'on' : 'off');
+        if (res && res.switches) {
+          setSwitches(prev => prev.map((sw, i) => {
+            const chKey = String(i + 1);
+            if (res.switches[chKey] !== undefined) {
+              return { ...sw, state: Boolean(res.switches[chKey]) };
+            }
+            return sw;
+          }));
+        }
       } catch (err) {
         console.warn(`Failed to control switch channel ${channel}:`, err);
       }
@@ -320,25 +342,23 @@ export const TouchPanelLayout = ({
         try { navigator.vibrate(50); } catch {}
       }
       openCustomizeModal(index);
-    }, 450);
+    }, 500);
   };
 
   // Long-press end
-  const handleTouchEnd = (index: number) => {
+  const handleTouchEnd = () => {
     if (pressTimerRef.current) {
       clearTimeout(pressTimerRef.current);
       pressTimerRef.current = null;
-    }
-    if (!isLongPressRef.current) {
-      toggleSwitch(index);
     }
   };
 
-  const handleTouchCancel = () => {
-    if (pressTimerRef.current) {
-      clearTimeout(pressTimerRef.current);
-      pressTimerRef.current = null;
+  const handleClick = (index: number) => {
+    if (isLongPressRef.current) {
+      isLongPressRef.current = false;
+      return;
     }
+    toggleSwitch(index);
   };
 
   // Open customization modal
@@ -494,12 +514,10 @@ export const TouchPanelLayout = ({
           return (
             <div
               key={idx}
-              onMouseDown={() => handleTouchStart(idx)}
-              onMouseUp={() => handleTouchEnd(idx)}
-              onMouseLeave={handleTouchCancel}
               onTouchStart={() => handleTouchStart(idx)}
-              onTouchEnd={() => handleTouchEnd(idx)}
-              onTouchCancel={handleTouchCancel}
+              onTouchEnd={handleTouchEnd}
+              onTouchCancel={handleTouchEnd}
+              onClick={() => handleClick(idx)}
               className={`group relative flex flex-col justify-between p-3 rounded-2xl border transition-all duration-300 text-left cursor-pointer overflow-hidden ${
                 isOn
                   ? 'bg-gradient-to-br from-sky-500/20 via-sky-950/40 to-slate-900 border-sky-400/60 shadow-[0_0_18px_rgba(14,165,233,0.35)]'

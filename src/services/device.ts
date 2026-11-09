@@ -37,6 +37,7 @@ export interface SmartDevice {
 }
 
 export interface ProvisionInput {
+  deviceId?: string;
   homeId: string;
   roomId?: string | null;
   modelCode: string;

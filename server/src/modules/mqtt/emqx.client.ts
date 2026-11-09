@@ -35,6 +35,9 @@ class EmqxService {
       const topicsToSubscribe = [
         MQTT_TOPICS.HARDWARE_TELEMETRY,
         MQTT_TOPICS.HARDWARE_HEARTBEAT,
+        'devices/+/telemetry',
+        'devices/+/state',
+        'devices/+/stat',
         MQTT_TOPICS.DEVICE_STATE,
         MQTT_TOPICS.DEVICE_TELEMETRY,
         MQTT_TOPICS.DEVICE_STATUS
@@ -54,10 +57,20 @@ class EmqxService {
         const payload = JSON.parse(message.toString());
         console.log(`📥 [EMQX INCOMING] Topic: ${topic} =>`, payload);
 
-        // Case 1: Hardware Telemetry (e.g. nt/v1/{deviceId}/stat/telemetry)
-        if (topic.startsWith('nt/') && topic.endsWith('/stat/telemetry')) {
+        // Case 1: Hardware Telemetry (nt/v1/{deviceId}/stat/telemetry or devices/{deviceId}/telemetry / state)
+        const isHardwareTelemetry = (topic.startsWith('nt/') && topic.endsWith('/stat/telemetry')) ||
+          (topic.startsWith('devices/') && (topic.endsWith('/telemetry') || topic.endsWith('/state') || topic.endsWith('/stat'))) ||
+          (topic.startsWith('neurolinx/devices/') && (topic.endsWith('/telemetry') || topic.endsWith('/state')));
+
+        if (isHardwareTelemetry) {
           const parts = topic.split('/');
-          const deviceId = payload.deviceId || parts[2];
+          let deviceId = payload.deviceId;
+          if (!deviceId) {
+            if (parts[0] === 'devices') deviceId = parts[1];
+            else if (parts[0] === 'nt') deviceId = parts[2];
+            else if (parts[0] === 'neurolinx') deviceId = parts[2];
+          }
+
           if (deviceId) {
             for (const handler of this.telemetryHandlers) {
               try {
@@ -124,6 +137,11 @@ class EmqxService {
       };
 
       const payloadStr = JSON.stringify(envelope);
+      
+      // Dual-publish to both standard and legacy topics
+      const legacyTopic = MQTT_TOPICS.getLegacyCommandTopic(deviceId);
+      this.client.publish(legacyTopic, payloadStr, { qos: 1 }, () => {});
+
       this.client.publish(topic, payloadStr, { qos: 1 }, (err) => {
         if (err) {
           console.error(`❌ Failed to publish switch command to ${topic}:`, err);

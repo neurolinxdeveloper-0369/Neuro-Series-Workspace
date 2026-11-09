@@ -13,7 +13,7 @@ class RealtimeSocketClient {
       (typeof window !== 'undefined' && window.location.protocol === 'capacitor:');
 
     if (isNative) {
-      return 'wss://api.neurolinx.in/ws';
+      return 'wss://neurolinx.in/neuro-series/ws';
     }
 
     if (typeof window !== 'undefined') {
@@ -25,7 +25,7 @@ class RealtimeSocketClient {
       return `${proto}//${loc.host}/neuro-series/ws`;
     }
 
-    return 'wss://api.neurolinx.in/ws';
+    return 'wss://neurolinx.in/neuro-series/ws';
   }
 
   public connect() {

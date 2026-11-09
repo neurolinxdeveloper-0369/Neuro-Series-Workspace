@@ -936,6 +936,7 @@ export const AddDeviceScreen = ({
             await new Promise(r => setTimeout(r, retryDelay));
           }
           provisionResult = await deviceApi.provisionDevice({
+            deviceId: assignedDeviceId,
             homeId: homeId || '00000000-0000-0000-0000-000000000000',
             roomId: finalRoomId || null,
             modelCode: activeModel.modelCode,

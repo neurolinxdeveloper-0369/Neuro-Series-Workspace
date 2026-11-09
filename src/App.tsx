@@ -1246,7 +1246,7 @@ export function App() {
               <DynamicDeviceLayout 
                 modelCode={selectedDeviceForControl.model_code}
                 deviceName={selectedDeviceForControl.custom_name}
-                deviceId={selectedDeviceForControl.device_id}
+                deviceId={selectedDeviceForControl.device_id || selectedDeviceForControl.id}
                 initialSwitches={selectedDeviceForControl.switches}
               />
             </main>

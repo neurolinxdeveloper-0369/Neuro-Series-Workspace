@@ -240,7 +240,9 @@ class DeviceService {
   }> {
     const mac4 = (dto.mac4 || 'BC88').toUpperCase().slice(-4);
     const modelCode = (dto.modelCode || 'TP8').toUpperCase();
-    const deviceId = this.generateDeviceId(mac4, modelCode);
+    const deviceId = (dto.deviceId && dto.deviceId.trim())
+      ? dto.deviceId.trim()
+      : this.generateDeviceId(mac4, modelCode);
 
     // Ensure valid home_id exists in database to satisfy foreign key constraint
     let targetHomeId = dto.homeId;
@@ -471,7 +473,19 @@ class DeviceService {
     try {
       const isOnline = data.online !== undefined ? data.online : true;
       const rssi = typeof data.rssi === 'number' ? data.rssi : null;
-      const switches = data.switches || {};
+      let switches = data.switches || (data as any).payload || (typeof (data as any).state === 'object' ? (data as any).state : null) || {};
+      if (typeof switches !== 'object' || switches === null) {
+        switches = {};
+      }
+      if (Object.keys(switches).length === 0) {
+        const numericKeys = Object.keys(data).filter(k => !isNaN(parseInt(k, 10)));
+        if (numericKeys.length > 0) {
+          switches = {};
+          for (const k of numericKeys) {
+            switches[k] = (data as any)[k];
+          }
+        }
+      }
 
       // 1. Update devices table in PostgreSQL
       await db.query(

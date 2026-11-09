@@ -48,6 +48,7 @@ export interface DeviceEndpointRecord {
 }
 
 export interface ProvisionDeviceDTO {
+  deviceId?: string;
   homeId: string;
   roomId?: string | null;
   modelCode: string;
