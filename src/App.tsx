@@ -937,22 +937,22 @@ export function App() {
                 const offlineCount = filtered.filter(d => !d.is_online).length;
 
                 return (
-                  <div className="w-full max-w-sm sm:max-w-md md:max-w-2xl lg:max-w-5xl space-y-3 pointer-events-auto">
+                  <div className="w-full max-w-sm sm:max-w-md md:max-w-2xl lg:max-w-5xl space-y-3 pointer-events-auto pt-1 sm:pt-2">
                     {/* Plain Text Status Line (Total Connected, Online, Offline - NOT cards) */}
-                    <div className="flex items-center justify-between px-1">
+                    <div className="flex items-start justify-between px-1 pb-1">
                       <div>
                         <span className="text-xs font-bold uppercase tracking-wider text-slate-700 font-mono">
                           Connected Devices ({filtered.length})
                         </span>
-                        <p className="text-xs text-slate-500 font-medium mt-0.5 flex items-center gap-1.5 flex-wrap">
+                        <p className="text-xs text-slate-500 font-medium mt-1.5 flex items-center gap-2 sm:gap-2.5 flex-wrap">
                           <span>Total Connected: <strong className="text-slate-800 font-semibold">{filtered.length}</strong></span>
-                          <span className="text-slate-300">&bull;</span>
-                          <span className="flex items-center gap-1 text-emerald-600 font-semibold">
+                          <span className="text-slate-300 select-none">&bull;</span>
+                          <span className="flex items-center gap-1.5 text-emerald-600 font-semibold">
                             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                             Online: {onlineCount}
                           </span>
-                          <span className="text-slate-300">&bull;</span>
-                          <span className="flex items-center gap-1 text-rose-500 font-semibold">
+                          <span className="text-slate-300 select-none">&bull;</span>
+                          <span className="flex items-center gap-1.5 text-rose-500 font-semibold">
                             <span className="w-1.5 h-1.5 rounded-full bg-rose-400" />
                             Offline: {offlineCount}
                           </span>
@@ -960,7 +960,7 @@ export function App() {
                       </div>
                       <button
                         onClick={() => handleProtectedAction(() => setIsAddDeviceOpen(true))}
-                        className="text-xs font-bold text-[#0284c7] hover:underline cursor-pointer"
+                        className="text-xs font-bold text-[#0284c7] hover:underline cursor-pointer pt-0.5"
                       >
                         + Add device
                       </button>
@@ -1083,22 +1083,22 @@ export function App() {
                 const offlineCount = filtered.filter(d => !d.is_online).length;
 
                 return (
-                  <div className="w-full max-w-sm sm:max-w-md md:max-w-2xl lg:max-w-5xl space-y-3 pointer-events-auto mb-2">
+                  <div className="w-full max-w-sm sm:max-w-md md:max-w-2xl lg:max-w-5xl space-y-3 pointer-events-auto mb-2 pt-1 sm:pt-2">
                     {/* Plain Text Status Line (Total Connected, Online, Offline - NOT cards) */}
-                    <div className="flex items-center justify-between px-1">
+                    <div className="flex items-start justify-between px-1 pb-1">
                       <div>
                         <span className="text-xs font-bold uppercase tracking-wider text-slate-700 font-mono">
-                          Hardware Devices ({filtered.length})
+                          Connected Devices ({filtered.length})
                         </span>
-                        <p className="text-xs text-slate-500 font-medium mt-0.5 flex items-center gap-1.5 flex-wrap">
+                        <p className="text-xs text-slate-500 font-medium mt-1.5 flex items-center gap-2 sm:gap-2.5 flex-wrap">
                           <span>Total Connected: <strong className="text-slate-800 font-semibold">{filtered.length}</strong></span>
-                          <span className="text-slate-300">&bull;</span>
-                          <span className="flex items-center gap-1 text-emerald-600 font-semibold">
+                          <span className="text-slate-300 select-none">&bull;</span>
+                          <span className="flex items-center gap-1.5 text-emerald-600 font-semibold">
                             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                             Online: {onlineCount}
                           </span>
-                          <span className="text-slate-300">&bull;</span>
-                          <span className="flex items-center gap-1 text-rose-500 font-semibold">
+                          <span className="text-slate-300 select-none">&bull;</span>
+                          <span className="flex items-center gap-1.5 text-rose-500 font-semibold">
                             <span className="w-1.5 h-1.5 rounded-full bg-rose-400" />
                             Offline: {offlineCount}
                           </span>
@@ -1106,7 +1106,7 @@ export function App() {
                       </div>
                       <button
                         onClick={() => handleProtectedAction(() => setIsAddDeviceOpen(true))}
-                        className="text-xs font-bold text-[#0284c7] hover:underline cursor-pointer"
+                        className="text-xs font-bold text-[#0284c7] hover:underline cursor-pointer pt-0.5"
                       >
                         + Add device
                       </button>
