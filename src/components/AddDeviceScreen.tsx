@@ -271,7 +271,7 @@ export const AddDeviceScreen = ({
       password: payload.password || '',
       deviceId: payload.deviceId,
       mqttHost: payload.mqttHost,
-      mqttPort: Number(payload.mqttPort) || 8883,
+      mqttPort: Number(payload.mqttPort) || 1887,
       mqttUsername: payload.mqttUsername,
       mqttPassword: payload.mqttPassword,
 
@@ -280,7 +280,7 @@ export const AddDeviceScreen = ({
       wifi_ssid: payload.ssid,
       wifi_password: payload.password || '',
       mqtt_host: payload.mqttHost,
-      mqtt_port: Number(payload.mqttPort) || 8883,
+      mqtt_port: Number(payload.mqttPort) || 1887,
       mqtt_username: payload.mqttUsername,
       mqtt_user: payload.mqttUsername,
       mqtt_password: payload.mqttPassword,
@@ -290,7 +290,7 @@ export const AddDeviceScreen = ({
 
       mqtt: {
         host: payload.mqttHost,
-        port: Number(payload.mqttPort) || 8883,
+        port: Number(payload.mqttPort) || 1887,
         username: payload.mqttUsername,
         password: payload.mqttPassword,
         clientId: payload.deviceId,
@@ -805,7 +805,7 @@ export const AddDeviceScreen = ({
       // Attempt to send hardware configuration even if backend connection is unavailable
       const fallbackDeviceId = generatedDeviceId;
       const fallbackMqttHost = 'api.neurolinx.in';
-      const fallbackMqttPort = 8883;
+      const fallbackMqttPort = 1887;
       const fallbackMqttUser = 'neuro_device_user';
       const fallbackMqttPass = 'NeuroSeriesEmqx2026!';
 
