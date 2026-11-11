@@ -1865,75 +1865,70 @@ export const GateControllerLayout = ({
   const isActive = isTriggering || isOn;
 
   return (
-    <div className="w-full flex flex-col items-center gap-6 py-2 select-none font-sans">
+    <div className="w-full flex flex-col items-center gap-3.5 select-none font-sans">
       {/* Offline Alert Banner */}
       {!isOnline && (
-        <div className="w-full bg-rose-50 border border-rose-200 rounded-2xl p-3.5 flex items-center gap-3 text-rose-700 text-xs sm:text-sm font-semibold shadow-xs">
-          <AlertTriangle className="w-5 h-5 text-rose-500 flex-shrink-0" />
+        <div className="w-full bg-rose-50/95 border border-rose-200 rounded-2xl p-3 flex items-center gap-2.5 text-rose-700 text-xs font-semibold shadow-xs">
+          <AlertTriangle className="w-4 h-4 text-rose-500 flex-shrink-0" />
           <span>Gate Controller is Offline. Motor trigger commands are disabled until the device reconnects.</span>
         </div>
       )}
 
       {/* 1. Gate Visualizer & Live Status Display Card */}
-      <div className="w-full bg-gradient-to-b from-slate-900 via-slate-950 to-slate-900 rounded-3xl p-5 sm:p-6 text-white border border-slate-800 shadow-xl overflow-hidden relative">
-        {/* Subtle Ambient Refraction */}
+      <div className="w-full rounded-2xl sm:rounded-3xl bg-slate-900 text-white p-4 sm:p-5 border border-slate-800 shadow-md overflow-hidden relative">
+        {/* Glow ambient background */}
         <div 
-          className="absolute inset-0 pointer-events-none"
+          className="absolute inset-0 pointer-events-none transition-opacity duration-500"
           style={{
             background: isActive 
-              ? 'radial-gradient(circle at 50% 20%, rgba(16, 185, 129, 0.18) 0%, transparent 70%)'
-              : 'radial-gradient(circle at 50% 20%, rgba(56, 189, 248, 0.12) 0%, transparent 70%)'
+              ? 'radial-gradient(circle at 50% 30%, rgba(16, 185, 129, 0.22) 0%, transparent 70%)'
+              : 'radial-gradient(circle at 50% 30%, rgba(56, 189, 248, 0.08) 0%, transparent 70%)'
           }}
         />
 
-        {/* Header Bar inside card */}
-        <div className="flex items-center justify-between pb-4 border-b border-slate-800/80 relative z-10">
-          <div className="flex items-center gap-3">
-            <div className={`w-10 h-10 rounded-2xl flex items-center justify-center border transition-all ${
+        {/* Top Status Row inside Visualizer */}
+        <div className="flex items-center justify-between pb-3 border-b border-slate-800/80 relative z-10">
+          <div className="flex items-center gap-2">
+            <div className={`w-8 h-8 rounded-xl flex items-center justify-center border transition-all ${
               isActive 
-                ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40 shadow-lg shadow-emerald-500/20' 
-                : 'bg-sky-500/10 text-sky-400 border-sky-500/30'
+                ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40' 
+                : 'bg-sky-500/10 text-sky-400 border-sky-500/20'
             }`}>
-              <RotateCw className={`w-5 h-5 ${isActive ? 'animate-spin' : ''}`} />
+              <RotateCw className={`w-4 h-4 ${isActive ? 'animate-spin' : ''}`} />
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-mono font-bold uppercase tracking-wider text-sky-400">
-                  {modelCode} • Gate Motor Controller
-                </span>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-mono">
-                  1 RELAY
-                </span>
-              </div>
-              <h2 className="text-base sm:text-lg font-extrabold text-white">
-                {deviceName}
-              </h2>
+              <span className="text-[11px] font-bold text-slate-300 tracking-wide uppercase font-mono truncate max-w-[150px] sm:max-w-xs block">
+                {deviceName || 'Motorized Barrier'}
+              </span>
+              <p className="text-[10px] text-slate-400 font-mono">
+                Relay 1 • GPIO 13
+              </p>
             </div>
           </div>
 
           {/* Status Badge */}
-          <span className={`px-3 py-1 rounded-full text-xs font-bold border flex items-center gap-1.5 backdrop-blur-md transition-all ${
+          <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold border flex items-center gap-1.5 backdrop-blur-md transition-all ${
             isActive
-              ? 'bg-emerald-500/25 text-emerald-300 border-emerald-400/50 shadow-md shadow-emerald-500/20 animate-pulse'
-              : 'bg-slate-800 text-slate-300 border-slate-700'
+              ? 'bg-emerald-500/25 text-emerald-300 border-emerald-400/50 shadow-xs animate-pulse'
+              : 'bg-slate-800/90 text-slate-300 border-slate-700/80'
           }`}>
-            <span className={`w-2 h-2 rounded-full ${isActive ? 'bg-emerald-400' : 'bg-slate-400'}`} />
-            {isTriggering ? 'MOTOR TRIGGERED' : (isOn ? 'RELAY ENERGIZED' : 'STANDBY')}
+            <span className={`w-1.5 h-1.5 rounded-full ${isActive ? 'bg-emerald-400 animate-ping' : 'bg-slate-400'}`} />
+            {isTriggering ? 'MOTOR TRIGGERED' : (isOn ? 'ENERGIZED' : 'STANDBY')}
           </span>
         </div>
 
         {/* Gate Graphic Visualizer */}
-        <div className="relative py-6 flex flex-col items-center justify-center min-h-[140px] z-10">
-          <div className="w-full max-w-md h-28 relative flex items-center justify-between px-4">
+        <div className="relative py-3.5 flex flex-col items-center justify-center z-10">
+          <div className="w-full max-w-sm h-22 relative flex items-center justify-between px-2">
             {/* Left Gate Pillar */}
-            <div className="w-6 sm:w-8 h-full rounded-lg bg-gradient-to-b from-slate-700 to-slate-900 border border-slate-600 shadow-md flex flex-col justify-between p-1 z-20">
+            <div className="w-5 sm:w-6 h-full rounded-md bg-gradient-to-b from-slate-700 via-slate-800 to-slate-900 border border-slate-600 shadow-sm flex flex-col justify-between p-1 z-20">
               <span className="w-full h-1 bg-sky-400/60 rounded-full" />
-              <div className="w-2 h-2 rounded-full bg-emerald-400 mx-auto animate-pulse" />
+              <div className={`w-1.5 h-1.5 rounded-full mx-auto ${isActive ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
               <span className="w-full h-1 bg-sky-400/60 rounded-full" />
             </div>
 
             {/* Sliding Gate Barrier Structure */}
-            <div className="flex-1 h-20 mx-2 relative overflow-hidden flex items-center">
+            <div className="flex-1 h-16 mx-2 relative overflow-hidden flex items-center">
               {/* Rail Guide Top and Bottom */}
               <div className="absolute top-0 inset-x-0 h-1 bg-slate-700/80 rounded-full" />
               <div className="absolute bottom-0 inset-x-0 h-1.5 bg-slate-700/80 rounded-full" />
@@ -1942,8 +1937,8 @@ export const GateControllerLayout = ({
               <div 
                 className={`w-full h-full rounded-md border flex items-center justify-around px-2 transition-all duration-700 ${
                   isActive 
-                    ? 'translate-x-12 opacity-80 border-emerald-400/70 bg-emerald-950/40 shadow-lg shadow-emerald-500/20' 
-                    : 'translate-x-0 opacity-95 border-sky-500/40 bg-slate-800/60'
+                    ? 'translate-x-10 opacity-75 border-emerald-400/70 bg-emerald-950/40 shadow-sm' 
+                    : 'translate-x-0 opacity-95 border-sky-500/30 bg-slate-800/60'
                 }`}
               >
                 {/* Vertical Metal Bars of Gate */}
@@ -1951,85 +1946,85 @@ export const GateControllerLayout = ({
                   <div 
                     key={i} 
                     className={`w-1 h-full rounded-full transition-colors ${
-                      isActive ? 'bg-gradient-to-b from-emerald-400 to-teal-600' : 'bg-gradient-to-b from-slate-400 to-slate-600'
+                      isActive ? 'bg-gradient-to-b from-emerald-400 to-teal-500' : 'bg-gradient-to-b from-slate-400 to-slate-600'
                     }`} 
                   />
                 ))}
               </div>
 
               {/* Motor Cogwheels Animation */}
-              <div className={`absolute bottom-2 left-1/2 -translate-x-1/2 flex items-center gap-1.5 transition-opacity ${isActive ? 'opacity-100' : 'opacity-40'}`}>
-                <RotateCw className={`w-4 h-4 text-emerald-400 ${isActive ? 'animate-spin' : ''}`} />
-                <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-emerald-400">
-                  {isActive ? 'MOTOR ACTIVE' : 'MOTOR READY'}
+              <div className={`absolute bottom-1 left-1/2 -translate-x-1/2 flex items-center gap-1.5 transition-opacity ${isActive ? 'opacity-100' : 'opacity-40'}`}>
+                <RotateCw className={`w-3.5 h-3.5 text-emerald-400 ${isActive ? 'animate-spin' : ''}`} />
+                <span className="text-[9px] font-mono font-bold uppercase tracking-wider text-emerald-400">
+                  {isActive ? 'SIGNAL PULSE ACTIVE' : 'MOTOR READY'}
                 </span>
               </div>
             </div>
 
             {/* Right Gate Pillar */}
-            <div className="w-6 sm:w-8 h-full rounded-lg bg-gradient-to-b from-slate-700 to-slate-900 border border-slate-600 shadow-md flex flex-col justify-between p-1 z-20">
+            <div className="w-5 sm:w-6 h-full rounded-md bg-gradient-to-b from-slate-700 via-slate-800 to-slate-900 border border-slate-600 shadow-sm flex flex-col justify-between p-1 z-20">
               <span className="w-full h-1 bg-sky-400/60 rounded-full" />
-              <div className={`w-2 h-2 rounded-full mx-auto ${isActive ? 'bg-emerald-400 animate-ping' : 'bg-slate-500'}`} />
+              <div className={`w-1.5 h-1.5 rounded-full mx-auto ${isActive ? 'bg-emerald-400 animate-ping' : 'bg-slate-500'}`} />
               <span className="w-full h-1 bg-sky-400/60 rounded-full" />
             </div>
           </div>
         </div>
       </div>
 
-      {/* 2. Massive Tactile Capacitive Trigger Button */}
-      <div className={`flex flex-col items-center justify-center gap-4 my-2 ${!isOnline ? 'pointer-events-none opacity-40 grayscale-[40%]' : ''}`}>
+      {/* 2. Tactile Trigger Button Section */}
+      <div className={`w-full flex flex-col items-center justify-center gap-2.5 py-1 ${!isOnline ? 'pointer-events-none opacity-40 grayscale-[40%]' : ''}`}>
         <div className="relative flex items-center justify-center">
-          {/* Pulsing Neon Wave Rings when active */}
+          {/* Pulsing neon rings when active */}
           {isActive && (
             <>
-              <div className="absolute inset-0 rounded-full bg-emerald-400/30 animate-ping duration-1000 pointer-events-none" />
-              <div className="absolute -inset-4 rounded-full bg-emerald-500/20 blur-xl pointer-events-none animate-pulse" />
+              <div className="absolute inset-0 rounded-full bg-emerald-400/25 animate-ping duration-1000 pointer-events-none" />
+              <div className="absolute -inset-3 rounded-full bg-emerald-500/20 blur-lg pointer-events-none animate-pulse" />
             </>
           )}
 
-          {/* Main Round Capacitive Switch Button */}
+          {/* Capacitive Switch Button */}
           <button
             type="button"
             onClick={handleTrigger}
             disabled={!isOnline || isTriggering}
-            className={`w-48 h-48 sm:w-56 sm:h-56 rounded-full flex flex-col items-center justify-center transition-all duration-200 cursor-pointer select-none active:scale-95 shadow-2xl relative border-4 ${
+            className={`w-36 h-36 sm:w-40 sm:h-40 rounded-full flex flex-col items-center justify-center transition-all duration-200 cursor-pointer select-none active:scale-95 shadow-xl relative border-4 ${
               isActive
-                ? 'bg-gradient-to-br from-emerald-500 via-teal-500 to-emerald-600 text-white border-emerald-300 shadow-emerald-500/40 scale-105 ring-8 ring-emerald-400/25'
-                : 'bg-gradient-to-br from-white via-slate-50 to-sky-50 text-slate-800 border-white hover:border-sky-300 hover:shadow-sky-500/25 shadow-xl ring-8 ring-sky-100/50'
+                ? 'bg-gradient-to-br from-emerald-500 via-teal-500 to-emerald-600 text-white border-emerald-300 shadow-emerald-500/30 scale-105 ring-6 ring-emerald-400/20'
+                : 'bg-gradient-to-br from-white via-slate-50 to-sky-50 text-slate-800 border-white hover:border-sky-300 hover:shadow-sky-500/20 shadow-lg ring-6 ring-sky-100/60'
             }`}
             aria-label="Gate Trigger Switch"
           >
             {/* Center Icon */}
-            <div className={`w-14 h-14 sm:w-16 sm:h-16 rounded-3xl flex items-center justify-center mb-2 transition-transform ${
+            <div className={`w-11 h-11 rounded-2xl flex items-center justify-center mb-1.5 transition-transform ${
               isActive ? 'bg-white/20 text-white scale-110' : 'bg-sky-50 text-[#0284c7] group-hover:scale-105'
             }`}>
-              <Power className={`w-8 h-8 sm:w-9 sm:h-9 ${isActive ? 'stroke-[2.8]' : 'stroke-[2.2]'}`} />
+              <Power className={`w-6 h-6 sm:w-7 sm:h-7 ${isActive ? 'stroke-[2.8]' : 'stroke-[2.2]'}`} />
             </div>
 
-            {/* Main Action Text */}
-            <span className={`text-sm sm:text-base font-black tracking-wider uppercase font-mono ${
+            {/* Action Text */}
+            <span className={`text-xs sm:text-sm font-black tracking-wider uppercase font-mono ${
               isActive ? 'text-white drop-shadow-sm' : 'text-slate-800'
             }`}>
               {isTriggering ? 'TRIGGERING...' : (isOn && triggerMode === 'toggle' ? 'TURN OFF' : 'TRIGGER GATE')}
             </span>
 
-            {/* Helper Subtext */}
-            <span className={`text-[11px] font-semibold mt-1 ${
+            {/* Subtitle */}
+            <span className={`text-[10px] font-semibold mt-0.5 ${
               isActive ? 'text-emerald-100' : 'text-slate-500'
             }`}>
               {isTriggering 
-                ? 'Motor signal active' 
-                : (triggerMode === 'pulse' ? 'Tap to Open / Close' : (isOn ? 'Relay is ON' : 'Tap to switch ON'))}
+                ? 'Pulse signal (1.5s)' 
+                : (triggerMode === 'pulse' ? 'Tap to Open / Close' : (isOn ? 'Relay is ON' : 'Tap to toggle'))}
             </span>
           </button>
         </div>
 
         {/* Trigger Mode Selector Pill */}
-        <div className="flex items-center gap-1.5 p-1 rounded-full bg-slate-100/90 border border-slate-200/80 shadow-xs mt-2">
+        <div className="flex items-center gap-1 p-1 rounded-full bg-slate-100/90 border border-slate-200/80 shadow-xs">
           <button
             type="button"
             onClick={() => setTriggerMode('pulse')}
-            className={`px-3 sm:px-4 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${
+            className={`px-3 py-1 rounded-full text-xs font-bold transition-all cursor-pointer ${
               triggerMode === 'pulse'
                 ? 'bg-white text-[#0284c7] shadow-xs'
                 : 'text-slate-500 hover:text-slate-800'
@@ -2040,7 +2035,7 @@ export const GateControllerLayout = ({
           <button
             type="button"
             onClick={() => setTriggerMode('toggle')}
-            className={`px-3 sm:px-4 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${
+            className={`px-3 py-1 rounded-full text-xs font-bold transition-all cursor-pointer ${
               triggerMode === 'toggle'
                 ? 'bg-white text-[#0284c7] shadow-xs'
                 : 'text-slate-500 hover:text-slate-800'
@@ -2051,32 +2046,32 @@ export const GateControllerLayout = ({
         </div>
       </div>
 
-      {/* 3. Gate Telemetry & Statistics Bar */}
-      <div className="w-full grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
-        <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-3 border border-sky-100 shadow-xs flex flex-col justify-between">
+      {/* 3. Gate Telemetry & Statistics Cards */}
+      <div className="w-full grid grid-cols-2 sm:grid-cols-4 gap-2 pt-0.5">
+        <div className="bg-white/90 backdrop-blur-sm rounded-2xl p-2.5 px-3 border border-sky-100 shadow-xs flex flex-col justify-between">
           <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-mono">Channel</span>
-          <span className="text-sm font-extrabold text-slate-800 mt-1">1 (Relay Output)</span>
+          <span className="text-xs sm:text-sm font-extrabold text-slate-800 mt-0.5">1 (GPIO 13)</span>
         </div>
 
-        <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-3 border border-sky-100 shadow-xs flex flex-col justify-between">
+        <div className="bg-white/90 backdrop-blur-sm rounded-2xl p-2.5 px-3 border border-sky-100 shadow-xs flex flex-col justify-between">
           <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-mono">Motor State</span>
-          <span className={`text-sm font-extrabold mt-1 ${
+          <span className={`text-xs sm:text-sm font-extrabold mt-0.5 ${
             isActive ? 'text-emerald-600' : 'text-slate-800'
           }`}>
             {isTriggering ? 'Triggering' : (isOn ? 'Energized' : 'Standby')}
           </span>
         </div>
 
-        <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-3 border border-sky-100 shadow-xs flex flex-col justify-between">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-mono">Last Triggered</span>
-          <span className="text-sm font-extrabold text-slate-800 mt-1 truncate">
+        <div className="bg-white/90 backdrop-blur-sm rounded-2xl p-2.5 px-3 border border-sky-100 shadow-xs flex flex-col justify-between">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-mono">Last Action</span>
+          <span className="text-xs sm:text-sm font-extrabold text-slate-800 mt-0.5 truncate">
             {lastActionTime || 'Ready'}
           </span>
         </div>
 
-        <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-3 border border-sky-100 shadow-xs flex flex-col justify-between">
+        <div className="bg-white/90 backdrop-blur-sm rounded-2xl p-2.5 px-3 border border-sky-100 shadow-xs flex flex-col justify-between">
           <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-mono">Total Triggers</span>
-          <span className="text-sm font-extrabold text-[#0284c7] mt-1 font-mono">{triggerCount} Cycles</span>
+          <span className="text-xs sm:text-sm font-extrabold text-[#0284c7] mt-0.5 font-mono">{triggerCount} Cycles</span>
         </div>
       </div>
     </div>

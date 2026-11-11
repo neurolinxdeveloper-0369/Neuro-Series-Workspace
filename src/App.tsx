@@ -1619,88 +1619,90 @@ export function App() {
             }}
           >
             {/* Top Navigation Bar: Back Button, Device Info, RSSI Badge */}
-            <header className="sticky top-0 z-30 w-full bg-[#d4edf4]/95 backdrop-blur-xl px-4 sm:px-8 py-3.5 flex items-center justify-between border-b border-sky-200/60 shadow-xs flex-shrink-0">
-              <div className="flex items-center gap-3 sm:gap-5">
+            <header className="sticky top-0 z-30 w-full bg-[#d4edf4]/95 backdrop-blur-xl px-3 sm:px-6 py-2.5 sm:py-3 flex items-center justify-between border-b border-sky-200/60 shadow-xs flex-shrink-0 gap-2">
+              <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                {/* Compact Round Back Button */}
                 <button
                   type="button"
                   onClick={() => setSelectedDeviceForControl(null)}
-                  className="h-10 px-3.5 sm:px-4 rounded-full bg-white/90 hover:bg-white text-slate-800 shadow-xs border border-white/80 flex items-center gap-2 cursor-pointer active:scale-95 transition-all group font-bold text-xs sm:text-sm"
+                  className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-white/95 hover:bg-white text-slate-800 shadow-xs border border-white/80 flex items-center justify-center cursor-pointer active:scale-95 transition-all flex-shrink-0"
                   aria-label="Back to devices"
                 >
-                  <ArrowLeft className="w-4 h-4 text-slate-700 group-hover:-translate-x-0.5 transition-transform" strokeWidth={2.4} />
-                  <span>Back</span>
+                  <ArrowLeft className="w-4 h-4 text-slate-700" strokeWidth={2.4} />
                 </button>
 
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-2xl bg-white shadow-xs border border-sky-100 flex items-center justify-center p-1.5 flex-shrink-0">
-                    {selectedDeviceForControl.model_code === 'GATE' ? (
-                      <div className="w-full h-full rounded-xl bg-gradient-to-br from-sky-500 to-indigo-600 flex items-center justify-center text-white">
-                        <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M3 21h18" />
-                          <path d="M5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16" />
-                          <path d="M9 21v-4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v4" />
-                        </svg>
-                      </div>
-                    ) : (
-                      <img
-                        src={getAssetUrl('8S.png')}
-                        alt={selectedDeviceForControl.custom_name}
-                        className="w-full h-full object-contain"
-                      />
-                    )}
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h1 className="text-base sm:text-lg font-extrabold text-slate-900 tracking-tight leading-tight">
-                        {selectedDeviceForControl.custom_name}
-                      </h1>
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-50 text-[#0284c7] border border-sky-100 font-mono">
-                        {selectedDeviceForControl.model_code || 'TP8'}
-                      </span>
+                {/* Device Icon badge */}
+                <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-white shadow-xs border border-sky-100 flex items-center justify-center p-1.5 flex-shrink-0">
+                  {selectedDeviceForControl.model_code === 'GATE' ? (
+                    <div className="w-full h-full rounded-lg bg-gradient-to-br from-sky-500 to-indigo-600 flex items-center justify-center text-white">
+                      <svg className="w-4 h-4 sm:w-5 sm:h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M3 21h18" />
+                        <path d="M5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16" />
+                        <path d="M9 21v-4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v4" />
+                      </svg>
                     </div>
-                    <p className="text-xs text-slate-500 font-sans flex items-center gap-1.5 mt-0.5">
-                      <span>{getRoomEmoji(roomLabel)}</span>
-                      <span className="font-semibold text-slate-700">{roomLabel}</span>
-                    </p>
+                  ) : (
+                    <img
+                      src={getAssetUrl('8S.png')}
+                      alt={selectedDeviceForControl.custom_name}
+                      className="w-full h-full object-contain"
+                    />
+                  )}
+                </div>
+
+                {/* Device Title & Room Label */}
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5">
+                    <h1 className="text-sm sm:text-base font-extrabold text-slate-900 tracking-tight leading-tight truncate">
+                      {selectedDeviceForControl.custom_name}
+                    </h1>
+                    <span className="px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-sky-50 text-[#0284c7] border border-sky-100 font-mono flex-shrink-0">
+                      {selectedDeviceForControl.model_code || 'TP8'}
+                    </span>
                   </div>
+                  <p className="text-[11px] text-slate-500 font-sans flex items-center gap-1 mt-0.5 truncate">
+                    <span>{getRoomEmoji(roomLabel)}</span>
+                    <span className="font-semibold text-slate-600 truncate">{roomLabel}</span>
+                  </p>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
-                <span className={`px-3 py-1 rounded-full text-xs font-bold border flex items-center gap-1.5 shadow-xs ${
+              {/* Status Badge - Fixed right, never clips */}
+              <div className="flex items-center flex-shrink-0 pl-1">
+                <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold border flex items-center gap-1.5 shadow-xs whitespace-nowrap ${
                   selectedDeviceForControl.is_online !== false
                     ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                     : 'bg-rose-50 text-rose-700 border-rose-200'
                 }`}>
-                  <span className={`w-2 h-2 rounded-full ${
+                  <span className={`w-1.5 h-1.5 rounded-full ${
                     selectedDeviceForControl.is_online !== false
                       ? 'bg-emerald-500 animate-pulse'
                       : 'bg-rose-400'
                   }`} />
-                  {selectedDeviceForControl.is_online !== false ? 'Online' : 'Offline'}
+                  <span>{selectedDeviceForControl.is_online !== false ? 'Online' : 'Offline'}</span>
                   {selectedDeviceForControl.is_online !== false && typeof selectedDeviceForControl.rssi === 'number' && (
-                    <span className="text-[11px] text-emerald-700 font-mono">({selectedDeviceForControl.rssi} dBm)</span>
+                    <span className="text-[10px] text-emerald-600/90 font-mono">({selectedDeviceForControl.rssi} dBm)</span>
                   )}
                 </span>
               </div>
             </header>
 
             {/* Screen Content Body */}
-            <main className="w-full max-w-4xl mx-auto px-4 sm:px-6 py-5 sm:py-7 flex-1 flex flex-col gap-4 pb-[calc(2rem+max(var(--android-nav-bottom,0px),env(safe-area-inset-bottom,0px)))]">
+            <main className="w-full max-w-2xl mx-auto px-3.5 sm:px-6 py-3 sm:py-4 flex-1 flex flex-col gap-3 pb-[calc(3.5rem+max(var(--android-nav-bottom,0px),env(safe-area-inset-bottom,0px)))]">
               {/* Meta details bar */}
-              <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-2.5 px-4 border border-sky-100/80 flex items-center justify-between text-xs font-mono text-slate-600 shadow-xs flex-wrap gap-2">
+              <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-2 px-3.5 border border-sky-100/80 flex items-center justify-between text-[11px] font-mono text-slate-600 shadow-xs flex-wrap gap-1.5">
                 <div className="flex items-center gap-1.5">
-                  <span className="text-slate-400 font-sans font-medium text-[11px]">Device ID:</span>
+                  <span className="text-slate-400 font-sans font-medium text-[10px]">Device ID:</span>
                   <span className="font-bold text-[#0284c7]">{selectedDeviceForControl.device_id || `NEURO-${selectedDeviceForControl.model_code}-${selectedDeviceForControl.mac_4}`}</span>
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <span className="text-slate-400 font-sans font-medium text-[11px]">IP Address:</span>
+                  <span className="text-slate-400 font-sans font-medium text-[10px]">IP Address:</span>
                   <span className="text-slate-700 font-semibold">{selectedDeviceForControl.ip_address || '192.168.1.x'}</span>
                 </div>
               </div>
 
               {/* Dynamic Switch Controls */}
-              <div className="bg-white/90 backdrop-blur-md rounded-3xl p-4 sm:p-6 shadow-sm border border-white/80">
+              <div className="bg-white/90 backdrop-blur-md rounded-3xl p-3.5 sm:p-5 shadow-xs border border-white/80">
                 <DynamicDeviceLayout 
                   modelCode={selectedDeviceForControl.model_code || 'TP8'}
                   deviceName={selectedDeviceForControl.custom_name}
