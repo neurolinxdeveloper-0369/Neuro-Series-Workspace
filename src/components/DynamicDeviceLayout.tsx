@@ -113,34 +113,44 @@ export const MODEL_REGISTRY: Record<string, {
 export function resolveDeviceFromSsid(rawInput: string): ResolvedDeviceMeta {
   let clean = (rawInput || '').trim();
 
+  // Handle standard Wi-Fi QR code format: WIFI:S:NEURO-TP8-BC88;T:WPA;P:password;;
+  if (clean.toUpperCase().startsWith('WIFI:')) {
+    const ssidMatch = clean.match(/S:([^;]+)/i);
+    if (ssidMatch) clean = ssidMatch[1].trim();
+  }
+
   // Handle possible QR JSON payload: {"ssid": "NEURO-TP8-BC88"}
   if (clean.startsWith('{') && clean.endsWith('}')) {
     try {
       const parsed = JSON.parse(clean);
       if (parsed.ssid) clean = parsed.ssid;
       else if (parsed.modelCode) clean = `NEURO-${parsed.modelCode}-${parsed.mac4 || 'BC88'}`;
+      else if (parsed.device_id) clean = parsed.device_id;
     } catch {
       // ignore
     }
   }
 
-  // Handle URL format: https://neurolinx.in/device?ssid=NEURO-TP8-BC88
+  // Handle URL format: https://neurolinx.in/device?ssid=NEURO-TP8-BC88 or ?device_id=NEURO-TP8-BC88
   if (clean.includes('ssid=')) {
-    const match = clean.match(/ssid=([^&]+)/);
+    const match = clean.match(/ssid=([^&]+)/i);
+    if (match) clean = decodeURIComponent(match[1]);
+  } else if (clean.includes('device_id=')) {
+    const match = clean.match(/device_id=([^&]+)/i);
     if (match) clean = decodeURIComponent(match[1]);
   }
 
-  // Pattern 1: NEURO-[MODEL]-[MAC4] or NEURO-BLE-[MODEL]-[MAC4]
+  // Pattern 1: NEURO-[MODEL]-[MAC4] or NEURO_[MODEL]_[MAC4] (with or without BLE)
   let modelCode = 'TP8';
   let mac4 = 'BC88';
 
-  const neuroMatch = clean.match(/NEURO-(?:BLE-)?([A-Za-z0-9]+)-([A-Fa-f0-9]{4})/i);
+  const neuroMatch = clean.match(/NEURO[-_](?:BLE[-_])?([A-Za-z0-9]+)[-_]([A-Fa-f0-9]{4})/i);
   if (neuroMatch) {
     modelCode = neuroMatch[1].toUpperCase();
     mac4 = neuroMatch[2].toUpperCase();
   } else {
-    // Pattern 2: [MODEL]-[MAC4]
-    const shortMatch = clean.match(/^([A-Za-z0-9]+)-([A-Fa-f0-9]{4})$/i);
+    // Pattern 2: [MODEL]-[MAC4] or [MODEL]_[MAC4]
+    const shortMatch = clean.match(/^([A-Za-z0-9]+)[-_]([A-Fa-f0-9]{4})$/i);
     if (shortMatch) {
       modelCode = shortMatch[1].toUpperCase();
       mac4 = shortMatch[2].toUpperCase();

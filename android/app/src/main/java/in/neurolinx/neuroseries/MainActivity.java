@@ -45,18 +45,41 @@ public class MainActivity extends BridgeActivity {
         @JavascriptInterface
         public String getConnectedSsid() {
             try {
+                // Android 10+ (API 29+) ConnectivityManager transport check
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    ConnectivityManager cm = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
+                    if (cm != null) {
+                        Network activeNetwork = cm.getActiveNetwork();
+                        if (activeNetwork != null) {
+                            NetworkCapabilities capabilities = cm.getNetworkCapabilities(activeNetwork);
+                            if (capabilities != null && capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) {
+                                WifiInfo wifiInfo = (WifiInfo) capabilities.getTransportInfo();
+                                if (wifiInfo != null && wifiInfo.getSSID() != null) {
+                                    String ssid = wifiInfo.getSSID().replace("\"", "").trim();
+                                    if (!ssid.equals("<unknown ssid>") && !ssid.isEmpty()) {
+                                        android.util.Log.d("AndroidWifiBridge", "getConnectedSsid (TransportInfo): " + ssid);
+                                        return ssid;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Fallback to WifiManager
                 WifiManager wm = (WifiManager) context.getApplicationContext().getSystemService(Context.WIFI_SERVICE);
                 if (wm != null) {
                     WifiInfo info = wm.getConnectionInfo();
                     if (info != null && info.getSSID() != null) {
                         String ssid = info.getSSID().replace("\"", "").trim();
                         if (!ssid.equals("<unknown ssid>") && !ssid.isEmpty()) {
+                            android.util.Log.d("AndroidWifiBridge", "getConnectedSsid (WifiManager): " + ssid);
                             return ssid;
                         }
                     }
                 }
             } catch (Exception e) {
-                e.printStackTrace();
+                android.util.Log.e("AndroidWifiBridge", "getConnectedSsid error: " + e.getMessage());
             }
             return "";
         }
@@ -83,10 +106,11 @@ public class MainActivity extends BridgeActivity {
                             }
                         }
                     }
+                    android.util.Log.d("AndroidWifiBridge", "getScanResults returning " + arr.length() + " items");
                     return arr.toString();
                 }
             } catch (Exception e) {
-                e.printStackTrace();
+                android.util.Log.e("AndroidWifiBridge", "getScanResults error: " + e.getMessage(), e);
             }
             return "[]";
         }

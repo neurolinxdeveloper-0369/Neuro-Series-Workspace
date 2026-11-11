@@ -37,6 +37,7 @@ import {
 } from 'lucide-react';
 import { Camera } from '@capacitor/camera';
 import { Capacitor } from '@capacitor/core';
+import jsQR from 'jsqr';
 import { deviceApi, type Device } from '../services/device';
 import { homeApi, type Home, type Room } from '../services/home';
 import { resolveDeviceFromSsid } from './DynamicDeviceLayout';
@@ -256,13 +257,12 @@ export const AddDeviceScreen = ({
         if (scanJson) {
           const results = JSON.parse(scanJson);
           if (Array.isArray(results)) {
-            // Filter ALL 2.4GHz Wi-Fi networks (approx 2400 - 2500 MHz, or undefined frequency)
-            // Exclude empty SSIDs and hardware AP hotspots starting with or containing capital NEURO
+            // Filter Wi-Fi networks (exclude device configuration hotspots and unknown SSIDs)
             const filtered = results.filter((r: any) => {
               if (!r.ssid || !r.ssid.trim()) return false;
               if (r.ssid === '<unknown ssid>') return false;
-              if (r.ssid.startsWith('NEURO') || r.ssid.includes('NEURO')) return false;
-              if (r.frequency && (r.frequency < 2400 || r.frequency > 2500)) return false;
+              // Exclude NEURO device hotspots from router selection list (case-insensitive)
+              if (r.ssid.toUpperCase().includes('NEURO')) return false;
               return true;
             });
 
@@ -590,32 +590,139 @@ export const AddDeviceScreen = ({
     return () => stopCamera();
   }, [isOpen, currentView]);
 
-  // Real-time BarcodeDetector for live camera QR scanning
+  // Real-time camera QR scanner powered by jsQR and BarcodeDetector
   useEffect(() => {
-    if (isOpen && currentView === 'qr_scanner' && cameraStream && typeof window !== 'undefined' && 'BarcodeDetector' in window) {
-      let intervalId: any;
+    if (!isOpen || currentView !== 'qr_scanner' || !cameraStream) {
+      return;
+    }
+
+    let isScanning = true;
+    let animationFrameId: number;
+    let canvas: HTMLCanvasElement | null = null;
+    let ctx: CanvasRenderingContext2D | null = null;
+
+    let nativeDetector: any = null;
+    if (typeof window !== 'undefined' && 'BarcodeDetector' in window) {
       try {
-        const barcodeDetector = new (window as any).BarcodeDetector({ formats: ['qr_code'] });
-        intervalId = setInterval(async () => {
-          if (videoRef.current && videoRef.current.readyState === videoRef.current.HAVE_ENOUGH_DATA) {
+        nativeDetector = new (window as any).BarcodeDetector({ formats: ['qr_code'] });
+      } catch {
+        nativeDetector = null;
+      }
+    }
+
+    let lastScanTime = 0;
+
+    const scanFrame = async () => {
+      if (!isScanning) return;
+
+      const video = videoRef.current;
+      const now = performance.now();
+
+      if (video && video.readyState >= 2 && now - lastScanTime >= 140) {
+        lastScanTime = now;
+        try {
+          let detectedText: string | null = null;
+
+          // 1. Try native BarcodeDetector if supported by the browser/engine
+          if (nativeDetector) {
             try {
-              const barcodes = await barcodeDetector.detect(videoRef.current);
+              const barcodes = await nativeDetector.detect(video);
               if (barcodes && barcodes.length > 0 && barcodes[0].rawValue) {
-                initiateDeviceFromSsid(barcodes[0].rawValue);
+                detectedText = barcodes[0].rawValue;
               }
-            } catch {
-              // frame detection pass
+            } catch {}
+          }
+
+          // 2. jsQR software engine fallback (Works in 100% of Android WebViews & browsers)
+          if (!detectedText && video.videoWidth > 0 && video.videoHeight > 0) {
+            if (!canvas) {
+              canvas = document.createElement('canvas');
+              ctx = canvas.getContext('2d', { willReadFrequently: true });
+            }
+            if (ctx && canvas) {
+              const maxDim = 640;
+              let w = video.videoWidth;
+              let h = video.videoHeight;
+              if (w > maxDim || h > maxDim) {
+                if (w > h) {
+                  h = Math.round((h * maxDim) / w);
+                  w = maxDim;
+                } else {
+                  w = Math.round((w * maxDim) / h);
+                  h = maxDim;
+                }
+              }
+              canvas.width = w;
+              canvas.height = h;
+              ctx.drawImage(video, 0, 0, w, h);
+              const imgData = ctx.getImageData(0, 0, w, h);
+              const qr = jsQR(imgData.data, imgData.width, imgData.height, {
+                inversionAttempts: 'dontInvert'
+              });
+              if (qr && qr.data && qr.data.trim()) {
+                detectedText = qr.data.trim();
+              }
             }
           }
-        }, 500);
-      } catch {
-        // BarcodeDetector initialization pass
+
+          if (detectedText) {
+            console.log('✅ QR Code successfully scanned:', detectedText);
+            isScanning = false;
+            try {
+              if (navigator.vibrate) navigator.vibrate(80);
+            } catch {}
+            initiateDeviceFromSsid(detectedText);
+            return;
+          }
+        } catch (frameErr) {
+          console.warn('QR scan frame error:', frameErr);
+        }
       }
-      return () => {
-        if (intervalId) clearInterval(intervalId);
-      };
-    }
+
+      animationFrameId = requestAnimationFrame(scanFrame);
+    };
+
+    animationFrameId = requestAnimationFrame(scanFrame);
+
+    return () => {
+      isScanning = false;
+      if (animationFrameId) cancelAnimationFrame(animationFrameId);
+    };
   }, [isOpen, currentView, cameraStream]);
+
+  // Gallery Image QR Upload Decoder
+  const handleQrImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0);
+          const imgData = ctx.getImageData(0, 0, img.width, img.height);
+          const code = jsQR(imgData.data, imgData.width, imgData.height, {
+            inversionAttempts: 'attemptBoth'
+          });
+          if (code && code.data && code.data.trim()) {
+            console.log('✅ QR Decoded from uploaded photo:', code.data);
+            try {
+              if (navigator.vibrate) navigator.vibrate(80);
+            } catch {}
+            initiateDeviceFromSsid(code.data.trim());
+          } else {
+            alert('Could not find a valid QR code in this image. Please ensure the QR code is clear and in focus.');
+          }
+        }
+      };
+      img.src = reader.result as string;
+    };
+    reader.readAsDataURL(file);
+  };
 
   const startCamera = async () => {
     setCameraError(null);
@@ -684,10 +791,28 @@ export const AddDeviceScreen = ({
     }
   };
 
-  // Scan Nearby Management
+  // Scan Nearby Management with auto-retry polling
   useEffect(() => {
     if (isOpen && currentView === 'scan_nearby') {
-      runNearbyScan(activeNearbyMode);
+      let isMounted = true;
+      let attempt = 0;
+      let timerId: any = null;
+
+      const executeScan = async () => {
+        if (!isMounted) return;
+        await runNearbyScan(activeNearbyMode);
+        attempt++;
+        if (isMounted && attempt < 6) {
+          timerId = setTimeout(executeScan, 2800);
+        }
+      };
+
+      timerId = setTimeout(executeScan, 100);
+
+      return () => {
+        isMounted = false;
+        if (timerId) clearTimeout(timerId);
+      };
     }
   }, [isOpen, currentView, activeNearbyMode]);
 
@@ -700,7 +825,6 @@ export const AddDeviceScreen = ({
 
   const runNearbyScan = async (mode: 'auto' | 'ap' | 'ble') => {
     setIsNearbyScanning(true);
-    setNearbyFoundDevices([]);
     setScanFeedbackMessage(null);
 
     const androidBridge = typeof window !== 'undefined' ? (window as any).AndroidWifiBridge : null;
@@ -748,10 +872,11 @@ export const AddDeviceScreen = ({
           androidBridge.bindProcessToWifi();
         } catch {}
 
-        // Check if phone is already connected to a NEURO device Wi-Fi (Strictly capital NEURO)
+        // Check if phone is already connected to a NEURO device Wi-Fi (case-insensitive)
         try {
           const connectedSsid = androidBridge.getConnectedSsid?.();
-          if (connectedSsid && (connectedSsid.startsWith('NEURO') || connectedSsid.includes('NEURO'))) {
+          const upperConnected = (connectedSsid || '').toUpperCase();
+          if (upperConnected && (upperConnected.includes('NEURO') || upperConnected.startsWith('TP') || upperConnected.startsWith('GATE') || upperConnected.startsWith('EM') || upperConnected.startsWith('TNK'))) {
             const resolved = resolveDeviceFromSsid(connectedSsid);
             const matched = DEVICE_CATALOG.find(d => d.modelCode.toUpperCase() === resolved.modelCode.toUpperCase()) || activeModel;
             setNearbyFoundDevices([{
@@ -766,13 +891,47 @@ export const AddDeviceScreen = ({
           }
         } catch {}
 
-        // Check native Wi-Fi scan results from phone's Wi-Fi list (Strictly capital NEURO only)
+        // Native Android direct HTTP probe to http://192.168.4.1 (bypasses WebView CORS & SSL restrictions)
+        if (androidBridge.httpGet) {
+          const probeEndpoints = ['/info', '/status', '/api/device', '/'];
+          for (const ep of probeEndpoints) {
+            try {
+              const raw = androidBridge.httpGet(`http://192.168.4.1${ep}`);
+              if (raw && !raw.startsWith('ERROR:') && raw.trim().length > 2) {
+                let devSsid = '';
+                try {
+                  const parsed = JSON.parse(raw);
+                  devSsid = parsed?.ssid || `NEURO-${parsed?.model || activeModel.modelCode}-${parsed?.mac || '0001'}`;
+                } catch {
+                  devSsid = `NEURO-${activeModel.modelCode}-0001`;
+                }
+                const resolved = resolveDeviceFromSsid(devSsid);
+                const matched = DEVICE_CATALOG.find(d => d.modelCode.toUpperCase() === resolved.modelCode.toUpperCase()) || activeModel;
+                setNearbyFoundDevices([{
+                  model: matched,
+                  mac4: resolved.mac4,
+                  ssid: devSsid,
+                  signal: 'Connected (192.168.4.1)',
+                  mode: 'AP Mode'
+                }]);
+                setIsNearbyScanning(false);
+                return;
+              }
+            } catch {}
+          }
+        }
+
+        // Check native Wi-Fi scan results from phone's Wi-Fi list (case-insensitive)
         try {
           const scanJson = androidBridge.getScanResults?.();
           if (scanJson) {
             const results = JSON.parse(scanJson);
-            // Strictly case-sensitive: ONLY SSIDs containing or starting with capital "NEURO"
-            const neuroSsids = results.filter((r: any) => r.ssid && (r.ssid.startsWith('NEURO') || r.ssid.includes('NEURO')));
+            const neuroSsids = results.filter((r: any) => {
+              if (!r.ssid) return false;
+              const u = r.ssid.toUpperCase();
+              return u.includes('NEURO') || u.startsWith('TP') || u.startsWith('GATE') || u.startsWith('EM') || u.startsWith('TNK');
+            });
+
             if (neuroSsids.length > 0) {
               // Deduplicate by SSID, keeping the strongest RSSI (level)
               const devMap = new Map<string, any>();
@@ -802,7 +961,7 @@ export const AddDeviceScreen = ({
         } catch {}
       }
 
-      // 2. Real-time HTTP probe to http://192.168.4.1 (multi-endpoint fallback)
+      // 2. Web fetch HTTP probe to http://192.168.4.1 (multi-endpoint fallback for browser testing)
       let foundViaHttp = false;
       const endpoints = ['/info', '/status', '/', '/api/device'];
       for (const ep of endpoints) {
@@ -848,7 +1007,7 @@ export const AddDeviceScreen = ({
         } catch {}
       }
 
-      if (!foundViaHttp) {
+      if (!foundViaHttp && nearbyFoundDevices.length === 0) {
         const isBrowser = !androidBridge && !Capacitor.isNativePlatform();
         if (isBrowser) {
           setScanFeedbackMessage(
@@ -856,7 +1015,7 @@ export const AddDeviceScreen = ({
           );
         } else {
           setScanFeedbackMessage(
-            'To connect via AP mode: Open your phone Wi-Fi settings, connect to the "NEURO-..." network, then tap Retry or enter the SSID below.'
+            'Searching for device hotspot... If your device is ready, ensure your phone Wi-Fi is turned on. You can also connect to "NEURO-..." in Settings or enter the SSID below.'
           );
         }
       }
@@ -1290,16 +1449,35 @@ export const AddDeviceScreen = ({
                 <div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-white rounded-br-xl" />
               </div>
 
-              {/* Flashlight Button */}
-              <button
-                onClick={toggleTorch}
-                className={`absolute bottom-4 right-4 w-11 h-11 rounded-full flex items-center justify-center transition-all cursor-pointer shadow-lg backdrop-blur-md ${
-                  isTorchOn ? 'bg-amber-400 text-slate-950 scale-105' : 'bg-slate-900/60 text-white hover:bg-slate-900/80'
-                }`}
-                aria-label="Flashlight"
-              >
-                <Flashlight className="w-5 h-5" strokeWidth={2.2} />
-              </button>
+              {/* Animated Laser Scanning Line */}
+              <div className="absolute inset-8 pointer-events-none overflow-hidden flex flex-col justify-center">
+                <div className="w-full h-0.5 bg-gradient-to-r from-transparent via-sky-400 to-transparent shadow-[0_0_12px_#38bdf8] animate-pulse" />
+              </div>
+
+              {/* Viewfinder Bottom Controls: Choose Photo & Torch */}
+              <div className="absolute bottom-4 left-4 right-4 flex items-center justify-between pointer-events-auto">
+                <label className="flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-slate-900/70 hover:bg-slate-900/90 text-white text-xs font-semibold backdrop-blur-md cursor-pointer transition-all shadow-md active:scale-95">
+                  <ImageIcon className="w-4 h-4 text-sky-400" />
+                  <span>Choose Photo</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handleQrImageUpload}
+                  />
+                </label>
+
+                {/* Flashlight Button */}
+                <button
+                  onClick={toggleTorch}
+                  className={`w-11 h-11 rounded-full flex items-center justify-center transition-all cursor-pointer shadow-lg backdrop-blur-md ${
+                    isTorchOn ? 'bg-amber-400 text-slate-950 scale-105' : 'bg-slate-900/60 text-white hover:bg-slate-900/80'
+                  }`}
+                  aria-label="Flashlight"
+                >
+                  <Flashlight className="w-5 h-5" strokeWidth={2.2} />
+                </button>
+              </div>
 
               {cameraError && (
                 <div className="absolute inset-4 bg-slate-900/90 rounded-2xl p-4 flex flex-col items-center justify-center text-center text-white space-y-2">
