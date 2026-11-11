@@ -33,6 +33,7 @@ import {
   Layers,
   Eye,
   EyeOff,
+  AlertTriangle,
   Image as ImageIcon
 } from 'lucide-react';
 import { Camera } from '@capacitor/camera';
@@ -1686,23 +1687,48 @@ export const AddDeviceScreen = ({
                     No devices found nearby
                   </h3>
                   <p className="text-xs text-slate-400">
-                    Expected SSID: <span className="font-mono text-slate-600">{activeModel.ssidFormat}</span>
+                    Expected SSID: <span className="font-mono text-slate-700 font-semibold">{activeModel.modelCode !== 'SN' ? activeModel.ssidFormat : 'NEURO-[MODEL]-[MAC4] (e.g. NEURO-GATE-D4C9)'}</span>
                   </p>
                 </div>
 
+                {/* GPS Location Warning on Android if Location services is OFF */}
+                {typeof window !== 'undefined' && (window as any).AndroidWifiBridge?.isLocationEnabled?.() === false && (
+                  <div className="bg-amber-50 rounded-2xl p-3 border border-amber-200 text-left space-y-1.5 animate-in fade-in">
+                    <div className="flex items-center gap-2 text-amber-800 text-xs font-bold">
+                      <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                      <span>Phone Location (GPS) is turned OFF</span>
+                    </div>
+                    <p className="text-[11px] text-amber-700 leading-snug">
+                      Android requires Location services to be turned ON to scan Wi-Fi networks.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => (window as any).AndroidWifiBridge.openLocationSettings()}
+                      className="px-3 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-xs cursor-pointer"
+                    >
+                      Turn On Location
+                    </button>
+                  </div>
+                )}
+
                 {/* Android Native Wi-Fi Settings Button (APK only) */}
                 {typeof window !== 'undefined' && (window as any).AndroidWifiBridge && (
-                  <button
-                    type="button"
-                    onClick={() => (window as any).AndroidWifiBridge.openWifiSettings()}
-                    className="w-full flex items-center justify-between px-4 py-3 rounded-2xl bg-[#0284c7] hover:bg-[#0369a1] text-white text-xs sm:text-sm font-bold shadow-sm transition-all cursor-pointer active:scale-[0.99]"
-                  >
-                    <div className="flex items-center gap-3">
-                      <Wifi className="w-4 h-4 text-white" />
-                      <span>Open Phone Wi-Fi Settings</span>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-white/80" />
-                  </button>
+                  <div className="space-y-1.5">
+                    <button
+                      type="button"
+                      onClick={() => (window as any).AndroidWifiBridge.openWifiSettings()}
+                      className="w-full flex items-center justify-between px-4 py-3 rounded-2xl bg-[#0284c7] hover:bg-[#0369a1] text-white text-xs sm:text-sm font-bold shadow-sm transition-all cursor-pointer active:scale-[0.99]"
+                    >
+                      <div className="flex items-center gap-3">
+                        <Wifi className="w-4 h-4 text-white" />
+                        <span>Open Phone Wi-Fi Settings</span>
+                      </div>
+                      <ChevronRight className="w-4 h-4 text-white/80" />
+                    </button>
+                    <p className="text-[10px] text-slate-400 text-center">
+                      Connect to your device Wi-Fi (e.g. <span className="font-mono font-bold text-slate-600">NEURO-GATE-D4C9</span>), then return here.
+                    </p>
+                  </div>
                 )}
 
                 <div className="space-y-2 pt-1">
@@ -1754,15 +1780,36 @@ export const AddDeviceScreen = ({
 
                 {/* Direct SSID resolver from Wi-Fi list */}
                 <div className="border-t border-slate-100 pt-3 space-y-2">
-                  <span className="text-[11px] font-bold text-slate-600 block">
-                    Saw a device SSID in your Wi-Fi list? Enter it here:
-                  </span>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-slate-700 block">
+                      Saw your device SSID in Wi-Fi settings?
+                    </span>
+                    <span className="text-[10px] text-sky-600 font-medium">Tap to configure</span>
+                  </div>
+
+                  {/* Quick suggestion pills */}
+                  <div className="flex flex-wrap gap-1.5">
+                    {['NEURO-GATE-D4C9', 'NEURO-TP8-BC88', 'NEURO-TP4-A1B2'].map(s => (
+                      <button
+                        key={s}
+                        type="button"
+                        onClick={() => {
+                          setManualSsidInput(s);
+                          initiateDeviceFromSsid(s);
+                        }}
+                        className="px-2.5 py-1 rounded-lg bg-sky-50 hover:bg-sky-100 border border-sky-200 text-[#0284c7] font-mono text-[11px] font-bold transition-colors cursor-pointer shadow-xs active:scale-95"
+                      >
+                        + {s}
+                      </button>
+                    ))}
+                  </div>
+
                   <div className="flex items-center gap-1.5 bg-slate-50 p-1 rounded-xl border border-slate-200">
                     <input
                       type="text"
                       value={manualSsidInput}
                       onChange={(e) => setManualSsidInput(e.target.value)}
-                      placeholder="e.g. NEURO-TP8-BC88"
+                      placeholder="e.g. NEURO-GATE-D4C9"
                       className="flex-1 px-2.5 py-1.5 text-xs text-slate-800 outline-none bg-transparent font-mono placeholder:font-sans placeholder:text-slate-400"
                     />
                     <button
