@@ -891,31 +891,28 @@ export const AddDeviceScreen = ({
           }
         } catch {}
 
-        // Native Android direct HTTP probe to http://192.168.4.1 (bypasses WebView CORS & SSL restrictions)
+        // Native Android direct HTTP probe to http://192.168.4.1 (only accept valid JSON containing actual hardware info)
         if (androidBridge.httpGet) {
-          const probeEndpoints = ['/info', '/status', '/api/device', '/'];
+          const probeEndpoints = ['/info', '/status', '/api/device'];
           for (const ep of probeEndpoints) {
             try {
               const raw = androidBridge.httpGet(`http://192.168.4.1${ep}`);
-              if (raw && !raw.startsWith('ERROR:') && raw.trim().length > 2) {
-                let devSsid = '';
-                try {
-                  const parsed = JSON.parse(raw);
-                  devSsid = parsed?.ssid || `NEURO-${parsed?.model || activeModel.modelCode}-${parsed?.mac || '0001'}`;
-                } catch {
-                  devSsid = `NEURO-${activeModel.modelCode}-0001`;
+              if (raw && !raw.startsWith('ERROR:') && raw.trim().startsWith('{')) {
+                const parsed = JSON.parse(raw);
+                if (parsed && (parsed.ssid || (parsed.model && parsed.mac) || parsed.device_id)) {
+                  const devSsid = parsed.ssid || parsed.device_id || `NEURO-${parsed.model}-${parsed.mac}`;
+                  const resolved = resolveDeviceFromSsid(devSsid);
+                  const matched = DEVICE_CATALOG.find(d => d.modelCode.toUpperCase() === resolved.modelCode.toUpperCase()) || activeModel;
+                  setNearbyFoundDevices([{
+                    model: matched,
+                    mac4: resolved.mac4,
+                    ssid: devSsid,
+                    signal: 'Connected (192.168.4.1)',
+                    mode: 'AP Mode'
+                  }]);
+                  setIsNearbyScanning(false);
+                  return;
                 }
-                const resolved = resolveDeviceFromSsid(devSsid);
-                const matched = DEVICE_CATALOG.find(d => d.modelCode.toUpperCase() === resolved.modelCode.toUpperCase()) || activeModel;
-                setNearbyFoundDevices([{
-                  model: matched,
-                  mac4: resolved.mac4,
-                  ssid: devSsid,
-                  signal: 'Connected (192.168.4.1)',
-                  mode: 'AP Mode'
-                }]);
-                setIsNearbyScanning(false);
-                return;
               }
             } catch {}
           }
@@ -961,9 +958,9 @@ export const AddDeviceScreen = ({
         } catch {}
       }
 
-      // 2. Web fetch HTTP probe to http://192.168.4.1 (multi-endpoint fallback for browser testing)
+      // 2. Web fetch HTTP probe to http://192.168.4.1 (only accept verified JSON)
       let foundViaHttp = false;
-      const endpoints = ['/info', '/status', '/', '/api/device'];
+      const endpoints = ['/info', '/status', '/api/device'];
       for (const ep of endpoints) {
         try {
           const controller = new AbortController();
@@ -973,37 +970,21 @@ export const AddDeviceScreen = ({
 
           if (res.ok) {
             const info = await res.json().catch(() => null);
-            const devSsid = info?.ssid || `NEURO-${info?.model || activeModel.modelCode}-${info?.mac || '0001'}`;
-            const resolved = resolveDeviceFromSsid(devSsid);
-            const matched = DEVICE_CATALOG.find(d => d.modelCode.toUpperCase() === resolved.modelCode.toUpperCase()) || activeModel;
-            setNearbyFoundDevices([{
-              model: matched,
-              mac4: resolved.mac4,
-              ssid: devSsid,
-              signal: 'Connected (192.168.4.1)',
-              mode: 'AP Mode'
-            }]);
-            foundViaHttp = true;
-            break;
+            if (info && (info.ssid || (info.model && info.mac) || info.device_id)) {
+              const devSsid = info.ssid || info.device_id || `NEURO-${info.model}-${info.mac}`;
+              const resolved = resolveDeviceFromSsid(devSsid);
+              const matched = DEVICE_CATALOG.find(d => d.modelCode.toUpperCase() === resolved.modelCode.toUpperCase()) || activeModel;
+              setNearbyFoundDevices([{
+                model: matched,
+                mac4: resolved.mac4,
+                ssid: devSsid,
+                signal: 'Connected (192.168.4.1)',
+                mode: 'AP Mode'
+              }]);
+              foundViaHttp = true;
+              break;
+            }
           }
-        } catch {}
-      }
-
-      // 3. Fallback no-cors ping (in case device responds without CORS headers)
-      if (!foundViaHttp) {
-        try {
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 1500);
-          await fetch('http://192.168.4.1/', { mode: 'no-cors', signal: controller.signal });
-          clearTimeout(timeoutId);
-          setNearbyFoundDevices([{
-            model: activeModel,
-            mac4: 'AP01',
-            ssid: `NEURO-${activeModel.modelCode}-AP01`,
-            signal: 'Connected (192.168.4.1)',
-            mode: 'AP Mode'
-          }]);
-          foundViaHttp = true;
         } catch {}
       }
 
