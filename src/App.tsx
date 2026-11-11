@@ -45,6 +45,7 @@ import { SplashScreen } from '@capacitor/splash-screen';
 
 export function App() {
   const [searchQuery, setSearchQuery] = useState('');
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [mousePos, setMousePos] = useState({ x: -100, y: -100 });
   const [isHovered, setIsHovered] = useState(false);
   const [isClicking, setIsClicking] = useState(false);
@@ -506,54 +507,88 @@ export function App() {
     </div>
   );
 
-  // Room Sub-Tabs bar matching uploaded image
+  // Room Sub-Tabs bar with integrated mobile & desktop search
   const renderRoomTabsBar = () => {
     if (!isSignedIn) return null;
-    if (rooms.length === 0) {
-      return (
-        <div className="w-full max-w-sm sm:max-w-md md:max-w-2xl lg:max-w-5xl px-2 py-1 select-none pointer-events-auto">
-          <h2 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight font-sans">
-            Devices
-          </h2>
-        </div>
-      );
-    }
+
     return (
-      <div className="w-full max-w-sm sm:max-w-md md:max-w-2xl lg:max-w-5xl flex items-center gap-3.5 px-2 py-0.5 select-none pointer-events-auto overflow-x-auto no-scrollbar">
-        <button 
-          onClick={() => {}}
-          className="p-1 rounded-full hover:bg-white/40 text-slate-700 transition-colors cursor-pointer flex-shrink-0"
-          aria-label="Search devices"
-        >
-          <Search className="w-5 h-5 text-slate-800" strokeWidth={2.4} />
-        </button>
-
-        <div className="flex items-center gap-5 text-sm sm:text-base font-bold tracking-tight whitespace-nowrap">
-          <button
-            onClick={() => setActiveRoomTab('all')}
-            className={`transition-colors cursor-pointer pb-0.5 ${
-              activeRoomTab === 'all' 
-                ? 'text-slate-900 border-b-2 border-slate-900 font-extrabold' 
-                : 'text-slate-400 hover:text-slate-600 font-medium'
-            }`}
-          >
-            All devices
-          </button>
-
-          {rooms.map((room) => (
+      <div className="w-full flex items-center select-none pointer-events-auto">
+        {isSearchOpen ? (
+          <div className="w-full flex items-center gap-2 bg-white/95 backdrop-blur-md rounded-full px-3.5 py-1.5 shadow-sm border border-sky-200 animate-in fade-in duration-150">
+            <Search className="w-4 h-4 text-[#0284c7] flex-shrink-0" strokeWidth={2.4} />
+            <input
+              type="text"
+              autoFocus
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search devices, rooms..."
+              className="w-full bg-transparent text-xs sm:text-sm text-slate-900 placeholder-slate-400 focus:outline-none font-medium"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                className="p-1 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors cursor-pointer flex-shrink-0"
+                aria-label="Clear search"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
             <button
-              key={room.id}
-              onClick={() => setActiveRoomTab(room.name)}
-              className={`transition-colors cursor-pointer pb-0.5 ${
-                activeRoomTab === room.name 
-                  ? 'text-slate-900 border-b-2 border-slate-900 font-extrabold' 
-                  : 'text-slate-400 hover:text-slate-600 font-medium'
-              }`}
+              type="button"
+              onClick={() => {
+                setIsSearchOpen(false);
+                setSearchQuery('');
+              }}
+              className="text-xs font-bold text-[#0284c7] hover:text-sky-700 px-2 py-0.5 rounded-full hover:bg-sky-50 transition-colors cursor-pointer flex-shrink-0"
             >
-              {room.name}
+              Cancel
             </button>
-          ))}
-        </div>
+          </div>
+        ) : (
+          <div className="w-full flex items-center gap-2.5 sm:gap-3 overflow-x-auto no-scrollbar py-0.5">
+            {/* Search Toggle Button */}
+            <button 
+              type="button"
+              onClick={() => setIsSearchOpen(true)}
+              className="w-8 h-8 rounded-full bg-white/90 hover:bg-white text-slate-700 hover:text-[#0284c7] shadow-xs border border-white/80 flex items-center justify-center transition-all cursor-pointer flex-shrink-0 active:scale-95"
+              aria-label="Search devices"
+              title="Search devices"
+            >
+              <Search className="w-4 h-4" strokeWidth={2.4} />
+            </button>
+
+            {/* Room Tabs */}
+            <div className="flex items-center gap-4 sm:gap-5 text-sm sm:text-base font-bold tracking-tight whitespace-nowrap">
+              <button
+                type="button"
+                onClick={() => setActiveRoomTab('all')}
+                className={`transition-all cursor-pointer pb-0.5 relative ${
+                  activeRoomTab === 'all' 
+                    ? 'text-slate-900 font-extrabold after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-slate-900 after:rounded-full' 
+                    : 'text-slate-500 hover:text-slate-700 font-medium'
+                }`}
+              >
+                All devices
+              </button>
+
+              {rooms.map((room) => (
+                <button
+                  key={room.id}
+                  type="button"
+                  onClick={() => setActiveRoomTab(room.name)}
+                  className={`transition-all cursor-pointer pb-0.5 relative ${
+                    activeRoomTab === room.name 
+                      ? 'text-slate-900 font-extrabold after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-slate-900 after:rounded-full' 
+                      : 'text-slate-500 hover:text-slate-700 font-medium'
+                  }`}
+                >
+                  {room.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     );
   };
@@ -610,11 +645,13 @@ export function App() {
       </div>
 
       {/* 3. Unified Responsive Header */}
-      {isSignedIn && activeTab === 'home' ? (
-        /* Reference 2 Logged-In Header */
-        <header className="app-top-header fixed top-4 sm:top-5 inset-x-0 z-30 flex items-center justify-between px-4 sm:px-6 md:px-8 pointer-events-none">
-          {/* Top-Left: QR Code Button + Home Selector Dropdown */}
-          <div className="flex items-center gap-2 sm:gap-3 pointer-events-auto select-none">
+      {isSignedIn && (activeTab === 'home' || activeTab === 'devices') ? (
+        /* Logged-In Header: Row 1 = Quick Actions & Home Switcher; Row 2 = Search & Room Tabs */
+        <header className="app-top-header fixed top-4 sm:top-5 inset-x-0 z-30 flex flex-col pointer-events-none px-4 sm:px-6 md:px-8">
+          {/* Row 1: Quick Actions & Home Selector */}
+          <div className="w-full flex items-center justify-between">
+            {/* Top-Left: QR Code Button + Home Selector Dropdown */}
+            <div className="flex items-center gap-2 sm:gap-3 pointer-events-auto select-none">
             {/* QR Code Icon Button */}
             <button
               onClick={() => setIsQrModalOpen(true)}
@@ -817,6 +854,12 @@ export function App() {
 
             </div>
           </div>
+          </div>
+
+          {/* Row 2: Search + Room Tabs (Always positioned cleanly below Row 1 without overlapping) */}
+          <div className="w-full max-w-sm sm:max-w-md md:max-w-2xl lg:max-w-5xl mx-auto mt-2 sm:mt-2.5 pointer-events-auto">
+            {renderRoomTabsBar()}
+          </div>
         </header>
       ) : (
         /* Default Header for Guest & Other Tabs */
@@ -941,14 +984,11 @@ export function App() {
       )}
 
       {/* 4. Mobile & Tablet Content (Explore Slider + Pure White Cards based on activeTab; Menu has all content cleared) */}
-      <main className="explore-slider-wrapper fixed inset-x-0 top-[4.5rem] sm:top-20 bottom-20 sm:bottom-6 overflow-y-auto overflow-x-hidden flex flex-col items-center justify-start pointer-events-none z-20 px-4 sm:px-6 sm:pl-24 pb-8 space-y-3.5">
+      <main className="explore-slider-wrapper fixed inset-x-0 top-[6.75rem] sm:top-28 bottom-20 sm:bottom-6 overflow-y-auto overflow-x-hidden flex flex-col items-center justify-start pointer-events-none z-20 px-4 sm:px-6 sm:pl-24 pb-8 space-y-3.5">
         {activeTab === 'home' && (
           <>
             {/* Real-time Clock View & User Details */}
             {renderRealTimeHeader()}
-
-            {/* Room Sub-Tabs bar matching reference image */}
-            {renderRoomTabsBar()}
 
             {/* "Explore" cards slider: ONLY when NO devices exist in home */}
             {devices.length === 0 && !isExploreDismissed && (
@@ -972,12 +1012,14 @@ export function App() {
             ) : (
               /* Connected Devices View: No Explore banner or Quick card once devices exist */
               (() => {
-                const filtered = activeRoomTab === 'all'
-                  ? devices
-                  : devices.filter(d => {
-                      const room = rooms.find(r => r.name === activeRoomTab);
-                      return room ? d.room_id === room.id : false;
-                    });
+                const filtered = devices
+                  .filter(d => activeRoomTab === 'all' || (rooms.find(r => r.name === activeRoomTab)?.id === d.room_id))
+                  .filter(d => !searchQuery.trim() || 
+                    d.custom_name.toLowerCase().includes(searchQuery.trim().toLowerCase()) || 
+                    d.model_code.toLowerCase().includes(searchQuery.trim().toLowerCase()) ||
+                    (d.device_id && d.device_id.toLowerCase().includes(searchQuery.trim().toLowerCase())) ||
+                    (rooms.find(r => r.id === d.room_id)?.name.toLowerCase().includes(searchQuery.trim().toLowerCase()))
+                  );
 
                 const onlineCount = filtered.filter(d => Boolean(d.is_online)).length;
                 const offlineCount = filtered.filter(d => !d.is_online).length;
@@ -1013,15 +1055,32 @@ export function App() {
                     </div>
 
                     {filtered.length === 0 ? (
-                      <div className="bg-white/80 backdrop-blur-md rounded-3xl p-6 text-center border border-white/80 shadow-xs">
-                        <p className="text-sm font-semibold text-slate-700">No devices in {activeRoomTab}</p>
-                        <p className="text-xs text-slate-400 mt-1">Assign devices to this room or add a new device</p>
-                        <button
-                          onClick={() => handleProtectedAction(() => setIsAddDeviceOpen(true))}
-                          className="mt-3.5 inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold bg-[#0284c7] text-white hover:bg-sky-600 transition-colors shadow-xs cursor-pointer"
-                        >
-                          + Add device
-                        </button>
+                      <div className="bg-white/80 backdrop-blur-md rounded-3xl p-6 text-center border border-white/80 shadow-xs space-y-1.5">
+                        {searchQuery.trim() ? (
+                          <>
+                            <Search className="w-8 h-8 text-slate-400 mx-auto mb-1" />
+                            <p className="text-sm font-semibold text-slate-800">No devices found</p>
+                            <p className="text-xs text-slate-500">No devices matched "{searchQuery}"</p>
+                            <button
+                              type="button"
+                              onClick={() => setSearchQuery('')}
+                              className="mt-2 inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-bold bg-[#0284c7] text-white hover:bg-sky-600 transition-colors cursor-pointer"
+                            >
+                              Clear search
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <p className="text-sm font-semibold text-slate-700">No devices in {activeRoomTab}</p>
+                            <p className="text-xs text-slate-400 mt-1">Assign devices to this room or add a new device</p>
+                            <button
+                              onClick={() => handleProtectedAction(() => setIsAddDeviceOpen(true))}
+                              className="mt-3.5 inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold bg-[#0284c7] text-white hover:bg-sky-600 transition-colors shadow-xs cursor-pointer"
+                            >
+                              + Add device
+                            </button>
+                          </>
+                        )}
                       </div>
                     ) : (
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
@@ -1134,9 +1193,6 @@ export function App() {
             {/* Real-time Clock View & User Details */}
             {renderRealTimeHeader()}
 
-            {/* Room Sub-Tabs bar matching reference image */}
-            {renderRoomTabsBar()}
-
             {devices.length === 0 ? (
               <QuickDevicesCard 
                 isLoggedIn={isSignedIn}
@@ -1145,12 +1201,14 @@ export function App() {
               />
             ) : (
               (() => {
-                const filtered = activeRoomTab === 'all'
-                  ? devices
-                  : devices.filter(d => {
-                      const room = rooms.find(r => r.name === activeRoomTab);
-                      return room ? d.room_id === room.id : false;
-                    });
+                const filtered = devices
+                  .filter(d => activeRoomTab === 'all' || (rooms.find(r => r.name === activeRoomTab)?.id === d.room_id))
+                  .filter(d => !searchQuery.trim() || 
+                    d.custom_name.toLowerCase().includes(searchQuery.trim().toLowerCase()) || 
+                    d.model_code.toLowerCase().includes(searchQuery.trim().toLowerCase()) ||
+                    (d.device_id && d.device_id.toLowerCase().includes(searchQuery.trim().toLowerCase())) ||
+                    (rooms.find(r => r.id === d.room_id)?.name.toLowerCase().includes(searchQuery.trim().toLowerCase()))
+                  );
 
                 const onlineCount = filtered.filter(d => Boolean(d.is_online)).length;
                 const offlineCount = filtered.filter(d => !d.is_online).length;
@@ -1186,15 +1244,32 @@ export function App() {
                     </div>
 
                     {filtered.length === 0 ? (
-                      <div className="bg-white/80 backdrop-blur-md rounded-3xl p-6 text-center border border-white/80 shadow-xs">
-                        <p className="text-sm font-semibold text-slate-700">No devices in {activeRoomTab}</p>
-                        <p className="text-xs text-slate-400 mt-1">Assign devices to this room or add a new device</p>
-                        <button
-                          onClick={() => handleProtectedAction(() => setIsAddDeviceOpen(true))}
-                          className="mt-3.5 inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold bg-[#0284c7] text-white hover:bg-sky-600 transition-colors shadow-xs cursor-pointer"
-                        >
-                          + Add device
-                        </button>
+                      <div className="bg-white/80 backdrop-blur-md rounded-3xl p-6 text-center border border-white/80 shadow-xs space-y-1.5">
+                        {searchQuery.trim() ? (
+                          <>
+                            <Search className="w-8 h-8 text-slate-400 mx-auto mb-1" />
+                            <p className="text-sm font-semibold text-slate-800">No devices found</p>
+                            <p className="text-xs text-slate-500">No devices matched "{searchQuery}"</p>
+                            <button
+                              type="button"
+                              onClick={() => setSearchQuery('')}
+                              className="mt-2 inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-bold bg-[#0284c7] text-white hover:bg-sky-600 transition-colors cursor-pointer"
+                            >
+                              Clear search
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <p className="text-sm font-semibold text-slate-700">No devices in {activeRoomTab}</p>
+                            <p className="text-xs text-slate-400 mt-1">Assign devices to this room or add a new device</p>
+                            <button
+                              onClick={() => handleProtectedAction(() => setIsAddDeviceOpen(true))}
+                              className="mt-3.5 inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold bg-[#0284c7] text-white hover:bg-sky-600 transition-colors shadow-xs cursor-pointer"
+                            >
+                              + Add device
+                            </button>
+                          </>
+                        )}
                       </div>
                     ) : (
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">

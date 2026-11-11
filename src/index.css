@@ -206,9 +206,9 @@
     box-shadow: 0 12px 32px -4px rgba(15, 23, 42, 0.14), 0 4px 12px rgba(0, 0, 0, 0.05), inset 0 1.5px 2px #ffffff !important;
   }
 
-  /* Content wrapper adjustment to ensure bottom card clears lifted nav bar and top clears phone status icons */
+  /* Content wrapper adjustment to ensure bottom card clears lifted nav bar and top clears phone status icons and 2-row header */
   .explore-slider-wrapper {
-    top: calc(4.75rem + max(var(--android-status-top, 0px), env(safe-area-inset-top, 0px), 24px)) !important;
+    top: calc(7rem + max(var(--android-status-top, 0px), env(safe-area-inset-top, 0px), 24px)) !important;
     bottom: calc(4.75rem + max(var(--android-nav-bottom, 0px), env(safe-area-inset-bottom, 0px))) !important;
     padding-bottom: calc(1.75rem + max(var(--android-nav-bottom, 0px), env(safe-area-inset-bottom, 0px))) !important;
   }
@@ -348,6 +348,9 @@
   }
   .screen-top-container {
     padding-top: 0px !important;
+  }
+  .explore-slider-wrapper {
+    top: 7.25rem !important;
   }
 }
 
