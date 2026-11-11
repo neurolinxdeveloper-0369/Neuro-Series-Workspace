@@ -19,6 +19,23 @@ export interface SmartRoutine {
   isActive: boolean;
 }
 
+export const formatScheduleTimeToIst = (timeStr?: string): string => {
+  if (!timeStr) return 'IST Schedule';
+  if (timeStr.toUpperCase().includes('IST')) return timeStr;
+  const parts = timeStr.trim().split(':');
+  if (parts.length >= 2) {
+    let hours = parseInt(parts[0], 10);
+    const minutes = parts[1].slice(0, 2);
+    if (!isNaN(hours)) {
+      const ampm = hours >= 12 ? 'PM' : 'AM';
+      hours = hours % 12 || 12;
+      const hh = hours < 10 ? `0${hours}` : `${hours}`;
+      return `${hh}:${minutes} ${ampm} IST`;
+    }
+  }
+  return `${timeStr} IST`;
+};
+
 const ROUTINES_STORAGE_KEY = 'neuro_smart_routines_v1';
 
 const DEFAULT_ROUTINES: SmartRoutine[] = [

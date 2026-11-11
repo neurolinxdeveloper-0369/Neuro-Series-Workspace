@@ -47,7 +47,7 @@ import { homeApi, homeStorage, type Home as UserHome, type Room } from './servic
 import { deviceApi } from './services/device';
 import { DynamicDeviceLayout } from './components/DynamicDeviceLayout';
 import { realtimeSocket } from './services/socket';
-import { routineStorage, type SmartRoutine, type RoutineAction } from './services/routine';
+import { routineStorage, formatScheduleTimeToIst, type SmartRoutine, type RoutineAction } from './services/routine';
 import { SplashScreen } from '@capacitor/splash-screen';
 
 export function App() {
@@ -515,7 +515,7 @@ export function App() {
         type: routineDraftType,
         icon: routineDraftIcon,
         roomId: routineDraftRoomId,
-        scheduleTime: routineDraftType === 'schedule' ? routineDraftScheduleTime : undefined,
+        scheduleTime: routineDraftType === 'schedule' ? formatScheduleTimeToIst(routineDraftScheduleTime) : undefined,
         repeatDays: routineDraftType === 'schedule' ? routineDraftRepeatDays : undefined,
         actions: routineDraftActions,
       });
@@ -525,7 +525,7 @@ export function App() {
         type: routineDraftType,
         icon: routineDraftIcon,
         roomId: routineDraftRoomId,
-        scheduleTime: routineDraftType === 'schedule' ? routineDraftScheduleTime : undefined,
+        scheduleTime: routineDraftType === 'schedule' ? formatScheduleTimeToIst(routineDraftScheduleTime) : undefined,
         repeatDays: routineDraftType === 'schedule' ? routineDraftRepeatDays : undefined,
         actions: routineDraftActions,
         isActive: true,
@@ -733,11 +733,28 @@ export function App() {
     );
   };
 
-  // Render Your Space Connectivity Transparent Card
+  // Render Your Space Connectivity Transparent Card (Ultra-Transparent Glassmorphism)
   const renderConnectivityCard = (totalCount: number, liveCount: number, inactiveCount: number) => (
-    <div className="w-full bg-white/70 backdrop-blur-xl rounded-2xl sm:rounded-3xl p-3 sm:p-4 border border-white/80 shadow-[0_4px_20px_-4px_rgba(2,132,199,0.08)] select-none">
+    <div 
+      className="w-full rounded-2xl sm:rounded-3xl p-3 sm:p-4 select-none relative overflow-hidden transition-all"
+      style={{
+        background: 'rgba(255, 255, 255, 0.22)',
+        backdropFilter: 'blur(28px) saturate(170%)',
+        WebkitBackdropFilter: 'blur(28px) saturate(170%)',
+        border: '1px solid rgba(255, 255, 255, 0.60)',
+        boxShadow: '0 8px 32px 0 rgba(2, 132, 199, 0.05), inset 0 1.5px 2px 0 rgba(255, 255, 255, 0.70)',
+      }}
+    >
+      {/* Specular Glare Curve Overlay */}
+      <div 
+        className="absolute inset-0 rounded-2xl sm:rounded-3xl pointer-events-none"
+        style={{
+          background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.45) 0%, rgba(255, 255, 255, 0.05) 50%, transparent 100%)'
+        }}
+      />
+
       {/* Top Row: YOUR SPACE CONNECTIVITY (Left) & + Add Device (Right) */}
-      <div className="flex items-center justify-between gap-2">
+      <div className="relative z-10 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
           <span className="w-2 h-2 rounded-full bg-[#0284c7] shadow-[0_0_8px_#38bdf8] flex-shrink-0" />
           <h2 className="text-[11px] sm:text-xs md:text-sm font-extrabold tracking-wider uppercase text-slate-900 font-mono truncate">
@@ -756,29 +773,29 @@ export function App() {
       </div>
 
       {/* Divider */}
-      <div className="h-px bg-sky-100/70 my-2 sm:my-2.5" />
+      <div className="relative z-10 h-px bg-white/40 my-2 sm:my-2.5" />
 
       {/* Bottom Row: Total, Live, Inactive */}
-      <div className="flex items-center justify-between text-xs sm:text-sm px-1">
+      <div className="relative z-10 flex items-center justify-between text-xs sm:text-sm px-1">
         <div className="flex items-center gap-1.5">
-          <span className="text-slate-500 font-medium text-[11px] sm:text-xs">Total:</span>
-          <span className="font-bold text-slate-800 font-mono text-xs sm:text-sm">{totalCount}</span>
+          <span className="text-slate-600 font-medium text-[11px] sm:text-xs">Total:</span>
+          <span className="font-bold text-slate-900 font-mono text-xs sm:text-sm">{totalCount}</span>
         </div>
 
-        <div className="h-3 w-px bg-slate-200/80" />
+        <div className="h-3 w-px bg-white/60" />
 
         <div className="flex items-center gap-1.5">
           <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse flex-shrink-0" />
-          <span className="text-slate-500 font-medium text-[11px] sm:text-xs">Live:</span>
+          <span className="text-slate-600 font-medium text-[11px] sm:text-xs">Live:</span>
           <span className="font-bold text-emerald-600 font-mono text-xs sm:text-sm">{liveCount}</span>
         </div>
 
-        <div className="h-3 w-px bg-slate-200/80" />
+        <div className="h-3 w-px bg-white/60" />
 
         <div className="flex items-center gap-1.5">
           <span className="w-2 h-2 rounded-full bg-slate-400 flex-shrink-0" />
-          <span className="text-slate-500 font-medium text-[11px] sm:text-xs">Inactive:</span>
-          <span className={`font-bold font-mono text-xs sm:text-sm ${inactiveCount > 0 ? 'text-rose-500' : 'text-slate-600'}`}>
+          <span className="text-slate-600 font-medium text-[11px] sm:text-xs">Inactive:</span>
+          <span className={`font-bold font-mono text-xs sm:text-sm ${inactiveCount > 0 ? 'text-rose-500' : 'text-slate-700'}`}>
             {inactiveCount}
           </span>
         </div>
@@ -791,7 +808,7 @@ export function App() {
     <div
       key={dev.id}
       onClick={() => setSelectedDeviceForControl(dev)}
-      className="group relative overflow-hidden bg-white/95 backdrop-blur-md rounded-2xl sm:rounded-3xl shadow-xs border border-slate-100 hover:border-sky-300 hover:shadow-md transition-all cursor-pointer active:scale-[0.98] flex flex-col justify-between"
+      className="group relative overflow-hidden bg-white/70 backdrop-blur-xl rounded-2xl sm:rounded-3xl shadow-xs border border-white/80 hover:border-sky-300 hover:shadow-md transition-all cursor-pointer active:scale-[0.98] flex flex-col justify-between"
     >
       {/* Top Compact Hero Showcase: reduced height h-18 sm:h-22 */}
       <div className="relative w-full h-18 sm:h-22 bg-gradient-to-b from-sky-50/70 via-sky-50/30 to-white/10 flex items-center justify-center overflow-hidden p-1.5 border-b border-slate-100/70">
@@ -1357,7 +1374,7 @@ export function App() {
           <>
             {/* Dedicated Top Action Bar for Devices & Rooms */}
             <div className="w-full max-w-sm sm:max-w-md md:max-w-2xl lg:max-w-5xl pointer-events-auto pt-2">
-              <div className="flex items-center justify-between bg-white/80 backdrop-blur-xl rounded-3xl p-3 sm:p-4 border border-white/90 shadow-xs mb-3">
+              <div className="flex items-center justify-between bg-white/35 backdrop-blur-2xl rounded-3xl p-3 sm:p-4 border border-white/60 shadow-xs mb-3">
                 <div className="flex items-center gap-2.5">
                   <div className="w-10 h-10 rounded-2xl bg-sky-50 text-[#0284c7] flex items-center justify-center border border-sky-100 shadow-xs">
                     <LayoutPanelTop className="w-5 h-5" />
@@ -1483,8 +1500,8 @@ export function App() {
         {activeTab === 'routines' && (
           <>
             <div className="w-full max-w-sm sm:max-w-md md:max-w-2xl lg:max-w-5xl space-y-3 pointer-events-auto pt-2">
-              {/* Routines Top Header Bar */}
-              <div className="flex items-center justify-between bg-white/80 backdrop-blur-xl rounded-3xl p-3 sm:p-4 border border-white/90 shadow-xs">
+              {/* Routines Top Header Bar (Transparent Glassmorphism) */}
+              <div className="flex items-center justify-between bg-white/35 backdrop-blur-2xl rounded-3xl p-3 sm:p-4 border border-white/60 shadow-xs">
                 <div className="flex items-center gap-2.5">
                   <div className="w-10 h-10 rounded-2xl bg-amber-50 text-amber-500 flex items-center justify-center border border-amber-100 shadow-xs">
                     <Sparkles className="w-5 h-5" />
@@ -1517,7 +1534,7 @@ export function App() {
                   className={`px-3.5 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
                     routineRoomFilter === 'all'
                       ? 'bg-[#0284c7] text-white shadow-xs'
-                      : 'bg-white/80 text-slate-600 hover:bg-white border border-slate-200/80'
+                      : 'bg-white/40 text-slate-700 hover:bg-white/60 border border-white/60 backdrop-blur-md'
                   }`}
                 >
                   All Devices
@@ -1532,7 +1549,7 @@ export function App() {
                       className={`flex items-center gap-1 px-3.5 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
                         isSelected
                           ? 'bg-[#0284c7] text-white shadow-xs'
-                          : 'bg-white/80 text-slate-600 hover:bg-white border border-slate-200/80'
+                          : 'bg-white/40 text-slate-700 hover:bg-white/60 border border-white/60 backdrop-blur-md'
                       }`}
                     >
                       <span>{getRoomEmoji(r.name)}</span>
@@ -1550,7 +1567,7 @@ export function App() {
 
                 if (filteredRoutines.length === 0) {
                   return (
-                    <div className="bg-white/80 backdrop-blur-md rounded-3xl p-6 text-center border border-white/80 shadow-xs space-y-2">
+                    <div className="bg-white/40 backdrop-blur-xl rounded-3xl p-6 text-center border border-white/60 shadow-xs space-y-2">
                       <p className="text-sm font-semibold text-slate-700">No routines for selected room</p>
                       <p className="text-xs text-slate-400">Create a routine or scene to automate your devices.</p>
                       <button
@@ -1586,7 +1603,7 @@ export function App() {
                       return (
                         <div
                           key={routine.id}
-                          className="group relative bg-white/95 backdrop-blur-md rounded-2xl sm:rounded-3xl p-3 sm:p-4 shadow-xs border border-slate-100 hover:border-sky-300 hover:shadow-md transition-all flex flex-col justify-between"
+                          className="group relative bg-white/70 backdrop-blur-xl rounded-2xl sm:rounded-3xl p-3 sm:p-4 shadow-xs border border-white/80 hover:border-sky-300 hover:shadow-md transition-all flex flex-col justify-between"
                         >
                           <div>
                             {/* Card Top Row: Icon + Type Badge + Edit Button */}
@@ -1597,7 +1614,7 @@ export function App() {
 
                               <div className="flex items-center gap-1">
                                 <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-50 text-[#0284c7] border border-sky-100 font-mono">
-                                  {routine.type === 'schedule' ? (routine.scheduleTime || 'Scheduled') : 'Scene'}
+                                  {routine.type === 'schedule' ? formatScheduleTimeToIst(routine.scheduleTime) : 'Scene'}
                                 </span>
 
                                 <button
@@ -2070,13 +2087,21 @@ export function App() {
               {routineDraftType === 'schedule' && (
                 <div className="bg-sky-50/70 rounded-2xl p-3.5 border border-sky-100 space-y-3">
                   <div className="flex items-center justify-between">
-                    <label className="text-xs font-bold text-slate-700">Schedule Time</label>
-                    <input
-                      type="time"
-                      value={routineDraftScheduleTime}
-                      onChange={(e) => setRoutineDraftScheduleTime(e.target.value)}
-                      className="px-3 py-1.5 rounded-xl bg-white border border-sky-200 text-xs font-mono font-bold text-slate-800"
-                    />
+                    <div>
+                      <label className="text-xs font-bold text-slate-700 block">Schedule Time (IST)</label>
+                      <span className="text-[10px] text-slate-500 font-mono">Indian Standard Time (UTC+05:30)</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="time"
+                        value={routineDraftScheduleTime}
+                        onChange={(e) => setRoutineDraftScheduleTime(e.target.value)}
+                        className="px-2.5 py-1.5 rounded-xl bg-white border border-sky-200 text-xs font-mono font-bold text-slate-800"
+                      />
+                      <span className="px-2 py-1 rounded-lg bg-sky-100 text-[#0284c7] font-bold text-[11px] font-mono">
+                        IST
+                      </span>
+                    </div>
                   </div>
 
                   <div>
