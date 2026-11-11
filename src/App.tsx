@@ -905,8 +905,8 @@ export function App() {
             {/* Room Sub-Tabs bar matching reference image */}
             {renderRoomTabsBar()}
 
-            {/* "Explore" cards slider with dismiss (cross) button */}
-            {!isExploreDismissed && (
+            {/* "Explore" cards slider: ONLY when NO devices exist in home */}
+            {devices.length === 0 && !isExploreDismissed && (
               <ExploreCardSlider 
                 onDismiss={() => {
                   setIsExploreDismissed(true);
@@ -1061,11 +1061,14 @@ export function App() {
                                   </div>
                                 </div>
 
-                                <div className="mt-3 pt-2.5 border-t border-slate-100/80 flex items-center justify-end text-xs">
+                                <div className="mt-3 pt-2.5 border-t border-slate-100/80 flex items-center justify-between text-xs">
+                                  <span className="text-[11px] font-medium text-slate-400">
+                                    {dev.is_online ? 'Ready' : 'Device Offline'}
+                                  </span>
                                   <span className={`font-bold flex items-center gap-1 group-hover:translate-x-0.5 transition-transform ${
-                                    dev.is_online ? 'text-[#0284c7]' : 'text-slate-400'
+                                    dev.is_online ? 'text-[#0284c7]' : 'text-slate-500'
                                   }`}>
-                                    {dev.is_online ? 'Tap to Open Layout →' : 'Offline'}
+                                    Tap to Open Layout →
                                   </span>
                                 </div>
                               </div>
@@ -1231,11 +1234,14 @@ export function App() {
                                   </div>
                                 </div>
 
-                                <div className="mt-3 pt-2.5 border-t border-slate-100/80 flex items-center justify-end text-xs">
+                                <div className="mt-3 pt-2.5 border-t border-slate-100/80 flex items-center justify-between text-xs">
+                                  <span className="text-[11px] font-medium text-slate-400">
+                                    {dev.is_online ? 'Ready' : 'Device Offline'}
+                                  </span>
                                   <span className={`font-bold flex items-center gap-1 group-hover:translate-x-0.5 transition-transform ${
-                                    dev.is_online ? 'text-[#0284c7]' : 'text-slate-400'
+                                    dev.is_online ? 'text-[#0284c7]' : 'text-slate-500'
                                   }`}>
-                                    {dev.is_online ? 'Open Switch Layout →' : 'Offline'}
+                                    Open Switch Layout →
                                   </span>
                                 </div>
                               </div>
