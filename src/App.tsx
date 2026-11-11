@@ -23,7 +23,13 @@ import {
   Clock,
   Calendar,
   User,
-  ArrowLeft
+  ArrowLeft,
+  Zap,
+  Edit2,
+  Trash2,
+  Play,
+  CheckCircle2,
+  FolderPlus
 } from 'lucide-react';
 import { ExploreCardSlider } from './components/ExploreCardSlider';
 import { QuickDevicesCard } from './components/QuickDevicesCard';
@@ -41,6 +47,7 @@ import { homeApi, homeStorage, type Home as UserHome, type Room } from './servic
 import { deviceApi } from './services/device';
 import { DynamicDeviceLayout } from './components/DynamicDeviceLayout';
 import { realtimeSocket } from './services/socket';
+import { routineStorage, type SmartRoutine, type RoutineAction } from './services/routine';
 import { SplashScreen } from '@capacitor/splash-screen';
 
 export function App() {
@@ -78,6 +85,25 @@ export function App() {
   const [isExploreDismissed, setIsExploreDismissed] = useState(() => {
     return typeof window !== 'undefined' && sessionStorage.getItem('neuro_explore_dismissed') === 'true';
   });
+
+  // Room Creation Modal State (Saves directly to DB via /homes/:homeId/rooms)
+  const [isCreateRoomOpen, setIsCreateRoomOpen] = useState(false);
+  const [newRoomName, setNewRoomName] = useState('');
+  const [isCreatingRoom, setIsCreatingRoom] = useState(false);
+
+  // Smart Routines & Automations State (Saves scenes / group control & time schedules)
+  const [routines, setRoutines] = useState<SmartRoutine[]>(() => routineStorage.getRoutines());
+  const [routineRoomFilter, setRoutineRoomFilter] = useState<string>('all');
+  const [isRoutineModalOpen, setIsRoutineModalOpen] = useState(false);
+  const [editingRoutine, setEditingRoutine] = useState<SmartRoutine | null>(null);
+  const [routineDraftName, setRoutineDraftName] = useState('');
+  const [routineDraftType, setRoutineDraftType] = useState<'scene' | 'schedule'>('scene');
+  const [routineDraftIcon, setRoutineDraftIcon] = useState<SmartRoutine['icon']>('sun');
+  const [routineDraftRoomId, setRoutineDraftRoomId] = useState<string>('all');
+  const [routineDraftScheduleTime, setRoutineDraftScheduleTime] = useState<string>('07:30');
+  const [routineDraftRepeatDays, setRoutineDraftRepeatDays] = useState<string[]>(['Mon', 'Tue', 'Wed', 'Thu', 'Fri']);
+  const [routineDraftActions, setRoutineDraftActions] = useState<RoutineAction[]>([]);
+  const [runningRoutineId, setRunningRoutineId] = useState<string | null>(null);
 
   // Live Date & Time Clock for Desktop & Dashboard
   const [currentDateTime, setCurrentDateTime] = useState(() => new Date());
@@ -426,6 +452,120 @@ export function App() {
       setIsSignInOpen(true);
     } else {
       action?.();
+    }
+  };
+
+  // Create Room: Saves directly to PostgreSQL via /homes/:homeId/rooms
+  const handleCreateRoom = async (name: string) => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    setIsCreatingRoom(true);
+    try {
+      if (activeHome) {
+        const created = await homeApi.createRoom(activeHome.id, trimmed);
+        setRooms(prev => [...prev, created]);
+      } else {
+        const fallbackRoom: Room = {
+          id: `room_${Date.now()}`,
+          home_id: 'default',
+          name: trimmed,
+          created_at: new Date().toISOString(),
+        };
+        setRooms(prev => [...prev, fallbackRoom]);
+      }
+      setActiveRoomTab(trimmed);
+      setIsCreateRoomOpen(false);
+      setNewRoomName('');
+    } catch (err: any) {
+      alert(err.message || 'Failed to create room in database.');
+    } finally {
+      setIsCreatingRoom(false);
+    }
+  };
+
+  const handleOpenCreateRoutine = () => {
+    setEditingRoutine(null);
+    setRoutineDraftName('');
+    setRoutineDraftType('scene');
+    setRoutineDraftIcon('sun');
+    setRoutineDraftRoomId('all');
+    setRoutineDraftScheduleTime('07:30');
+    setRoutineDraftRepeatDays(['Mon', 'Tue', 'Wed', 'Thu', 'Fri']);
+    setRoutineDraftActions([]);
+    setIsRoutineModalOpen(true);
+  };
+
+  const handleOpenEditRoutine = (routine: SmartRoutine) => {
+    setEditingRoutine(routine);
+    setRoutineDraftName(routine.name);
+    setRoutineDraftType(routine.type || 'scene');
+    setRoutineDraftIcon(routine.icon || 'sun');
+    setRoutineDraftRoomId(routine.roomId || 'all');
+    setRoutineDraftScheduleTime(routine.scheduleTime || '07:30');
+    setRoutineDraftRepeatDays(routine.repeatDays || ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']);
+    setRoutineDraftActions(routine.actions ? [...routine.actions] : []);
+    setIsRoutineModalOpen(true);
+  };
+
+  const handleSaveRoutine = () => {
+    const finalName = routineDraftName.trim() || (routineDraftType === 'scene' ? 'Custom Scene' : 'Timed Schedule');
+    if (editingRoutine) {
+      routineStorage.updateRoutine(editingRoutine.id, {
+        name: finalName,
+        type: routineDraftType,
+        icon: routineDraftIcon,
+        roomId: routineDraftRoomId,
+        scheduleTime: routineDraftType === 'schedule' ? routineDraftScheduleTime : undefined,
+        repeatDays: routineDraftType === 'schedule' ? routineDraftRepeatDays : undefined,
+        actions: routineDraftActions,
+      });
+    } else {
+      routineStorage.createRoutine({
+        name: finalName,
+        type: routineDraftType,
+        icon: routineDraftIcon,
+        roomId: routineDraftRoomId,
+        scheduleTime: routineDraftType === 'schedule' ? routineDraftScheduleTime : undefined,
+        repeatDays: routineDraftType === 'schedule' ? routineDraftRepeatDays : undefined,
+        actions: routineDraftActions,
+        isActive: true,
+      });
+    }
+    setRoutines(routineStorage.getRoutines());
+    setIsRoutineModalOpen(false);
+  };
+
+  const handleDeleteRoutine = (id: string) => {
+    routineStorage.deleteRoutine(id);
+    setRoutines(routineStorage.getRoutines());
+    setIsRoutineModalOpen(false);
+  };
+
+  const handleRunRoutine = async (routine: SmartRoutine) => {
+    setRunningRoutineId(routine.id);
+    try {
+      if (routine.id === 'default-all-off') {
+        devices.forEach(dev => {
+          if (dev.is_online) {
+            const count = dev.model_code === 'GATE' ? 1 : 8;
+            for (let ch = 1; ch <= count; ch++) {
+              deviceApi.controlSwitch(dev.id, ch, 'off').catch(() => {});
+            }
+          }
+        });
+      } else if (routine.id === 'default-morning') {
+        devices.forEach(dev => {
+          if (dev.is_online) {
+            deviceApi.controlSwitch(dev.id, 1, 'on').catch(() => {});
+          }
+        });
+      } else if (routine.actions && routine.actions.length > 0) {
+        for (const action of routine.actions) {
+          deviceApi.controlSwitch(action.deviceId, action.channel, action.targetState ? 'on' : 'off').catch(() => {});
+        }
+      }
+    } finally {
+      setTimeout(() => setRunningRoutineId(null), 1000);
     }
   };
 
@@ -784,8 +924,8 @@ export function App() {
         />
       </div>
 
-      {/* 3. Unified Responsive Header */}
-      {isSignedIn && (activeTab === 'home' || activeTab === 'devices') ? (
+      {/* 3. Unified Responsive Header: Only shown on Home tab */}
+      {isSignedIn && activeTab === 'home' ? (
         /* Logged-In Header: Row 1 = Quick Actions & Home Switcher; Row 2 = Search & Room Tabs */
         <header className="app-top-header fixed top-4 sm:top-5 inset-x-0 z-30 flex flex-col pointer-events-none px-4 sm:px-6 md:px-8">
           {/* Row 1: Quick Actions & Home Selector */}
@@ -1215,8 +1355,47 @@ export function App() {
 
         {activeTab === 'devices' && (
           <>
-            {/* Real-time Clock View & User Details */}
-            {renderRealTimeHeader()}
+            {/* Dedicated Top Action Bar for Devices & Rooms */}
+            <div className="w-full max-w-sm sm:max-w-md md:max-w-2xl lg:max-w-5xl pointer-events-auto pt-2">
+              <div className="flex items-center justify-between bg-white/80 backdrop-blur-xl rounded-3xl p-3 sm:p-4 border border-white/90 shadow-xs mb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-10 h-10 rounded-2xl bg-sky-50 text-[#0284c7] flex items-center justify-center border border-sky-100 shadow-xs">
+                    <LayoutPanelTop className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h2 className="text-sm sm:text-base font-extrabold text-slate-900 tracking-tight leading-tight">
+                      All Devices & Rooms
+                    </h2>
+                    <p className="text-[11px] text-slate-500 font-medium">
+                      {devices.length} Devices &bull; {rooms.length} Rooms
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleProtectedAction(() => setIsCreateRoomOpen(true))}
+                    className="flex items-center gap-1.5 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-full text-xs font-bold bg-[#0284c7] hover:bg-sky-600 text-white shadow-xs transition-all active:scale-95 cursor-pointer"
+                  >
+                    <FolderPlus className="w-3.5 h-3.5" />
+                    <span>+ Create Room</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleProtectedAction(() => setIsAddDeviceOpen(true))}
+                    className="flex items-center gap-1 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-full text-xs font-bold bg-white hover:bg-slate-50 text-slate-700 border border-slate-200/90 shadow-xs transition-all active:scale-95 cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Add Device</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Room Tabs & Search Bar for filtering devices */}
+              {renderRoomTabsBar()}
+            </div>
 
             {devices.length === 0 ? (
               <QuickDevicesCard 
@@ -1239,7 +1418,7 @@ export function App() {
                 const offlineCount = filtered.filter(d => !d.is_online).length;
 
                 return (
-                  <div className="w-full max-w-sm sm:max-w-md md:max-w-2xl lg:max-w-5xl space-y-3 pointer-events-auto mb-2 pt-1 sm:pt-2">
+                  <div className="w-full max-w-sm sm:max-w-md md:max-w-2xl lg:max-w-5xl space-y-3 pointer-events-auto mb-2">
                     {/* Transparent Card: Your Space Connectivity */}
                     {renderConnectivityCard(filtered.length, onlineCount, offlineCount)}
 
@@ -1303,86 +1482,183 @@ export function App() {
 
         {activeTab === 'routines' && (
           <>
-            {/* Real-time Clock View & User Details */}
-            {renderRealTimeHeader()}
-
-            {devices.length === 0 ? (
-              <QuickDevicesCard 
-                isLoggedIn={isSignedIn}
-                onAddDevice={() => handleProtectedAction(() => setIsAddDeviceOpen(true))} 
-                onExplore={() => handleProtectedAction(() => setActiveTab('explore'))} 
-              />
-            ) : (
-              <div className="w-full max-w-sm sm:max-w-md md:max-w-2xl lg:max-w-4xl space-y-3 pointer-events-auto">
-                <div className="flex items-center justify-between px-1">
-                  <span className="text-xs font-bold uppercase tracking-wider text-slate-600 font-mono">
-                    Smart Automations ({rooms.length || 1} Rooms)
-                  </span>
-                  <button
-                    onClick={() => handleProtectedAction()}
-                    className="text-xs font-bold text-[#0284c7] hover:underline cursor-pointer"
-                  >
-                    + New Routine
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-1 gap-2.5">
-                  <div className="bg-white rounded-3xl p-4 sm:p-4.5 shadow-sm border border-slate-100 flex items-center justify-between group">
-                    <div className="flex items-center gap-3">
-                      <div className="w-11 h-11 rounded-2xl bg-amber-50 flex items-center justify-center border border-amber-100 flex-shrink-0">
-                        <Sun className="w-5 h-5 text-amber-500" />
-                      </div>
-                      <div>
-                        <h4 className="text-sm sm:text-base font-bold text-slate-900">Good Morning</h4>
-                        <p className="text-xs text-slate-500">Turn on morning lighting across all rooms</p>
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => handleProtectedAction()}
-                      className="px-3.5 py-1.5 rounded-full text-xs font-bold bg-sky-50 text-[#0284c7] border border-sky-100 hover:bg-sky-100 transition-colors cursor-pointer"
-                    >
-                      Run
-                    </button>
+            <div className="w-full max-w-sm sm:max-w-md md:max-w-2xl lg:max-w-5xl space-y-3 pointer-events-auto pt-2">
+              {/* Routines Top Header Bar */}
+              <div className="flex items-center justify-between bg-white/80 backdrop-blur-xl rounded-3xl p-3 sm:p-4 border border-white/90 shadow-xs">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-10 h-10 rounded-2xl bg-amber-50 text-amber-500 flex items-center justify-center border border-amber-100 shadow-xs">
+                    <Sparkles className="w-5 h-5" />
                   </div>
-
-                  <div className="bg-white rounded-3xl p-4 sm:p-4.5 shadow-sm border border-slate-100 flex items-center justify-between group">
-                    <div className="flex items-center gap-3">
-                      <div className="w-11 h-11 rounded-2xl bg-indigo-50 flex items-center justify-center border border-indigo-100 flex-shrink-0">
-                        <Moon className="w-5 h-5 text-indigo-500" />
-                      </div>
-                      <div>
-                        <h4 className="text-sm sm:text-base font-bold text-slate-900">All Switches Off</h4>
-                        <p className="text-xs text-slate-500">Instantly switch off all {devices.length} device(s)</p>
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => handleProtectedAction()}
-                      className="px-3.5 py-1.5 rounded-full text-xs font-bold bg-sky-50 text-[#0284c7] border border-sky-100 hover:bg-sky-100 transition-colors cursor-pointer"
-                    >
-                      Run
-                    </button>
-                  </div>
-
-                  <div className="bg-white rounded-3xl p-4 sm:p-4.5 shadow-sm border border-slate-100 flex items-center justify-between group">
-                    <div className="flex items-center gap-3">
-                      <div className="w-11 h-11 rounded-2xl bg-emerald-50 flex items-center justify-center border border-emerald-100 flex-shrink-0">
-                        <Sparkles className="w-5 h-5 text-emerald-500" />
-                      </div>
-                      <div>
-                        <h4 className="text-sm sm:text-base font-bold text-slate-900">Away / Energy Saver</h4>
-                        <p className="text-xs text-slate-500">Conserve power across all connected endpoints</p>
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => handleProtectedAction()}
-                      className="px-3.5 py-1.5 rounded-full text-xs font-bold bg-sky-50 text-[#0284c7] border border-sky-100 hover:bg-sky-100 transition-colors cursor-pointer"
-                    >
-                      Run
-                    </button>
+                  <div>
+                    <h2 className="text-sm sm:text-base font-extrabold text-slate-900 tracking-tight leading-tight">
+                      Smart Automations & Scenes
+                    </h2>
+                    <p className="text-[11px] text-slate-500 font-medium">
+                      {routines.length} Routines configured &bull; {rooms.length || 1} Rooms
+                    </p>
                   </div>
                 </div>
+
+                <button
+                  type="button"
+                  onClick={() => handleProtectedAction(() => handleOpenCreateRoutine())}
+                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-bold bg-[#0284c7] hover:bg-sky-600 text-white shadow-xs transition-all active:scale-95 cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>+ Create Routine</span>
+                </button>
               </div>
-            )}
+
+              {/* Room Filter Pills Bar: "All Devices" + List of Rooms */}
+              <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+                <button
+                  type="button"
+                  onClick={() => setRoutineRoomFilter('all')}
+                  className={`px-3.5 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                    routineRoomFilter === 'all'
+                      ? 'bg-[#0284c7] text-white shadow-xs'
+                      : 'bg-white/80 text-slate-600 hover:bg-white border border-slate-200/80'
+                  }`}
+                >
+                  All Devices
+                </button>
+                {rooms.map(r => {
+                  const isSelected = routineRoomFilter === r.id;
+                  return (
+                    <button
+                      key={r.id}
+                      type="button"
+                      onClick={() => setRoutineRoomFilter(r.id)}
+                      className={`flex items-center gap-1 px-3.5 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                        isSelected
+                          ? 'bg-[#0284c7] text-white shadow-xs'
+                          : 'bg-white/80 text-slate-600 hover:bg-white border border-slate-200/80'
+                      }`}
+                    >
+                      <span>{getRoomEmoji(r.name)}</span>
+                      <span>{r.name}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Routines 2x2 Grid (Side-by-side on mobile screens) */}
+              {(() => {
+                const filteredRoutines = routines.filter(r => 
+                  routineRoomFilter === 'all' || r.roomId === 'all' || r.roomId === routineRoomFilter
+                );
+
+                if (filteredRoutines.length === 0) {
+                  return (
+                    <div className="bg-white/80 backdrop-blur-md rounded-3xl p-6 text-center border border-white/80 shadow-xs space-y-2">
+                      <p className="text-sm font-semibold text-slate-700">No routines for selected room</p>
+                      <p className="text-xs text-slate-400">Create a routine or scene to automate your devices.</p>
+                      <button
+                        type="button"
+                        onClick={() => handleProtectedAction(() => handleOpenCreateRoutine())}
+                        className="mt-2 inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold bg-[#0284c7] text-white hover:bg-sky-600 transition-colors shadow-xs cursor-pointer"
+                      >
+                        + Create Routine
+                      </button>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2.5 sm:gap-3.5">
+                    {filteredRoutines.map((routine) => {
+                      const isRunning = runningRoutineId === routine.id;
+                      const roomObj = rooms.find(r => r.id === routine.roomId);
+                      const targetLabel = routine.roomId === 'all' ? 'All Rooms' : (roomObj ? roomObj.name : 'Custom Room');
+
+                      const IconCmp = routine.icon === 'moon' ? Moon
+                        : routine.icon === 'sparkles' ? Sparkles
+                        : routine.icon === 'zap' ? Zap
+                        : routine.icon === 'clock' ? Clock
+                        : Sun;
+
+                      const iconBg = routine.icon === 'moon' ? 'bg-indigo-50 border-indigo-100 text-indigo-500'
+                        : routine.icon === 'sparkles' ? 'bg-emerald-50 border-emerald-100 text-emerald-500'
+                        : routine.icon === 'zap' ? 'bg-amber-50 border-amber-100 text-amber-500'
+                        : routine.icon === 'clock' ? 'bg-sky-50 border-sky-100 text-sky-500'
+                        : 'bg-amber-50 border-amber-100 text-amber-500';
+
+                      return (
+                        <div
+                          key={routine.id}
+                          className="group relative bg-white/95 backdrop-blur-md rounded-2xl sm:rounded-3xl p-3 sm:p-4 shadow-xs border border-slate-100 hover:border-sky-300 hover:shadow-md transition-all flex flex-col justify-between"
+                        >
+                          <div>
+                            {/* Card Top Row: Icon + Type Badge + Edit Button */}
+                            <div className="flex items-center justify-between mb-2">
+                              <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-2xl flex items-center justify-center border shadow-xs flex-shrink-0 ${iconBg}`}>
+                                <IconCmp className="w-5 h-5" />
+                              </div>
+
+                              <div className="flex items-center gap-1">
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-50 text-[#0284c7] border border-sky-100 font-mono">
+                                  {routine.type === 'schedule' ? (routine.scheduleTime || 'Scheduled') : 'Scene'}
+                                </span>
+
+                                <button
+                                  type="button"
+                                  onClick={() => handleProtectedAction(() => handleOpenEditRoutine(routine))}
+                                  className="w-7 h-7 rounded-full hover:bg-slate-100 text-slate-400 hover:text-[#0284c7] flex items-center justify-center transition-colors cursor-pointer"
+                                  title="Edit / Modify Routine"
+                                >
+                                  <Edit2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Title & Description */}
+                            <h4 className="text-xs sm:text-sm font-bold text-slate-900 group-hover:text-[#0284c7] transition-colors leading-tight line-clamp-1">
+                              {routine.name}
+                            </h4>
+
+                            <p className="text-[10px] sm:text-[11px] text-slate-400 line-clamp-1 mt-0.5">
+                              {routine.actions && routine.actions.length > 0 
+                                ? `${targetLabel} • ${routine.actions.length} action(s)` 
+                                : (routine.description || `${targetLabel} • Instant`)}
+                            </p>
+                          </div>
+
+                          {/* Bottom Action: Run Button */}
+                          <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between">
+                            <span className="text-[10px] font-mono text-slate-400">
+                              {routine.type === 'schedule' ? 'Auto Run' : 'One-tap'}
+                            </span>
+
+                            <button
+                              type="button"
+                              disabled={isRunning}
+                              onClick={() => handleProtectedAction(() => handleRunRoutine(routine))}
+                              className={`px-3 py-1 rounded-full text-xs font-bold transition-all shadow-xs flex items-center gap-1 active:scale-95 cursor-pointer ${
+                                isRunning
+                                  ? 'bg-emerald-500 text-white'
+                                  : 'bg-sky-50 hover:bg-[#0284c7] text-[#0284c7] hover:text-white border border-sky-200/80'
+                              }`}
+                            >
+                              {isRunning ? (
+                                <>
+                                  <Check className="w-3 h-3" />
+                                  <span>Done!</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Play className="w-3 h-3 fill-current" />
+                                  <span>Run</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+            </div>
           </>
         )}
 
@@ -1601,7 +1877,353 @@ export function App() {
         }}
       />
 
-      {/* 14. Dedicated Full Screen Layout for Hardware Device Control ("New Screen") */}
+      {/* 14. Create Room Modal (Direct DB persistence via homeApi.createRoom) */}
+      {isCreateRoomOpen && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in select-none">
+          <div className="bg-white rounded-[32px] w-full max-w-sm p-5 sm:p-6 shadow-2xl border border-white/80 space-y-4">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-2xl bg-sky-50 text-[#0284c7] flex items-center justify-center border border-sky-100">
+                  <FolderPlus className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-base font-extrabold text-slate-900">Create New Room</h3>
+                  <p className="text-[11px] text-slate-400">Add a space to {activeHome?.name || 'your home'}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsCreateRoomOpen(false)}
+                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center cursor-pointer transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div>
+              <label className="text-xs font-bold text-slate-700 block mb-1.5">
+                Room Name
+              </label>
+              <input
+                type="text"
+                value={newRoomName}
+                onChange={(e) => setNewRoomName(e.target.value)}
+                placeholder="e.g. Master Bedroom, Living Room..."
+                className="w-full px-3.5 py-2.5 rounded-2xl bg-slate-50 border border-slate-200 text-sm font-sans text-slate-900 outline-none focus:border-[#0284c7] focus:bg-white transition-all"
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    handleCreateRoom(newRoomName);
+                  }
+                }}
+              />
+            </div>
+
+            <div>
+              <span className="text-[11px] font-bold text-slate-400 block mb-1.5">Quick Suggestions:</span>
+              <div className="flex flex-wrap gap-1.5">
+                {['Living Room', 'Master Bedroom', 'Kitchen', 'Office', 'Guest Room', 'Balcony', 'Dining Area', 'Kids Room'].map((suggestion) => (
+                  <button
+                    key={suggestion}
+                    type="button"
+                    onClick={() => setNewRoomName(suggestion)}
+                    className="px-2.5 py-1 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-sky-50 hover:text-[#0284c7] text-slate-700 border border-slate-200/80 transition-colors cursor-pointer"
+                  >
+                    {suggestion}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => setIsCreateRoomOpen(false)}
+                className="flex-1 py-2.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={!newRoomName.trim() || isCreatingRoom}
+                onClick={() => handleCreateRoom(newRoomName)}
+                className="flex-1 py-2.5 rounded-full bg-[#0284c7] hover:bg-sky-600 disabled:opacity-50 text-white text-xs font-bold shadow-md transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                {isCreatingRoom ? 'Saving...' : 'Save Room'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 15. Create / Edit Routine Modal (Scene & Time Schedule Automations) */}
+      {isRoutineModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in select-none">
+          <div className="bg-white rounded-t-[32px] sm:rounded-3xl w-full max-w-lg p-5 sm:p-6 shadow-2xl border border-white/90 max-h-[92vh] flex flex-col justify-between overflow-hidden">
+            {/* Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 flex-shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-2xl bg-amber-50 text-amber-500 flex items-center justify-center border border-amber-100 shadow-xs">
+                  <Sparkles className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-extrabold text-slate-900">
+                    {editingRoutine ? 'Edit Routine / Scene' : 'Create Routine / Scene'}
+                  </h3>
+                  <p className="text-[11px] text-slate-400">Configure scene group or scheduled action</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsRoutineModalOpen(false)}
+                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center cursor-pointer transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Scrollable Form Body */}
+            <div className="overflow-y-auto space-y-4 py-3 pr-1 flex-1">
+              {/* Routine Name */}
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">
+                  Routine Name
+                </label>
+                <input
+                  type="text"
+                  value={routineDraftName}
+                  onChange={(e) => setRoutineDraftName(e.target.value)}
+                  placeholder="e.g. Movie Night, All Lights ON, Sleep Mode..."
+                  className="w-full px-3.5 py-2.5 rounded-2xl bg-slate-50 border border-slate-200 text-sm font-sans text-slate-900 outline-none focus:border-[#0284c7] focus:bg-white transition-all"
+                />
+              </div>
+
+              {/* Automation Type Switcher: Scene vs Time Schedule */}
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1.5">
+                  Automation Type
+                </label>
+                <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 rounded-2xl border border-slate-200">
+                  <button
+                    type="button"
+                    onClick={() => setRoutineDraftType('scene')}
+                    className={`py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                      routineDraftType === 'scene'
+                        ? 'bg-white text-[#0284c7] shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>Scene / Group</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRoutineDraftType('schedule')}
+                    className={`py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                      routineDraftType === 'schedule'
+                        ? 'bg-white text-[#0284c7] shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <Clock className="w-3.5 h-3.5" />
+                    <span>Time Schedule</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Target Room Selector */}
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1.5">
+                  Select Room
+                </label>
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+                  <button
+                    type="button"
+                    onClick={() => setRoutineDraftRoomId('all')}
+                    className={`px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                      routineDraftRoomId === 'all'
+                        ? 'bg-[#0284c7] text-white shadow-xs'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    All Rooms
+                  </button>
+                  {rooms.map(r => (
+                    <button
+                      key={r.id}
+                      type="button"
+                      onClick={() => setRoutineDraftRoomId(r.id)}
+                      className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                        routineDraftRoomId === r.id
+                          ? 'bg-[#0284c7] text-white shadow-xs'
+                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                      }`}
+                    >
+                      <span>{getRoomEmoji(r.name)}</span>
+                      <span>{r.name}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Time Schedule Options (if schedule selected) */}
+              {routineDraftType === 'schedule' && (
+                <div className="bg-sky-50/70 rounded-2xl p-3.5 border border-sky-100 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-slate-700">Schedule Time</label>
+                    <input
+                      type="time"
+                      value={routineDraftScheduleTime}
+                      onChange={(e) => setRoutineDraftScheduleTime(e.target.value)}
+                      className="px-3 py-1.5 rounded-xl bg-white border border-sky-200 text-xs font-mono font-bold text-slate-800"
+                    />
+                  </div>
+
+                  <div>
+                    <span className="text-[11px] font-bold text-slate-500 block mb-1">Repeat Days:</span>
+                    <div className="flex items-center gap-1">
+                      {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(day => {
+                        const isDaySelected = routineDraftRepeatDays.includes(day);
+                        return (
+                          <button
+                            key={day}
+                            type="button"
+                            onClick={() => {
+                              if (isDaySelected) {
+                                setRoutineDraftRepeatDays(routineDraftRepeatDays.filter(d => d !== day));
+                              } else {
+                                setRoutineDraftRepeatDays([...routineDraftRepeatDays, day]);
+                              }
+                            }}
+                            className={`w-7 h-7 rounded-lg text-[10px] font-bold transition-all cursor-pointer ${
+                              isDaySelected
+                                ? 'bg-[#0284c7] text-white'
+                                : 'bg-white text-slate-600 border border-slate-200'
+                            }`}
+                          >
+                            {day[0]}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Device and Switch Selection */}
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1.5">
+                  Select Devices & Switches (ON / OFF)
+                </label>
+                
+                {(() => {
+                  const targetDevices = devices.filter(d => 
+                    routineDraftRoomId === 'all' || d.room_id === routineDraftRoomId
+                  );
+
+                  if (targetDevices.length === 0) {
+                    return (
+                      <p className="text-xs text-slate-400 p-3 bg-slate-50 rounded-2xl text-center">
+                        No devices available in selected room.
+                      </p>
+                    );
+                  }
+
+                  return (
+                    <div className="space-y-3">
+                      {targetDevices.map(dev => {
+                        const switchCount = dev.model_code === 'GATE' ? 1 : 8;
+                        return (
+                          <div key={dev.id} className="bg-slate-50 rounded-2xl p-3 border border-slate-200/80 space-y-2">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-bold text-slate-800">{dev.custom_name}</span>
+                              <span className="text-[10px] font-mono text-slate-400">{dev.model_code || 'TP8'}</span>
+                            </div>
+
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                              {Array.from({ length: switchCount }, (_, i) => {
+                                const ch = i + 1;
+                                const swName = `Switch ${ch}`;
+                                const existingAction = routineDraftActions.find(
+                                  a => a.deviceId === dev.id && a.channel === ch
+                                );
+                                const currentState = existingAction ? (existingAction.targetState ? 'ON' : 'OFF') : 'SKIP';
+
+                                return (
+                                  <div key={ch} className="bg-white rounded-xl p-1.5 border border-slate-200/90 flex items-center justify-between">
+                                    <span className="text-[11px] font-semibold text-slate-700 truncate pr-1">SW {ch}</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        if (currentState === 'SKIP') {
+                                          setRoutineDraftActions(prev => [
+                                            ...prev,
+                                            { deviceId: dev.id, deviceName: dev.custom_name, channel: ch, switchName: swName, targetState: true }
+                                          ]);
+                                        } else if (currentState === 'ON') {
+                                          setRoutineDraftActions(prev => prev.map(a => 
+                                            a.deviceId === dev.id && a.channel === ch ? { ...a, targetState: false } : a
+                                          ));
+                                        } else {
+                                          setRoutineDraftActions(prev => prev.filter(a => !(a.deviceId === dev.id && a.channel === ch)));
+                                        }
+                                      }}
+                                      className={`px-1.5 py-0.5 rounded text-[10px] font-bold cursor-pointer transition-all ${
+                                        currentState === 'ON'
+                                          ? 'bg-emerald-500 text-white'
+                                          : currentState === 'OFF'
+                                          ? 'bg-rose-500 text-white'
+                                          : 'bg-slate-100 text-slate-400 hover:text-slate-600'
+                                      }`}
+                                    >
+                                      {currentState}
+                                    </button>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+              </div>
+            </div>
+
+            {/* Footer Actions */}
+            <div className="flex items-center gap-2.5 pt-3 border-t border-slate-100 flex-shrink-0">
+              {editingRoutine && (
+                <button
+                  type="button"
+                  onClick={() => handleDeleteRoutine(editingRoutine.id)}
+                  className="p-2.5 rounded-full bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 transition-colors cursor-pointer"
+                  title="Delete Routine"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setIsRoutineModalOpen(false)}
+                className="flex-1 py-2.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveRoutine}
+                className="flex-1 py-2.5 rounded-full bg-[#0284c7] hover:bg-sky-600 text-white text-xs font-bold shadow-md transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                <span>Save Routine</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 16. Dedicated Full Screen Layout for Hardware Device Control ("New Screen") */}
       {selectedDeviceForControl && (() => {
         const devRoom = rooms.find(r => r.id === selectedDeviceForControl.room_id);
         const roomLabel = devRoom ? devRoom.name : 'Living room';
