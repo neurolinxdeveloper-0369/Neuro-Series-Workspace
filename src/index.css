@@ -5,6 +5,11 @@
   --font-sans: 'Noto Sans', sans-serif;
 }
 
+:root {
+  --android-nav-bottom: 0px;
+  --nav-inset-bottom: max(var(--android-nav-bottom, 0px), env(safe-area-inset-bottom, 0px));
+}
+
 @layer base {
   *, *::before, *::after, button, a, [role="button"] {
     cursor: none !important;
@@ -180,7 +185,7 @@
   /* White Menu Bar on Mobile Ratio */
   .nav-bar-responsive {
     display: flex !important;
-    bottom: 1.25rem !important;
+    bottom: calc(0.85rem + max(var(--android-nav-bottom, 0px), env(safe-area-inset-bottom, 0px))) !important;
     left: 50% !important;
     top: auto !important;
     transform: translateX(-50%) !important;
@@ -197,6 +202,12 @@
     -webkit-backdrop-filter: blur(24px) saturate(180%) !important;
     border: 1px solid rgba(255, 255, 255, 0.95) !important;
     box-shadow: 0 12px 32px -4px rgba(15, 23, 42, 0.14), 0 4px 12px rgba(0, 0, 0, 0.05), inset 0 1.5px 2px #ffffff !important;
+  }
+
+  /* Content wrapper adjustment to ensure bottom card clears lifted nav bar and phone navigation icons */
+  .explore-slider-wrapper {
+    bottom: calc(4.75rem + max(var(--android-nav-bottom, 0px), env(safe-area-inset-bottom, 0px))) !important;
+    padding-bottom: calc(1.75rem + max(var(--android-nav-bottom, 0px), env(safe-area-inset-bottom, 0px))) !important;
   }
 
   /* Inactive Nav Items on White Menu Bar: Clear deep slate/charcoal contrast */

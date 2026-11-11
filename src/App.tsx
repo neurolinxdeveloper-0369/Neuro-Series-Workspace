@@ -295,6 +295,37 @@ export function App() {
     return () => window.removeEventListener('click', handleGlobalClick);
   }, []);
 
+  // Dynamically detect phone navigation mode: 3-button navigation icons vs gesture navigation
+  useEffect(() => {
+    const updateNavInsets = () => {
+      try {
+        const bridge = (window as any).AndroidWifiBridge;
+        let navHeight = 0;
+        if (bridge && typeof bridge.getNavigationBarHeight === 'function') {
+          navHeight = bridge.getNavigationBarHeight();
+        }
+
+        const isGesture = bridge && typeof bridge.isGestureNavigation === 'function' ? bridge.isGestureNavigation() : false;
+
+        // If phone has 3-button navigation icons (Back, Home, Recents), ensure at least 48px to prevent collision
+        if (!isGesture && navHeight > 0) {
+          const finalHeight = Math.max(navHeight, 48);
+          document.documentElement.style.setProperty('--android-nav-bottom', `${finalHeight}px`);
+        } else if (navHeight > 0) {
+          document.documentElement.style.setProperty('--android-nav-bottom', `${navHeight}px`);
+        } else {
+          document.documentElement.style.setProperty('--android-nav-bottom', '0px');
+        }
+      } catch {
+        document.documentElement.style.setProperty('--android-nav-bottom', '0px');
+      }
+    };
+
+    updateNavInsets();
+    window.addEventListener('resize', updateNavInsets);
+    return () => window.removeEventListener('resize', updateNavInsets);
+  }, []);
+
   // Settings Screen State
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   
@@ -988,24 +1019,24 @@ export function App() {
                             <div
                               key={dev.id}
                               onClick={() => setSelectedDeviceForControl(dev)}
-                              className="group relative overflow-hidden bg-white/95 backdrop-blur-md rounded-3xl shadow-sm border border-slate-100 hover:border-sky-300 hover:shadow-md transition-all cursor-pointer active:scale-[0.99] flex flex-col"
+                              className="group relative overflow-hidden bg-white/95 backdrop-blur-md rounded-2xl sm:rounded-3xl shadow-xs border border-slate-100 hover:border-sky-300 hover:shadow-md transition-all cursor-pointer active:scale-[0.99] flex flex-col"
                             >
-                              {/* Top 50% Hero Showcase: 8S.png filling with opacity + Room & RSSI status */}
-                              <div className="relative w-full h-36 sm:h-40 bg-gradient-to-b from-sky-50/70 via-sky-50/30 to-white/10 flex items-center justify-center overflow-hidden p-3 border-b border-slate-100/70">
+                              {/* Top Compact Hero Showcase: reduced height from h-36/40 to h-24 sm:h-28 */}
+                              <div className="relative w-full h-24 sm:h-28 bg-gradient-to-b from-sky-50/70 via-sky-50/30 to-white/10 flex items-center justify-center overflow-hidden p-2 sm:p-2.5 border-b border-slate-100/70">
                                 {dev.model_code === 'GATE' ? (
-                                  <div className="w-full h-full flex flex-col items-center justify-center p-2 opacity-85 group-hover:opacity-100 group-hover:scale-105 transition-all duration-300">
-                                    <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-sky-500 to-indigo-600 flex items-center justify-center shadow-md shadow-sky-500/25 text-white relative">
-                                      <svg className="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                  <div className="w-full h-full flex flex-col items-center justify-center p-1 opacity-85 group-hover:opacity-100 group-hover:scale-105 transition-all duration-300">
+                                    <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-br from-sky-500 to-indigo-600 flex items-center justify-center shadow-xs text-white relative">
+                                      <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                         <path d="M3 21h18" />
                                         <path d="M5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16" />
                                         <path d="M9 21v-4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v4" />
                                         <path d="M10 9h4" />
                                       </svg>
-                                      <span className="absolute -bottom-1 -right-1 px-1.5 py-0.5 rounded-full bg-emerald-500 text-[8px] font-black tracking-wider text-white shadow-xs">
+                                      <span className="absolute -bottom-1 -right-1 px-1 py-0.2 rounded-full bg-emerald-500 text-[7px] font-black tracking-wider text-white shadow-xs">
                                         1 CH
                                       </span>
                                     </div>
-                                    <span className="text-[10px] font-extrabold text-slate-700 tracking-wider uppercase mt-1.5 font-mono">
+                                    <span className="text-[9px] font-extrabold text-slate-700 tracking-wider uppercase mt-1 font-mono">
                                       Gate Motor Controller
                                     </span>
                                   </div>
@@ -1013,21 +1044,21 @@ export function App() {
                                   <img
                                     src={getAssetUrl('8S.png')}
                                     alt={dev.custom_name}
-                                    className="w-full h-full object-contain opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-300"
+                                    className="w-full h-full max-h-20 sm:max-h-22 object-contain opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-300"
                                   />
                                 )}
 
                                 {/* Overlaid Room Name Pill (Top-Left) */}
-                                <div className="absolute top-3 left-3 flex items-center">
-                                  <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-white/90 backdrop-blur-md text-slate-700 shadow-xs border border-white/80 flex items-center gap-1.5">
+                                <div className="absolute top-2 left-2 flex items-center">
+                                  <span className="px-2 py-0.5 rounded-full text-[10px] sm:text-[11px] font-semibold bg-white/90 backdrop-blur-md text-slate-700 shadow-xs border border-white/80 flex items-center gap-1">
                                     <span>{getRoomEmoji(roomLabel)}</span>
                                     <span>{roomLabel}</span>
                                   </span>
                                 </div>
 
                                 {/* Overlaid RSSI Status Pill (Top-Right) */}
-                                <div className="absolute top-3 right-3 flex items-center">
-                                  <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold border flex items-center gap-1.5 backdrop-blur-md shadow-xs ${
+                                <div className="absolute top-2 right-2 flex items-center">
+                                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border flex items-center gap-1 backdrop-blur-md shadow-xs ${
                                     dev.is_online
                                       ? 'bg-emerald-50/95 text-emerald-700 border-emerald-200'
                                       : 'bg-rose-50/95 text-rose-700 border-rose-200'
@@ -1037,35 +1068,35 @@ export function App() {
                                     }`} />
                                     {dev.is_online ? 'Online' : 'Offline'}
                                     {dev.is_online && typeof dev.rssi === 'number' && (
-                                      <span className="text-[10px] text-emerald-700/80 font-mono ml-0.5">({dev.rssi} dBm)</span>
+                                      <span className="text-[9px] text-emerald-700/80 font-mono ml-0.5">({dev.rssi} dBm)</span>
                                     )}
                                   </span>
                                 </div>
                               </div>
 
-                              {/* Bottom Details Section (Device name, model, Tap to Open Layout, no controls available text) */}
-                              <div className="p-4 flex-1 flex flex-col justify-between">
+                              {/* Bottom Details Section (Device name, model, Tap to Open Layout) */}
+                              <div className="p-3 sm:p-3.5 flex-1 flex flex-col justify-between">
                                 <div className="flex items-center justify-between">
                                   <div>
-                                    <div className="flex items-center gap-2">
-                                      <h3 className="text-sm sm:text-base font-bold text-slate-900 group-hover:text-[#0284c7] transition-colors">
+                                    <div className="flex items-center gap-1.5">
+                                      <h3 className="text-sm font-bold text-slate-900 group-hover:text-[#0284c7] transition-colors leading-tight">
                                         {dev.custom_name}
                                       </h3>
-                                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-50 text-[#0284c7] border border-sky-100 font-mono">
+                                      <span className="px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-sky-50 text-[#0284c7] border border-sky-100 font-mono">
                                         {dev.model_code || 'TP8'}
                                       </span>
                                     </div>
-                                    <p className="text-[11px] text-slate-400 font-mono mt-0.5">
+                                    <p className="text-[10px] text-slate-400 font-mono mt-0.5">
                                       {dev.device_id || `NEURO-${dev.model_code}-${dev.mac_4}`}
                                     </p>
                                   </div>
                                 </div>
 
-                                <div className="mt-3 pt-2.5 border-t border-slate-100/80 flex items-center justify-between text-xs">
-                                  <span className="text-[11px] font-medium text-slate-400">
+                                <div className="mt-2 pt-2 border-t border-slate-100/80 flex items-center justify-between text-xs">
+                                  <span className="text-[10px] font-medium text-slate-400">
                                     {dev.is_online ? 'Ready' : 'Device Offline'}
                                   </span>
-                                  <span className={`font-bold flex items-center gap-1 group-hover:translate-x-0.5 transition-transform ${
+                                  <span className={`text-[11px] font-bold flex items-center gap-1 group-hover:translate-x-0.5 transition-transform ${
                                     dev.is_online ? 'text-[#0284c7]' : 'text-slate-500'
                                   }`}>
                                     Tap to Open Layout →
@@ -1161,24 +1192,24 @@ export function App() {
                             <div
                               key={dev.id}
                               onClick={() => setSelectedDeviceForControl(dev)}
-                              className="group relative overflow-hidden bg-white/95 backdrop-blur-md rounded-3xl shadow-sm border border-slate-100 hover:border-sky-300 hover:shadow-md transition-all cursor-pointer active:scale-[0.99] flex flex-col"
+                              className="group relative overflow-hidden bg-white/95 backdrop-blur-md rounded-2xl sm:rounded-3xl shadow-xs border border-slate-100 hover:border-sky-300 hover:shadow-md transition-all cursor-pointer active:scale-[0.99] flex flex-col"
                             >
-                              {/* Top 50% Hero Showcase: 8S.png filling with opacity + Room & RSSI status */}
-                              <div className="relative w-full h-36 sm:h-40 bg-gradient-to-b from-sky-50/70 via-sky-50/30 to-white/10 flex items-center justify-center overflow-hidden p-3 border-b border-slate-100/70">
+                              {/* Top Compact Hero Showcase: reduced height from h-36/40 to h-24 sm:h-28 */}
+                              <div className="relative w-full h-24 sm:h-28 bg-gradient-to-b from-sky-50/70 via-sky-50/30 to-white/10 flex items-center justify-center overflow-hidden p-2 sm:p-2.5 border-b border-slate-100/70">
                                 {dev.model_code === 'GATE' ? (
-                                  <div className="w-full h-full flex flex-col items-center justify-center p-2 opacity-85 group-hover:opacity-100 group-hover:scale-105 transition-all duration-300">
-                                    <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-sky-500 to-indigo-600 flex items-center justify-center shadow-md shadow-sky-500/25 text-white relative">
-                                      <svg className="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                  <div className="w-full h-full flex flex-col items-center justify-center p-1 opacity-85 group-hover:opacity-100 group-hover:scale-105 transition-all duration-300">
+                                    <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-br from-sky-500 to-indigo-600 flex items-center justify-center shadow-xs text-white relative">
+                                      <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                         <path d="M3 21h18" />
                                         <path d="M5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16" />
                                         <path d="M9 21v-4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v4" />
                                         <path d="M10 9h4" />
                                       </svg>
-                                      <span className="absolute -bottom-1 -right-1 px-1.5 py-0.5 rounded-full bg-emerald-500 text-[8px] font-black tracking-wider text-white shadow-xs">
+                                      <span className="absolute -bottom-1 -right-1 px-1 py-0.2 rounded-full bg-emerald-500 text-[7px] font-black tracking-wider text-white shadow-xs">
                                         1 CH
                                       </span>
                                     </div>
-                                    <span className="text-[10px] font-extrabold text-slate-700 tracking-wider uppercase mt-1.5 font-mono">
+                                    <span className="text-[9px] font-extrabold text-slate-700 tracking-wider uppercase mt-1 font-mono">
                                       Gate Motor Controller
                                     </span>
                                   </div>
@@ -1186,21 +1217,21 @@ export function App() {
                                   <img
                                     src={getAssetUrl('8S.png')}
                                     alt={dev.custom_name}
-                                    className="w-full h-full object-contain opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-300"
+                                    className="w-full h-full max-h-20 sm:max-h-22 object-contain opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-300"
                                   />
                                 )}
 
                                 {/* Overlaid Room Name Pill (Top-Left) */}
-                                <div className="absolute top-3 left-3 flex items-center">
-                                  <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-white/90 backdrop-blur-md text-slate-700 shadow-xs border border-white/80 flex items-center gap-1.5">
+                                <div className="absolute top-2 left-2 flex items-center">
+                                  <span className="px-2 py-0.5 rounded-full text-[10px] sm:text-[11px] font-semibold bg-white/90 backdrop-blur-md text-slate-700 shadow-xs border border-white/80 flex items-center gap-1">
                                     <span>{getRoomEmoji(roomLabel)}</span>
                                     <span>{roomLabel}</span>
                                   </span>
                                 </div>
 
                                 {/* Overlaid RSSI Status Pill (Top-Right) */}
-                                <div className="absolute top-3 right-3 flex items-center">
-                                  <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold border flex items-center gap-1.5 backdrop-blur-md shadow-xs ${
+                                <div className="absolute top-2 right-2 flex items-center">
+                                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border flex items-center gap-1 backdrop-blur-md shadow-xs ${
                                     dev.is_online
                                       ? 'bg-emerald-50/95 text-emerald-700 border-emerald-200'
                                       : 'bg-rose-50/95 text-rose-700 border-rose-200'
@@ -1210,35 +1241,35 @@ export function App() {
                                     }`} />
                                     {dev.is_online ? 'Online' : 'Offline'}
                                     {dev.is_online && typeof dev.rssi === 'number' && (
-                                      <span className="text-[10px] text-emerald-700/80 font-mono ml-0.5">({dev.rssi} dBm)</span>
+                                      <span className="text-[9px] text-emerald-700/80 font-mono ml-0.5">({dev.rssi} dBm)</span>
                                     )}
                                   </span>
                                 </div>
                               </div>
 
-                              {/* Bottom Details Section (Device name, model, Open Switch Layout, no controls available text) */}
-                              <div className="p-4 flex-1 flex flex-col justify-between">
+                              {/* Bottom Details Section (Device name, model, Open Switch Layout) */}
+                              <div className="p-3 sm:p-3.5 flex-1 flex flex-col justify-between">
                                 <div className="flex items-center justify-between">
                                   <div>
-                                    <div className="flex items-center gap-2">
-                                      <h3 className="text-sm sm:text-base font-bold text-slate-900 group-hover:text-[#0284c7] transition-colors">
+                                    <div className="flex items-center gap-1.5">
+                                      <h3 className="text-sm font-bold text-slate-900 group-hover:text-[#0284c7] transition-colors leading-tight">
                                         {dev.custom_name}
                                       </h3>
-                                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-50 text-[#0284c7] border border-sky-100 font-mono">
+                                      <span className="px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-sky-50 text-[#0284c7] border border-sky-100 font-mono">
                                         {dev.model_code || 'TP8'}
                                       </span>
                                     </div>
-                                    <p className="text-[11px] text-slate-400 font-mono mt-0.5">
+                                    <p className="text-[10px] text-slate-400 font-mono mt-0.5">
                                       {dev.device_id || `NEURO-${dev.model_code}-${dev.mac_4}`}
                                     </p>
                                   </div>
                                 </div>
 
-                                <div className="mt-3 pt-2.5 border-t border-slate-100/80 flex items-center justify-between text-xs">
-                                  <span className="text-[11px] font-medium text-slate-400">
+                                <div className="mt-2 pt-2 border-t border-slate-100/80 flex items-center justify-between text-xs">
+                                  <span className="text-[10px] font-medium text-slate-400">
                                     {dev.is_online ? 'Ready' : 'Device Offline'}
                                   </span>
-                                  <span className={`font-bold flex items-center gap-1 group-hover:translate-x-0.5 transition-transform ${
+                                  <span className={`text-[11px] font-bold flex items-center gap-1 group-hover:translate-x-0.5 transition-transform ${
                                     dev.is_online ? 'text-[#0284c7]' : 'text-slate-500'
                                   }`}>
                                     Open Switch Layout →
@@ -1655,7 +1686,7 @@ export function App() {
             </header>
 
             {/* Screen Content Body */}
-            <main className="w-full max-w-4xl mx-auto px-4 sm:px-6 py-5 sm:py-7 flex-1 flex flex-col gap-4">
+            <main className="w-full max-w-4xl mx-auto px-4 sm:px-6 py-5 sm:py-7 flex-1 flex flex-col gap-4 pb-[calc(2rem+max(var(--android-nav-bottom,0px),env(safe-area-inset-bottom,0px)))]">
               {/* Meta details bar */}
               <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-2.5 px-4 border border-sky-100/80 flex items-center justify-between text-xs font-mono text-slate-600 shadow-xs flex-wrap gap-2">
                 <div className="flex items-center gap-1.5">

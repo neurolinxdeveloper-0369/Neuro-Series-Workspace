@@ -340,6 +340,36 @@ public class MainActivity extends BridgeActivity {
         }
 
         @JavascriptInterface
+        public int getNavigationBarHeight() {
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    android.view.WindowInsets insets = getWindow().getDecorView().getRootWindowInsets();
+                    if (insets != null) {
+                        android.graphics.Insets nav = insets.getInsets(android.view.WindowInsets.Type.navigationBars());
+                        float density = context.getResources().getDisplayMetrics().density;
+                        return Math.round(nav.bottom / density);
+                    }
+                }
+                int resourceId = context.getResources().getIdentifier("navigation_bar_height", "dimen", "android");
+                if (resourceId > 0) {
+                    int px = context.getResources().getDimensionPixelSize(resourceId);
+                    float density = context.getResources().getDisplayMetrics().density;
+                    return Math.round(px / density);
+                }
+            } catch (Exception ignored) {}
+            return 0;
+        }
+
+        @JavascriptInterface
+        public boolean isGestureNavigation() {
+            try {
+                int navMode = Settings.Secure.getInt(context.getContentResolver(), "navigation_mode", 0);
+                return navMode == 2;
+            } catch (Exception ignored) {}
+            return false;
+        }
+
+        @JavascriptInterface
         public String nativeApiCall(String urlString, String method, String jsonBody, String authToken) {
             android.util.Log.d("AndroidWifiBridge", "nativeApiCall requested: " + method + " " + urlString);
             try {
