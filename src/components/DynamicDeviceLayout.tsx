@@ -22,7 +22,8 @@ import {
   X, 
   Search, 
   CheckCircle2, 
-  Info 
+  Info,
+  AlertTriangle
 } from 'lucide-react';
 import { getAssetUrl } from '../utils/assets';
 import { HARDWARE_ICONS } from '../utils/icons';
@@ -34,7 +35,7 @@ export interface ResolvedDeviceMeta {
   mac4: string;
   name: string;
   category: string;
-  layoutType: 'touch_panel' | 'energy_meter' | 'water_tank' | 'ir_blaster' | 'sensor' | 'motor_agri' | 'heavy_plug' | 'curtain' | 'lighting' | 'hub' | 'console';
+  layoutType: 'touch_panel' | 'energy_meter' | 'water_tank' | 'ir_blaster' | 'sensor' | 'motor_agri' | 'heavy_plug' | 'curtain' | 'lighting' | 'hub' | 'console' | 'gate_controller';
   switchCount?: number;
   isThreePhase?: boolean;
   hasSwitch?: boolean;
@@ -49,6 +50,9 @@ export const MODEL_REGISTRY: Record<string, {
   isThreePhase?: boolean;
   hasSwitch?: boolean;
 }> = {
+  // Gate Controller
+  'GATE': { name: 'Smart Gate Controller', category: 'Smart Switches', layoutType: 'gate_controller', switchCount: 1 },
+
   // Touch Panels & Switches
   'TP4': { name: '4 Gang Touch Panel', category: 'Smart Switches', layoutType: 'touch_panel', switchCount: 4 },
   'TP6': { name: '6 Gang Touch Panel', category: 'Smart Switches', layoutType: 'touch_panel', switchCount: 6 },
@@ -1733,6 +1737,353 @@ export const HubLayout = ({ modelCode }: { modelCode: string }) => {
 };
 
 // -------------------------------------------------------------
+// 10. GATE CONTROLLER DYNAMIC UI (NEURO-GATE-XXXX)
+// -------------------------------------------------------------
+interface GateControllerProps {
+  modelCode: string;
+  deviceName?: string;
+  deviceId?: string;
+  initialSwitches?: Record<string, boolean>;
+  isOnline?: boolean;
+}
+
+export const GateControllerLayout = ({
+  modelCode,
+  deviceName = 'Gate Controller',
+  deviceId,
+  initialSwitches,
+  isOnline = true
+}: GateControllerProps) => {
+  const [isOn, setIsOn] = useState<boolean>(() => Boolean(initialSwitches?.['1']));
+  const [isTriggering, setIsTriggering] = useState<boolean>(false);
+  const [triggerMode, setTriggerMode] = useState<'pulse' | 'toggle'>('pulse');
+  const [triggerCount, setTriggerCount] = useState<number>(() => {
+    try {
+      const stored = localStorage.getItem(`neuro_gate_triggers_${deviceId || modelCode}`);
+      return stored ? parseInt(stored, 10) || 0 : 0;
+    } catch {
+      return 0;
+    }
+  });
+  const [lastActionTime, setLastActionTime] = useState<string | null>(null);
+  const pulseTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Sync state if initialSwitches from server changes
+  useEffect(() => {
+    if (initialSwitches && initialSwitches['1'] !== undefined) {
+      setIsOn(Boolean(initialSwitches['1']));
+    }
+  }, [initialSwitches]);
+
+  // Clean up pulse timer on unmount
+  useEffect(() => {
+    return () => {
+      if (pulseTimeoutRef.current) {
+        clearTimeout(pulseTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  // Real-time synchronization when physical hardware publishes telemetry over MQTT/WebSocket
+  useEffect(() => {
+    if (!deviceId) return;
+    const unsubscribe = realtimeSocket.subscribe((incomingDeviceId, incomingState) => {
+      if (incomingDeviceId === deviceId && incomingState) {
+        const switchMap = incomingState.switches || incomingState.payload || (typeof incomingState.state === 'object' ? incomingState.state : null);
+        if (switchMap && switchMap['1'] !== undefined) {
+          setIsOn(Boolean(switchMap['1']));
+        } else if (incomingState.channel === 1 && incomingState.state !== undefined) {
+          setIsOn(Boolean(incomingState.state));
+        }
+      }
+    });
+    return unsubscribe;
+  }, [deviceId]);
+
+  const recordTrigger = () => {
+    const nextCount = triggerCount + 1;
+    setTriggerCount(nextCount);
+    const nowStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    setLastActionTime(nowStr);
+    try {
+      localStorage.setItem(`neuro_gate_triggers_${deviceId || modelCode}`, String(nextCount));
+    } catch {}
+  };
+
+  const handleTrigger = async () => {
+    if (!isOnline) {
+      console.warn('Gate trigger ignored: device is offline.');
+      return;
+    }
+    if (isTriggering) return; // Prevent double trigger while pulse active
+
+    recordTrigger();
+
+    if (triggerMode === 'pulse') {
+      // 1. Send ON command to start motor
+      setIsTriggering(true);
+      setIsOn(true);
+
+      if (deviceId) {
+        try {
+          await deviceApi.controlSwitch(deviceId, 1, 'on');
+        } catch (err) {
+          console.error('Failed to trigger gate ON:', err);
+          setIsTriggering(false);
+          setIsOn(false);
+          return;
+        }
+      }
+
+      // 2. Pulse: Automatically send OFF after 1.5 seconds to complete the trigger cycle
+      pulseTimeoutRef.current = setTimeout(async () => {
+        if (deviceId) {
+          try {
+            await deviceApi.controlSwitch(deviceId, 1, 'off');
+          } catch (err) {
+            console.error('Failed to reset gate trigger to OFF:', err);
+          }
+        }
+        setIsOn(false);
+        setIsTriggering(false);
+      }, 1500);
+    } else {
+      // Manual Toggle Mode (Hold ON or Hold OFF)
+      const targetState = !isOn;
+      setIsOn(targetState);
+      if (deviceId) {
+        try {
+          await deviceApi.controlSwitch(deviceId, 1, targetState ? 'on' : 'off');
+        } catch (err) {
+          console.error('Failed to toggle gate switch:', err);
+          setIsOn(!targetState); // Revert on failure
+        }
+      }
+    }
+  };
+
+  const isActive = isTriggering || isOn;
+
+  return (
+    <div className="w-full flex flex-col items-center gap-6 py-2 select-none font-sans">
+      {/* Offline Alert Banner */}
+      {!isOnline && (
+        <div className="w-full bg-rose-50 border border-rose-200 rounded-2xl p-3.5 flex items-center gap-3 text-rose-700 text-xs sm:text-sm font-semibold shadow-xs">
+          <AlertTriangle className="w-5 h-5 text-rose-500 flex-shrink-0" />
+          <span>Gate Controller is Offline. Motor trigger commands are disabled until the device reconnects.</span>
+        </div>
+      )}
+
+      {/* 1. Gate Visualizer & Live Status Display Card */}
+      <div className="w-full bg-gradient-to-b from-slate-900 via-slate-950 to-slate-900 rounded-3xl p-5 sm:p-6 text-white border border-slate-800 shadow-xl overflow-hidden relative">
+        {/* Subtle Ambient Refraction */}
+        <div 
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            background: isActive 
+              ? 'radial-gradient(circle at 50% 20%, rgba(16, 185, 129, 0.18) 0%, transparent 70%)'
+              : 'radial-gradient(circle at 50% 20%, rgba(56, 189, 248, 0.12) 0%, transparent 70%)'
+          }}
+        />
+
+        {/* Header Bar inside card */}
+        <div className="flex items-center justify-between pb-4 border-b border-slate-800/80 relative z-10">
+          <div className="flex items-center gap-3">
+            <div className={`w-10 h-10 rounded-2xl flex items-center justify-center border transition-all ${
+              isActive 
+                ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40 shadow-lg shadow-emerald-500/20' 
+                : 'bg-sky-500/10 text-sky-400 border-sky-500/30'
+            }`}>
+              <RotateCw className={`w-5 h-5 ${isActive ? 'animate-spin' : ''}`} />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-mono font-bold uppercase tracking-wider text-sky-400">
+                  {modelCode} • Gate Motor Controller
+                </span>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-mono">
+                  1 RELAY
+                </span>
+              </div>
+              <h2 className="text-base sm:text-lg font-extrabold text-white">
+                {deviceName}
+              </h2>
+            </div>
+          </div>
+
+          {/* Status Badge */}
+          <span className={`px-3 py-1 rounded-full text-xs font-bold border flex items-center gap-1.5 backdrop-blur-md transition-all ${
+            isActive
+              ? 'bg-emerald-500/25 text-emerald-300 border-emerald-400/50 shadow-md shadow-emerald-500/20 animate-pulse'
+              : 'bg-slate-800 text-slate-300 border-slate-700'
+          }`}>
+            <span className={`w-2 h-2 rounded-full ${isActive ? 'bg-emerald-400' : 'bg-slate-400'}`} />
+            {isTriggering ? 'MOTOR TRIGGERED' : (isOn ? 'RELAY ENERGIZED' : 'STANDBY')}
+          </span>
+        </div>
+
+        {/* Gate Graphic Visualizer */}
+        <div className="relative py-6 flex flex-col items-center justify-center min-h-[140px] z-10">
+          <div className="w-full max-w-md h-28 relative flex items-center justify-between px-4">
+            {/* Left Gate Pillar */}
+            <div className="w-6 sm:w-8 h-full rounded-lg bg-gradient-to-b from-slate-700 to-slate-900 border border-slate-600 shadow-md flex flex-col justify-between p-1 z-20">
+              <span className="w-full h-1 bg-sky-400/60 rounded-full" />
+              <div className="w-2 h-2 rounded-full bg-emerald-400 mx-auto animate-pulse" />
+              <span className="w-full h-1 bg-sky-400/60 rounded-full" />
+            </div>
+
+            {/* Sliding Gate Barrier Structure */}
+            <div className="flex-1 h-20 mx-2 relative overflow-hidden flex items-center">
+              {/* Rail Guide Top and Bottom */}
+              <div className="absolute top-0 inset-x-0 h-1 bg-slate-700/80 rounded-full" />
+              <div className="absolute bottom-0 inset-x-0 h-1.5 bg-slate-700/80 rounded-full" />
+
+              {/* Sliding Gate Panel */}
+              <div 
+                className={`w-full h-full rounded-md border flex items-center justify-around px-2 transition-all duration-700 ${
+                  isActive 
+                    ? 'translate-x-12 opacity-80 border-emerald-400/70 bg-emerald-950/40 shadow-lg shadow-emerald-500/20' 
+                    : 'translate-x-0 opacity-95 border-sky-500/40 bg-slate-800/60'
+                }`}
+              >
+                {/* Vertical Metal Bars of Gate */}
+                {Array.from({ length: 9 }).map((_, i) => (
+                  <div 
+                    key={i} 
+                    className={`w-1 h-full rounded-full transition-colors ${
+                      isActive ? 'bg-gradient-to-b from-emerald-400 to-teal-600' : 'bg-gradient-to-b from-slate-400 to-slate-600'
+                    }`} 
+                  />
+                ))}
+              </div>
+
+              {/* Motor Cogwheels Animation */}
+              <div className={`absolute bottom-2 left-1/2 -translate-x-1/2 flex items-center gap-1.5 transition-opacity ${isActive ? 'opacity-100' : 'opacity-40'}`}>
+                <RotateCw className={`w-4 h-4 text-emerald-400 ${isActive ? 'animate-spin' : ''}`} />
+                <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-emerald-400">
+                  {isActive ? 'MOTOR ACTIVE' : 'MOTOR READY'}
+                </span>
+              </div>
+            </div>
+
+            {/* Right Gate Pillar */}
+            <div className="w-6 sm:w-8 h-full rounded-lg bg-gradient-to-b from-slate-700 to-slate-900 border border-slate-600 shadow-md flex flex-col justify-between p-1 z-20">
+              <span className="w-full h-1 bg-sky-400/60 rounded-full" />
+              <div className={`w-2 h-2 rounded-full mx-auto ${isActive ? 'bg-emerald-400 animate-ping' : 'bg-slate-500'}`} />
+              <span className="w-full h-1 bg-sky-400/60 rounded-full" />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 2. Massive Tactile Capacitive Trigger Button */}
+      <div className={`flex flex-col items-center justify-center gap-4 my-2 ${!isOnline ? 'pointer-events-none opacity-40 grayscale-[40%]' : ''}`}>
+        <div className="relative flex items-center justify-center">
+          {/* Pulsing Neon Wave Rings when active */}
+          {isActive && (
+            <>
+              <div className="absolute inset-0 rounded-full bg-emerald-400/30 animate-ping duration-1000 pointer-events-none" />
+              <div className="absolute -inset-4 rounded-full bg-emerald-500/20 blur-xl pointer-events-none animate-pulse" />
+            </>
+          )}
+
+          {/* Main Round Capacitive Switch Button */}
+          <button
+            type="button"
+            onClick={handleTrigger}
+            disabled={!isOnline || isTriggering}
+            className={`w-48 h-48 sm:w-56 sm:h-56 rounded-full flex flex-col items-center justify-center transition-all duration-200 cursor-pointer select-none active:scale-95 shadow-2xl relative border-4 ${
+              isActive
+                ? 'bg-gradient-to-br from-emerald-500 via-teal-500 to-emerald-600 text-white border-emerald-300 shadow-emerald-500/40 scale-105 ring-8 ring-emerald-400/25'
+                : 'bg-gradient-to-br from-white via-slate-50 to-sky-50 text-slate-800 border-white hover:border-sky-300 hover:shadow-sky-500/25 shadow-xl ring-8 ring-sky-100/50'
+            }`}
+            aria-label="Gate Trigger Switch"
+          >
+            {/* Center Icon */}
+            <div className={`w-14 h-14 sm:w-16 sm:h-16 rounded-3xl flex items-center justify-center mb-2 transition-transform ${
+              isActive ? 'bg-white/20 text-white scale-110' : 'bg-sky-50 text-[#0284c7] group-hover:scale-105'
+            }`}>
+              <Power className={`w-8 h-8 sm:w-9 sm:h-9 ${isActive ? 'stroke-[2.8]' : 'stroke-[2.2]'}`} />
+            </div>
+
+            {/* Main Action Text */}
+            <span className={`text-sm sm:text-base font-black tracking-wider uppercase font-mono ${
+              isActive ? 'text-white drop-shadow-sm' : 'text-slate-800'
+            }`}>
+              {isTriggering ? 'TRIGGERING...' : (isOn && triggerMode === 'toggle' ? 'TURN OFF' : 'TRIGGER GATE')}
+            </span>
+
+            {/* Helper Subtext */}
+            <span className={`text-[11px] font-semibold mt-1 ${
+              isActive ? 'text-emerald-100' : 'text-slate-500'
+            }`}>
+              {isTriggering 
+                ? 'Motor signal active' 
+                : (triggerMode === 'pulse' ? 'Tap to Open / Close' : (isOn ? 'Relay is ON' : 'Tap to switch ON'))}
+            </span>
+          </button>
+        </div>
+
+        {/* Trigger Mode Selector Pill */}
+        <div className="flex items-center gap-1.5 p-1 rounded-full bg-slate-100/90 border border-slate-200/80 shadow-xs mt-2">
+          <button
+            type="button"
+            onClick={() => setTriggerMode('pulse')}
+            className={`px-3 sm:px-4 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${
+              triggerMode === 'pulse'
+                ? 'bg-white text-[#0284c7] shadow-xs'
+                : 'text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            ⚡ Auto-Pulse (1.5s)
+          </button>
+          <button
+            type="button"
+            onClick={() => setTriggerMode('toggle')}
+            className={`px-3 sm:px-4 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${
+              triggerMode === 'toggle'
+                ? 'bg-white text-[#0284c7] shadow-xs'
+                : 'text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            🔄 Manual Toggle
+          </button>
+        </div>
+      </div>
+
+      {/* 3. Gate Telemetry & Statistics Bar */}
+      <div className="w-full grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
+        <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-3 border border-sky-100 shadow-xs flex flex-col justify-between">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-mono">Channel</span>
+          <span className="text-sm font-extrabold text-slate-800 mt-1">1 (Relay Output)</span>
+        </div>
+
+        <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-3 border border-sky-100 shadow-xs flex flex-col justify-between">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-mono">Motor State</span>
+          <span className={`text-sm font-extrabold mt-1 ${
+            isActive ? 'text-emerald-600' : 'text-slate-800'
+          }`}>
+            {isTriggering ? 'Triggering' : (isOn ? 'Energized' : 'Standby')}
+          </span>
+        </div>
+
+        <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-3 border border-sky-100 shadow-xs flex flex-col justify-between">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-mono">Last Triggered</span>
+          <span className="text-sm font-extrabold text-slate-800 mt-1 truncate">
+            {lastActionTime || 'Ready'}
+          </span>
+        </div>
+
+        <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-3 border border-sky-100 shadow-xs flex flex-col justify-between">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-mono">Total Triggers</span>
+          <span className="text-sm font-extrabold text-[#0284c7] mt-1 font-mono">{triggerCount} Cycles</span>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// -------------------------------------------------------------
 // MASTER DYNAMIC UI WRAPPER COMPONENT
 // -------------------------------------------------------------
 interface DynamicDeviceLayoutProps {
@@ -1753,6 +2104,16 @@ export const DynamicDeviceLayout = ({
   const registered = MODEL_REGISTRY[modelCode] || MODEL_REGISTRY['TP8'];
 
   switch (registered.layoutType) {
+    case 'gate_controller':
+      return (
+        <GateControllerLayout 
+          modelCode={modelCode}
+          deviceName={deviceName}
+          deviceId={deviceId}
+          initialSwitches={initialSwitches}
+          isOnline={isOnline}
+        />
+      );
     case 'touch_panel':
       return (
         <TouchPanelLayout 

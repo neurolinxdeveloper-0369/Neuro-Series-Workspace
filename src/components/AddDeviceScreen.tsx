@@ -107,6 +107,7 @@ export const DEVICE_CATALOG: DeviceModelItem[] = [
   { id: 'ts_touch_panel', name: 'Touch Panel (Acrylic)', category: 'Touch switches', modelCode: 'TP4', ssidFormat: 'NEURO-TP4-[MAC4]', type: 'switch', icon: Sliders },
 
   // Smart Switches / Touch Panels
+  { id: 'ss_gate_controller', name: 'Smart Gate Controller', category: 'Smart Switches', modelCode: 'GATE', ssidFormat: 'NEURO-GATE-[MAC4]', type: 'switch', icon: ToggleRight },
   { id: 'ss_4_gang', name: '4 gang', category: 'Smart Switches', modelCode: 'TP4', ssidFormat: 'NEURO-TP4-[MAC4]', type: 'switch', icon: ToggleRight },
   { id: 'ss_6_gang', name: '6 gang', category: 'Smart Switches', modelCode: 'TP6', ssidFormat: 'NEURO-TP6-[MAC4]', type: 'switch', icon: ToggleRight },
   { id: 'ss_8_gang', name: '8 gang', category: 'Smart Switches', modelCode: 'TP8', ssidFormat: 'NEURO-TP8-[MAC4]', type: 'switch', icon: ToggleRight },

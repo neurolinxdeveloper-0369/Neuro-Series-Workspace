@@ -165,6 +165,8 @@ class DeviceService {
         ];
       case 'PN':
         return [{ name: 'Switch 1', type: 'RELAY' }];
+      case 'GATE':
+        return [{ name: 'Gate Trigger', type: 'RELAY' }];
       case 'IR1':
         return [{ name: 'IR Remote', type: 'RELAY' }];
       case 'IRP':
