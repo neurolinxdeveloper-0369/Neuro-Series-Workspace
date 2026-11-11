@@ -295,17 +295,30 @@ export function App() {
     return () => window.removeEventListener('click', handleGlobalClick);
   }, []);
 
-  // Dynamically detect phone navigation mode: 3-button navigation icons vs gesture navigation
+  // Dynamically detect phone insets: Status bar at top & navigation mode at bottom
   useEffect(() => {
     const updateNavInsets = () => {
       try {
         const bridge = (window as any).AndroidWifiBridge;
         let navHeight = 0;
-        if (bridge && typeof bridge.getNavigationBarHeight === 'function') {
-          navHeight = bridge.getNavigationBarHeight();
+        let statusBarHeight = 0;
+        if (bridge) {
+          if (typeof bridge.getNavigationBarHeight === 'function') {
+            navHeight = bridge.getNavigationBarHeight();
+          }
+          if (typeof bridge.getStatusBarHeight === 'function') {
+            statusBarHeight = bridge.getStatusBarHeight();
+          }
         }
 
         const isGesture = bridge && typeof bridge.isGestureNavigation === 'function' ? bridge.isGestureNavigation() : false;
+
+        // Status bar top inset (typically 24px - 44px on phones)
+        if (statusBarHeight > 0) {
+          document.documentElement.style.setProperty('--android-status-top', `${statusBarHeight}px`);
+        } else {
+          document.documentElement.style.setProperty('--android-status-top', '0px');
+        }
 
         // If phone has 3-button navigation icons (Back, Home, Recents), ensure at least 48px to prevent collision
         if (!isGesture && navHeight > 0) {
@@ -317,6 +330,7 @@ export function App() {
           document.documentElement.style.setProperty('--android-nav-bottom', '0px');
         }
       } catch {
+        document.documentElement.style.setProperty('--android-status-top', '0px');
         document.documentElement.style.setProperty('--android-nav-bottom', '0px');
       }
     };
@@ -598,7 +612,7 @@ export function App() {
       {/* 3. Unified Responsive Header */}
       {isSignedIn && activeTab === 'home' ? (
         /* Reference 2 Logged-In Header */
-        <header className="fixed top-4 sm:top-5 inset-x-0 z-30 flex items-center justify-between px-4 sm:px-6 md:px-8 pointer-events-none">
+        <header className="app-top-header fixed top-4 sm:top-5 inset-x-0 z-30 flex items-center justify-between px-4 sm:px-6 md:px-8 pointer-events-none">
           {/* Top-Left: QR Code Button + Home Selector Dropdown */}
           <div className="flex items-center gap-2 sm:gap-3 pointer-events-auto select-none">
             {/* QR Code Icon Button */}
@@ -806,7 +820,7 @@ export function App() {
         </header>
       ) : (
         /* Default Header for Guest & Other Tabs */
-        <header className="fixed top-4 sm:top-5 inset-x-0 z-30 flex items-center justify-between px-4 sm:px-6 md:px-8 pointer-events-none">
+        <header className="app-top-header fixed top-4 sm:top-5 inset-x-0 z-30 flex items-center justify-between px-4 sm:px-6 md:px-8 pointer-events-none">
           
           {/* Left Brand: Recolored Logo + "Neuro Series" */}
           <div className="flex items-center gap-2 sm:gap-2.5 select-none pointer-events-auto flex-shrink-0">
@@ -1619,7 +1633,7 @@ export function App() {
             }}
           >
             {/* Top Navigation Bar: Back Button, Device Info, RSSI Badge */}
-            <header className="sticky top-0 z-30 w-full bg-[#d4edf4]/95 backdrop-blur-xl px-3 sm:px-6 py-2.5 sm:py-3 flex items-center justify-between border-b border-sky-200/60 shadow-xs flex-shrink-0 gap-2">
+            <header className="dedicated-device-header sticky top-0 z-30 w-full bg-[#d4edf4]/95 backdrop-blur-xl px-3 sm:px-6 py-2.5 sm:py-3 flex items-center justify-between border-b border-sky-200/60 shadow-xs flex-shrink-0 gap-2">
               <div className="flex items-center gap-2.5 min-w-0 flex-1">
                 {/* Compact Round Back Button */}
                 <button

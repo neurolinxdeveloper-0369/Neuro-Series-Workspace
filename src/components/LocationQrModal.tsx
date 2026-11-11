@@ -69,7 +69,7 @@ export const LocationQrModal = ({ isOpen, onClose, home }: LocationQrModalProps)
       }}
     >
       {/* Top Header: Back Button + Title */}
-      <header className="w-full flex items-center justify-between px-5 sm:px-8 py-5 sm:py-6">
+      <header className="screen-top-header w-full flex items-center justify-between px-5 sm:px-8 py-5 sm:py-6">
         <div className="flex items-center gap-4">
           <button
             onClick={onClose}

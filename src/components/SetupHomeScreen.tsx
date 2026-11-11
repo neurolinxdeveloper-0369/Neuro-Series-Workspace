@@ -152,7 +152,7 @@ export const SetupHomeScreen = ({
       {isLoading && <NeuroLoader message="Configuring Smart Home..." />}
 
       {/* Top Header */}
-      <header className="w-full flex items-center justify-between px-5 sm:px-10 py-5 sm:py-6">
+      <header className="screen-top-header w-full flex items-center justify-between px-5 sm:px-10 py-5 sm:py-6">
         <div className="flex items-center gap-3">
           {allowClose && (
             <button

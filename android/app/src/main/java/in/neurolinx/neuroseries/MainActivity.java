@@ -370,6 +370,29 @@ public class MainActivity extends BridgeActivity {
         }
 
         @JavascriptInterface
+        public int getStatusBarHeight() {
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    android.view.WindowInsets insets = getWindow().getDecorView().getRootWindowInsets();
+                    if (insets != null) {
+                        android.graphics.Insets sb = insets.getInsets(android.view.WindowInsets.Type.statusBars());
+                        float density = context.getResources().getDisplayMetrics().density;
+                        if (sb.top > 0) {
+                            return Math.round(sb.top / density);
+                        }
+                    }
+                }
+                int resourceId = context.getResources().getIdentifier("status_bar_height", "dimen", "android");
+                if (resourceId > 0) {
+                    int px = context.getResources().getDimensionPixelSize(resourceId);
+                    float density = context.getResources().getDisplayMetrics().density;
+                    return Math.round(px / density);
+                }
+            } catch (Exception ignored) {}
+            return 28;
+        }
+
+        @JavascriptInterface
         public String nativeApiCall(String urlString, String method, String jsonBody, String authToken) {
             android.util.Log.d("AndroidWifiBridge", "nativeApiCall requested: " + method + " " + urlString);
             try {

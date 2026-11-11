@@ -41,7 +41,7 @@ export const SettingsScreen = ({
       }}
     >
       {/* Top Header: Back Button + Neuro Series Settings */}
-      <header className="sticky top-0 z-30 w-full flex items-center justify-between px-5 sm:px-8 py-4 sm:py-5 bg-transparent backdrop-blur-md">
+      <header className="screen-top-header sticky top-0 z-30 w-full flex items-center justify-between px-5 sm:px-8 py-4 sm:py-5 bg-transparent backdrop-blur-md">
         <div className="flex items-center gap-3">
           <button
             onClick={onClose}

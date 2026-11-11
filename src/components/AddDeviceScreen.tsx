@@ -1024,7 +1024,7 @@ export const AddDeviceScreen = ({
 
   return (
     <div 
-      className="fixed inset-0 z-50 w-full h-full overflow-y-auto overflow-x-hidden flex flex-col font-sans select-none animate-in fade-in duration-200"
+      className="screen-top-container fixed inset-0 z-50 w-full h-full overflow-y-auto overflow-x-hidden flex flex-col font-sans select-none animate-in fade-in duration-200"
       style={{
         backgroundColor: '#d4edf4',
         backgroundImage: `
