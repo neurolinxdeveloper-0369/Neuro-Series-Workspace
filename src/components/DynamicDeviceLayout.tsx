@@ -697,76 +697,81 @@ export const TouchPanelLayout = ({
     );
   };
 
-  // Dedicated Full-Screen Switch Customization View (Pushed on Long Press, rendered via Portal)
+  // Dedicated Full-Screen Switch Customization View (Pushed to New Screen on Long Press)
   if (editingIndex !== null && typeof document !== 'undefined') {
     return createPortal(
-      <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4 select-none animate-in fade-in">
-        <div className="bg-[#0b1329] border border-slate-700/80 rounded-t-[32px] sm:rounded-3xl w-full max-w-lg max-h-[92vh] flex flex-col shadow-2xl overflow-hidden text-white">
-          {/* Dedicated Screen Top Header */}
-          <header className="w-full bg-[#0d1730] border-b border-slate-800/90 px-4 sm:px-6 py-3.5 flex items-center justify-between flex-shrink-0 shadow-lg">
-            <button
-              type="button"
-              onClick={() => setEditingIndex(null)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-800/90 hover:bg-slate-700 text-slate-200 hover:text-white text-xs sm:text-sm font-bold transition-all cursor-pointer border border-slate-700 active:scale-95"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              <span>Back</span>
-            </button>
+      <div 
+        className="fixed inset-0 z-[100] flex flex-col select-none overflow-hidden animate-in fade-in slide-in-from-right-3 duration-200"
+        style={{
+          backgroundColor: '#d4edf4',
+          background: 'linear-gradient(180deg, #d4edf4 0%, #e9f5f8 50%, #f7fafc 100%)',
+        }}
+      >
+        {/* Dedicated Screen Top Header */}
+        <header className="w-full bg-white/75 backdrop-blur-xl border-b border-white/80 px-4 sm:px-6 py-3 flex items-center justify-between flex-shrink-0 shadow-xs z-10">
+          <button
+            type="button"
+            onClick={() => setEditingIndex(null)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white hover:bg-slate-50 text-slate-700 text-xs sm:text-sm font-bold border border-slate-200/90 shadow-2xs transition-all active:scale-95 cursor-pointer"
+          >
+            <ArrowLeft className="w-4 h-4 text-[#0284c7]" strokeWidth={2.4} />
+            <span>Back</span>
+          </button>
 
-            <div className="text-center px-2">
-              <h2 className="text-sm sm:text-base font-extrabold text-white tracking-tight">
-                Edit Switch {editingIndex + 1}
-              </h2>
-              <p className="text-[10px] sm:text-[11px] text-[#38bdf8] font-mono">
-                {modelCode} &bull; Channel {editingIndex + 1}
-              </p>
-            </div>
+          <div className="text-center px-2">
+            <h2 className="text-sm sm:text-base font-extrabold text-slate-900 tracking-tight">
+              Edit Switch {editingIndex + 1}
+            </h2>
+            <p className="text-[10px] sm:text-[11px] text-[#0284c7] font-mono font-bold">
+              {modelCode} &bull; Channel {editingIndex + 1}
+            </p>
+          </div>
 
-            <button
-              type="button"
-              onClick={handleSaveCustomization}
-              className="px-4 py-1.5 rounded-full bg-[#0284c7] hover:bg-sky-500 text-white text-xs sm:text-sm font-bold transition-all shadow-md active:scale-95 cursor-pointer flex items-center gap-1.5"
-            >
-              <CheckCircle2 className="w-4 h-4" />
-              <span>Save</span>
-            </button>
-          </header>
+          <button
+            type="button"
+            onClick={handleSaveCustomization}
+            className="px-4 py-1.5 rounded-full bg-[#0284c7] hover:bg-sky-600 text-white text-xs sm:text-sm font-bold transition-all shadow-sm active:scale-95 cursor-pointer flex items-center gap-1.5"
+          >
+            <CheckCircle2 className="w-4 h-4" />
+            <span>Save</span>
+          </button>
+        </header>
 
-          {/* Dedicated Screen Scrollable Body */}
-          <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-4 space-y-4 max-w-2xl mx-auto w-full pb-[calc(2rem+max(var(--android-nav-bottom,0px),env(safe-area-inset-bottom,0px)))]">
-            
-            {/* Live Switch Preview Card */}
-            <div className="bg-[#101b33] rounded-3xl p-4 border border-sky-500/20 shadow-md flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="relative rounded-full aspect-square w-16 h-16 bg-[#0b1424] border-2 border-white ring-4 ring-[#38bdf8] flex items-center justify-center shadow-[0_0_20px_rgba(56,189,248,0.7)]">
-                  {draftIconPath ? (
-                    <img 
-                      src={getAssetUrl(`ICONS/${draftIconPath}`)} 
-                      alt="Preview" 
-                      className="w-10 h-10 object-contain brightness-0 invert drop-shadow-[0_0_12px_rgba(56,189,248,1)]"
-                    />
-                  ) : (
-                    <Power className="w-9 h-9 text-white drop-shadow-[0_0_12px_rgba(56,189,248,1)]" />
-                  )}
-                </div>
+        {/* Dedicated Screen Scrollable Body */}
+        <main className="flex-1 overflow-y-auto px-3.5 sm:px-6 py-4 space-y-3.5 max-w-2xl mx-auto w-full pb-[calc(2.5rem+max(var(--android-nav-bottom,0px),env(safe-area-inset-bottom,0px)))]">
+          
+          {/* Live Switch Preview Card */}
+          <div className="bg-white/75 backdrop-blur-xl rounded-3xl p-4 border border-white/90 shadow-xs flex items-center justify-between">
+            <div className="flex items-center gap-3.5">
+              <div className="relative rounded-full aspect-square w-16 h-16 bg-[#0f172a] border-2 border-white ring-4 ring-[#0284c7] flex items-center justify-center shadow-[0_0_18px_rgba(2,132,199,0.35)]">
+                {draftIconPath ? (
+                  <img 
+                    src={getAssetUrl(`ICONS/${draftIconPath}`)} 
+                    alt="Preview" 
+                    className="w-10 h-10 object-contain brightness-0 invert drop-shadow-[0_0_10px_rgba(56,189,248,1)]"
+                  />
+                ) : (
+                  <Power className="w-9 h-9 text-white drop-shadow-[0_0_10px_rgba(56,189,248,1)]" />
+                )}
+              </div>
               <div>
                 <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block">Preview</span>
-                <span className="text-sm sm:text-base font-bold text-white font-sans">
+                <span className="text-base font-extrabold text-slate-900 font-sans">
                   {draftName.trim() || `Switch ${editingIndex + 1}`}
                 </span>
               </div>
             </div>
-            <span className="text-xs text-sky-300 font-bold bg-sky-500/20 px-2.5 py-1 rounded-full border border-sky-400/30">
+            <span className="text-xs text-[#0284c7] font-bold bg-sky-50 px-3 py-1 rounded-full border border-sky-200/80 font-mono shadow-2xs">
               Active ON
             </span>
           </div>
 
           {/* Switch Name Input Field */}
-          <div className="bg-[#101b33]/60 rounded-3xl p-4 border border-slate-800 space-y-2">
-            <label className="text-xs font-bold text-slate-300 block">
+          <div className="bg-white/75 backdrop-blur-xl rounded-3xl p-4 border border-white/90 shadow-xs space-y-2">
+            <label className="text-xs font-bold text-slate-700 block">
               Switch Name
             </label>
-            <div className="flex items-center gap-2 bg-[#090d16] rounded-2xl border border-slate-700/80 px-3.5 py-2.5 focus-within:border-sky-400 transition-colors">
+            <div className="flex items-center gap-2 bg-slate-50 rounded-2xl border border-slate-200/90 px-3.5 py-2.5 focus-within:border-[#0284c7] focus-within:bg-white focus-within:ring-2 focus-within:ring-sky-100 transition-all">
               <input
                 type="text"
                 value={draftName}
@@ -775,45 +780,53 @@ export const TouchPanelLayout = ({
                   setConflictNotice(null);
                 }}
                 placeholder={`e.g. Switch ${editingIndex + 1}`}
-                className="w-full bg-transparent text-sm text-white font-sans outline-none"
+                className="w-full bg-transparent text-sm text-slate-900 font-sans outline-none placeholder:text-slate-400"
                 autoFocus
               />
               {draftName && (
                 <button
                   type="button"
                   onClick={() => setDraftName('')}
-                  className="text-slate-400 hover:text-white p-1"
+                  className="text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
                 >
                   <X className="w-4 h-4" />
                 </button>
               )}
             </div>
             {conflictNotice && (
-              <div className="bg-sky-950/70 border border-sky-500/40 rounded-2xl p-2.5 flex items-start gap-2 text-xs text-sky-200 mt-2">
-                <Info className="w-4 h-4 text-sky-400 flex-shrink-0 mt-0.5" />
+              <div className="bg-amber-50 border border-amber-200 rounded-2xl p-2.5 flex items-start gap-2 text-xs text-amber-800 mt-2">
+                <Info className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
                 <span>{conflictNotice}</span>
               </div>
             )}
           </div>
 
           {/* Quick Preset Labels */}
-          <div className="bg-[#101b33]/60 rounded-3xl p-4 border border-slate-800 space-y-2.5">
+          <div className="bg-white/75 backdrop-blur-xl rounded-3xl p-4 border border-white/90 shadow-xs space-y-2.5">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-300">
+              <span className="text-xs font-bold text-slate-700">
                 Quick Preset Names:
               </span>
               <div className="flex items-center gap-1.5 text-[10px]">
                 <button
                   type="button"
                   onClick={() => setNamingStyle('numbered')}
-                  className={`px-2 py-0.5 rounded-full cursor-pointer ${namingStyle === 'numbered' ? 'bg-sky-500/30 text-sky-300 font-bold border border-sky-500/40' : 'text-slate-400'}`}
+                  className={`px-2.5 py-1 rounded-full cursor-pointer font-bold transition-all ${
+                    namingStyle === 'numbered' 
+                      ? 'bg-[#0284c7] text-white shadow-2xs' 
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
                 >
                   Light 1, 2
                 </button>
                 <button
                   type="button"
                   onClick={() => setNamingStyle('prefixed')}
-                  className={`px-2 py-0.5 rounded-full cursor-pointer ${namingStyle === 'prefixed' ? 'bg-sky-500/30 text-sky-300 font-bold border border-sky-500/40' : 'text-slate-400'}`}
+                  className={`px-2.5 py-1 rounded-full cursor-pointer font-bold transition-all ${
+                    namingStyle === 'prefixed' 
+                      ? 'bg-[#0284c7] text-white shadow-2xs' 
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
                 >
                   SW 1 - Light
                 </button>
@@ -826,7 +839,7 @@ export const TouchPanelLayout = ({
                   key={preset}
                   type="button"
                   onClick={() => applyPresetName(preset)}
-                  className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white text-xs font-semibold border border-slate-700 transition-colors cursor-pointer active:scale-95"
+                  className="px-3 py-1.5 rounded-xl bg-slate-100/90 hover:bg-sky-50 text-slate-700 hover:text-[#0284c7] text-xs font-semibold border border-slate-200/80 transition-colors cursor-pointer active:scale-95"
                 >
                   {preset}
                 </button>
@@ -835,16 +848,16 @@ export const TouchPanelLayout = ({
           </div>
 
           {/* Appliance Icon Picker */}
-          <div className="bg-[#101b33]/60 rounded-3xl p-4 border border-slate-800 space-y-3">
+          <div className="bg-white/75 backdrop-blur-xl rounded-3xl p-4 border border-white/90 shadow-xs space-y-3">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-bold text-slate-300">
+              <label className="text-xs font-bold text-slate-700">
                 Select Icon ({HARDWARE_ICONS.length} White Appliance Icons)
               </label>
               {draftIconPath && (
                 <button
                   type="button"
                   onClick={() => setDraftIconPath('')}
-                  className="text-[11px] font-semibold text-rose-400 hover:underline cursor-pointer"
+                  className="text-[11px] font-semibold text-rose-500 hover:underline cursor-pointer"
                 >
                   Reset to Default
                 </button>
@@ -852,32 +865,32 @@ export const TouchPanelLayout = ({
             </div>
 
             {/* Icon Search */}
-            <div className="flex items-center gap-2 bg-[#090d16] rounded-2xl border border-slate-700/80 px-3.5 py-2">
+            <div className="flex items-center gap-2 bg-slate-50 rounded-2xl border border-slate-200/90 px-3.5 py-2 focus-within:border-[#0284c7] focus-within:bg-white focus-within:ring-2 focus-within:ring-sky-100 transition-all">
               <Search className="w-4 h-4 text-slate-400 flex-shrink-0" />
               <input
                 type="text"
                 value={iconSearch}
                 onChange={(e) => setIconSearch(e.target.value)}
                 placeholder="Search appliance icons..."
-                className="w-full bg-transparent text-xs text-white outline-none"
+                className="w-full bg-transparent text-xs text-slate-900 outline-none placeholder:text-slate-400"
               />
               {iconSearch && (
-                <button type="button" onClick={() => setIconSearch('')}>
-                  <X className="w-3.5 h-3.5 text-slate-400 hover:text-white" />
+                <button type="button" onClick={() => setIconSearch('')} className="p-0.5 text-slate-400 hover:text-slate-600">
+                  <X className="w-3.5 h-3.5" />
                 </button>
               )}
             </div>
 
-            {/* Grid of 174 transparent PNG icons rendered in WHITE */}
-            <div className="grid grid-cols-5 sm:grid-cols-6 md:grid-cols-8 gap-2.5 max-h-60 overflow-y-auto p-2 bg-[#090d16] rounded-2xl border border-slate-800">
+            {/* Grid of transparent PNG icons */}
+            <div className="grid grid-cols-5 sm:grid-cols-6 md:grid-cols-8 gap-2.5 max-h-72 overflow-y-auto p-2.5 bg-slate-100/70 rounded-2xl border border-slate-200/80">
               {/* Default Power Icon */}
               <button
                 type="button"
                 onClick={() => setDraftIconPath('')}
                 className={`aspect-square rounded-2xl p-2 flex flex-col items-center justify-center transition-all cursor-pointer border ${
                   !draftIconPath
-                    ? 'bg-sky-500/30 border-sky-400 shadow-[0_0_12px_rgba(56,189,248,0.5)] scale-105'
-                    : 'bg-slate-800/60 border-slate-700 hover:bg-slate-800'
+                    ? 'bg-[#0284c7] border-white ring-2 ring-[#0284c7] shadow-[0_0_14px_rgba(2,132,199,0.45)] scale-105'
+                    : 'bg-[#0f172a] border-slate-700/80 hover:bg-slate-800'
                 }`}
                 title="Default Power Icon"
               >
@@ -893,8 +906,8 @@ export const TouchPanelLayout = ({
                     onClick={() => setDraftIconPath(iconName)}
                     className={`aspect-square rounded-2xl p-2 flex items-center justify-center transition-all cursor-pointer relative group border ${
                       isSelected
-                        ? 'bg-sky-500/30 border-sky-400 shadow-[0_0_12px_rgba(56,189,248,0.5)] scale-105'
-                        : 'bg-slate-800/60 border-slate-700/60 hover:bg-slate-800 hover:border-slate-500'
+                        ? 'bg-[#0284c7] border-white ring-2 ring-[#0284c7] shadow-[0_0_14px_rgba(2,132,199,0.45)] scale-105'
+                        : 'bg-[#0f172a] border-slate-700/80 hover:bg-slate-800 hover:border-[#0284c7]'
                     }`}
                     title={iconName}
                   >
@@ -905,8 +918,8 @@ export const TouchPanelLayout = ({
                       loading="lazy"
                     />
                     {isSelected && (
-                      <div className="absolute top-1 right-1 w-3.5 h-3.5 bg-sky-400 rounded-full flex items-center justify-center shadow-xs">
-                        <Check className="w-2.5 h-2.5 text-slate-950" strokeWidth={3} />
+                      <div className="absolute top-1 right-1 w-3.5 h-3.5 bg-white rounded-full flex items-center justify-center shadow-xs">
+                        <Check className="w-2.5 h-2.5 text-[#0284c7]" strokeWidth={3} />
                       </div>
                     )}
                   </button>
@@ -920,25 +933,24 @@ export const TouchPanelLayout = ({
             <button
               type="button"
               onClick={() => setEditingIndex(null)}
-              className="flex-1 py-3 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs transition-colors cursor-pointer"
+              className="flex-1 py-3 rounded-2xl bg-white hover:bg-slate-100 text-slate-700 font-bold text-xs border border-slate-200/80 shadow-2xs transition-colors cursor-pointer"
             >
               Cancel
             </button>
             <button
               type="button"
               onClick={handleSaveCustomization}
-              className="flex-1 py-3 rounded-2xl bg-[#0284c7] hover:bg-sky-500 text-white font-bold text-xs shadow-md shadow-sky-500/25 transition-all cursor-pointer flex items-center justify-center gap-1.5 active:scale-95"
+              className="flex-1 py-3 rounded-2xl bg-[#0284c7] hover:bg-sky-600 text-white font-bold text-xs shadow-md shadow-sky-500/25 transition-all cursor-pointer flex items-center justify-center gap-1.5 active:scale-95"
             >
               <CheckCircle2 className="w-4 h-4" />
               <span>Save Switch</span>
             </button>
           </div>
-        </div>
-      </div>
-    </div>,
-    document.body
-  );
-}
+        </main>
+      </div>,
+      document.body
+    );
+  }
 
   return (
     <div className="w-full select-none">
