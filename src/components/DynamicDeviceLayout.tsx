@@ -660,10 +660,10 @@ export const TouchPanelLayout = ({
         <img 
           src={getAssetUrl(`ICONS/${sw.iconPath}`)} 
           alt=""
-          className={`w-10 h-10 sm:w-12 sm:h-12 object-contain transition-all duration-300 pointer-events-none brightness-0 invert ${
+          className={`w-[52px] h-[52px] sm:w-[66px] sm:h-[66px] object-contain transition-all duration-300 pointer-events-none brightness-0 invert ${
             isOn 
-              ? 'filter drop-shadow-[0_0_14px_rgba(56,189,248,1)] opacity-100 scale-105' 
-              : 'opacity-90 group-hover:opacity-100'
+              ? 'filter drop-shadow-[0_0_14px_rgba(56,189,248,1)] opacity-100 scale-130 sm:scale-135' 
+              : 'opacity-90 group-hover:opacity-100 scale-120 sm:scale-125'
           }`}
         />
       );
@@ -748,7 +748,7 @@ export const TouchPanelLayout = ({
                   <img 
                     src={getAssetUrl(`ICONS/${draftIconPath}`)} 
                     alt="Preview" 
-                    className="w-10 h-10 object-contain brightness-0 invert drop-shadow-[0_0_10px_rgba(56,189,248,1)]"
+                    className="w-12 h-12 object-contain brightness-0 invert drop-shadow-[0_0_10px_rgba(56,189,248,1)] scale-125"
                   />
                 ) : (
                   <Power className="w-9 h-9 text-white drop-shadow-[0_0_10px_rgba(56,189,248,1)]" />
