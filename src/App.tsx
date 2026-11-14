@@ -45,7 +45,8 @@ import { homeApi, homeStorage, type Home as UserHome, type Room } from './servic
 import { deviceApi } from './services/device';
 import { DynamicDeviceLayout } from './components/DynamicDeviceLayout';
 import { realtimeSocket } from './services/socket';
-import { routineStorage, formatScheduleTimeToIst, type SmartRoutine, type RoutineAction } from './services/routine';
+import { routineApi, routineStorage, formatScheduleTimeToIst, type SmartRoutine, type RoutineAction } from './services/routine';
+import { formatIstTime, formatIstDate } from './utils/time';
 import { SplashScreen } from '@capacitor/splash-screen';
 import { StatusBar, Style } from '@capacitor/status-bar';
 
@@ -99,22 +100,23 @@ export function App() {
   const [routineDraftType, setRoutineDraftType] = useState<'scene' | 'schedule'>('scene');
   const [routineDraftIcon, setRoutineDraftIcon] = useState<SmartRoutine['icon']>('sun');
   const [routineDraftRoomId, setRoutineDraftRoomId] = useState<string>('all');
-  const [routineDraftScheduleTime, setRoutineDraftScheduleTime] = useState<string>('07:30');
+  const [routineDraftScheduleTime, setRoutineDraftScheduleTime] = useState<string>('06:30');
+  const [routineDraftScheduleOffTime, setRoutineDraftScheduleOffTime] = useState<string>('22:00');
   const [routineDraftRepeatDays, setRoutineDraftRepeatDays] = useState<string[]>(['Mon', 'Tue', 'Wed', 'Thu', 'Fri']);
   const [routineDraftActions, setRoutineDraftActions] = useState<RoutineAction[]>([]);
   const [runningRoutineId, setRunningRoutineId] = useState<string | null>(null);
 
-  // Live Date & Time Clock for Desktop & Dashboard
+  // Live Date & Time Clock for Desktop & Dashboard in Indian Standard Time (IST)
   const [currentDateTime, setCurrentDateTime] = useState(() => new Date());
   useEffect(() => {
     const timer = setInterval(() => setCurrentDateTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
 
-  const timeFormatted = currentDateTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
-  const dayName = currentDateTime.toLocaleDateString('en-US', { weekday: 'long' });
-  const dateFormatted = currentDateTime.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-  const currentHour = currentDateTime.getHours();
+  const timeFormatted = formatIstTime(currentDateTime);
+  const dayName = new Intl.DateTimeFormat('en-IN', { timeZone: 'Asia/Kolkata', weekday: 'long' }).format(currentDateTime);
+  const dateFormatted = formatIstDate(currentDateTime);
+  const currentHour = parseInt(new Intl.DateTimeFormat('en-IN', { timeZone: 'Asia/Kolkata', hour: 'numeric', hour12: false }).format(currentDateTime), 10);
   const timeGreeting = currentHour < 12 ? 'Good morning' : currentHour < 17 ? 'Good afternoon' : currentHour < 21 ? 'Good evening' : 'Good night';
 
   const [devices, setDevices] = useState<any[]>([]);
@@ -148,13 +150,24 @@ export function App() {
     }
   };
 
+  const loadRoutines = async (homeId?: string) => {
+    try {
+      const dbRoutines = await routineApi.getRoutines(homeId);
+      setRoutines(dbRoutines);
+    } catch {
+      setRoutines([]);
+    }
+  };
+
   useEffect(() => {
     if (activeHome) {
       loadRooms(activeHome.id);
       loadDevices(activeHome.id);
+      loadRoutines(activeHome.id);
     } else {
       setRooms([]);
       setDevices([]);
+      setRoutines([]);
     }
   }, [activeHome?.id]);
 
@@ -494,7 +507,8 @@ export function App() {
     setRoutineDraftType(initialType);
     setRoutineDraftIcon(initialType === 'scene' ? 'sun' : 'clock');
     setRoutineDraftRoomId('all');
-    setRoutineDraftScheduleTime('07:30');
+    setRoutineDraftScheduleTime('06:30');
+    setRoutineDraftScheduleOffTime('22:00');
     setRoutineDraftRepeatDays(['Mon', 'Tue', 'Wed', 'Thu', 'Fri']);
     setRoutineDraftActions([]);
     setIsRoutineModalOpen(true);
@@ -506,69 +520,73 @@ export function App() {
     setRoutineDraftType(routine.type || 'scene');
     setRoutineDraftIcon(routine.icon || 'sun');
     setRoutineDraftRoomId(routine.roomId || 'all');
-    setRoutineDraftScheduleTime(routine.scheduleTime || '07:30');
+    setRoutineDraftScheduleTime(routine.scheduleTime ? routine.scheduleTime.replace(/ IST/i, '') : '06:30');
+    setRoutineDraftScheduleOffTime(routine.scheduleOffTime ? routine.scheduleOffTime.replace(/ IST/i, '') : '22:00');
     setRoutineDraftRepeatDays(routine.repeatDays || ['Mon', 'Tue', 'Wed', 'Thu', 'Fri']);
     setRoutineDraftActions(routine.actions ? [...routine.actions] : []);
     setIsRoutineModalOpen(true);
   };
 
-  const handleSaveRoutine = () => {
+  const handleSaveRoutine = async () => {
     const finalName = routineDraftName.trim() || (routineDraftType === 'scene' ? 'Custom Scene' : 'Timed Schedule');
-    if (editingRoutine) {
-      routineStorage.updateRoutine(editingRoutine.id, {
-        name: finalName,
-        type: routineDraftType,
-        icon: routineDraftIcon,
-        roomId: routineDraftRoomId,
-        scheduleTime: routineDraftType === 'schedule' ? formatScheduleTimeToIst(routineDraftScheduleTime) : undefined,
-        repeatDays: routineDraftType === 'schedule' ? routineDraftRepeatDays : undefined,
-        actions: routineDraftActions,
-      });
-    } else {
-      routineStorage.createRoutine({
-        name: finalName,
-        type: routineDraftType,
-        icon: routineDraftIcon,
-        roomId: routineDraftRoomId,
-        scheduleTime: routineDraftType === 'schedule' ? formatScheduleTimeToIst(routineDraftScheduleTime) : undefined,
-        repeatDays: routineDraftType === 'schedule' ? routineDraftRepeatDays : undefined,
-        actions: routineDraftActions,
-        isActive: true,
-      });
+    const onTimeIst = routineDraftType === 'schedule' ? formatScheduleTimeToIst(routineDraftScheduleTime) : undefined;
+    const offTimeIst = routineDraftType === 'schedule' && routineDraftScheduleOffTime ? formatScheduleTimeToIst(routineDraftScheduleOffTime) : undefined;
+
+    try {
+      if (editingRoutine) {
+        await routineApi.updateRoutine(editingRoutine.id, {
+          name: finalName,
+          type: routineDraftType,
+          icon: routineDraftIcon,
+          roomId: routineDraftRoomId,
+          scheduleTime: onTimeIst,
+          scheduleOffTime: offTimeIst,
+          repeatDays: routineDraftType === 'schedule' ? routineDraftRepeatDays : undefined,
+          actions: routineDraftActions,
+        });
+      } else {
+        await routineApi.createRoutine({
+          name: finalName,
+          type: routineDraftType,
+          icon: routineDraftIcon,
+          roomId: routineDraftRoomId,
+          scheduleTime: onTimeIst,
+          scheduleOffTime: offTimeIst,
+          repeatDays: routineDraftType === 'schedule' ? routineDraftRepeatDays : undefined,
+          actions: routineDraftActions,
+          isActive: true,
+        }, activeHome?.id || undefined);
+      }
+      const updated = await routineApi.getRoutines(activeHome?.id || undefined);
+      setRoutines(updated);
+    } catch (err) {
+      console.error('Failed to save routine:', err);
+    } finally {
+      setIsRoutineModalOpen(false);
     }
-    setRoutines(routineStorage.getRoutines());
-    setIsRoutineModalOpen(false);
   };
 
-  const handleDeleteRoutine = (id: string) => {
-    routineStorage.deleteRoutine(id);
-    setRoutines(routineStorage.getRoutines());
-    setIsRoutineModalOpen(false);
+  const handleDeleteRoutine = async (id: string) => {
+    try {
+      await routineApi.deleteRoutine(id);
+      const updated = await routineApi.getRoutines(activeHome?.id || undefined);
+      setRoutines(updated);
+    } catch (err) {
+      console.error('Failed to delete routine:', err);
+    } finally {
+      setIsRoutineModalOpen(false);
+    }
   };
 
   const handleRunRoutine = async (routine: SmartRoutine) => {
     setRunningRoutineId(routine.id);
     try {
-      if (routine.id === 'default-all-off') {
-        devices.forEach(dev => {
-          if (dev.is_online) {
-            const count = dev.model_code === 'GATE' ? 1 : 8;
-            for (let ch = 1; ch <= count; ch++) {
-              deviceApi.controlSwitch(dev.id, ch, 'off').catch(() => {});
-            }
-          }
-        });
-      } else if (routine.id === 'default-morning') {
-        devices.forEach(dev => {
-          if (dev.is_online) {
-            deviceApi.controlSwitch(dev.id, 1, 'on').catch(() => {});
-          }
-        });
-      } else if (routine.actions && routine.actions.length > 0) {
+      if (routine.actions && routine.actions.length > 0) {
         for (const action of routine.actions) {
           deviceApi.controlSwitch(action.deviceId, action.channel, action.targetState ? 'on' : 'off').catch(() => {});
         }
       }
+      routineApi.runRoutine(routine.id).catch(() => {});
     } finally {
       setTimeout(() => setRunningRoutineId(null), 1000);
     }
@@ -1498,7 +1516,7 @@ export function App() {
                       Smart Automations & Scenes
                     </h2>
                     <p className="text-[11px] text-slate-500 font-medium">
-                      {routines.length} Routines configured &bull; {rooms.length || 1} Rooms
+                      {routines.length} Routines &bull; {rooms.length || 1} Rooms &bull; {devices.length} Devices ({devices.filter(d => Boolean(d.is_online)).length} Live)
                     </p>
                   </div>
                 </div>
@@ -1537,24 +1555,68 @@ export function App() {
                 })}
               </div>
 
-              {/* Routines 2x2 Grid (Side-by-side on mobile screens) */}
+              {/* Routines 2x2 Grid (Side-by-side on mobile screens) or Real-Time Space Overview */}
               {(() => {
                 const filteredRoutines = routines.filter(r => 
                   routineRoomFilter === 'all' || r.roomId === 'all' || r.roomId === routineRoomFilter
                 );
 
                 if (filteredRoutines.length === 0) {
+                  const onlineCount = devices.filter(d => Boolean(d.is_online)).length;
+                  const offlineCount = devices.filter(d => !d.is_online).length;
+
                   return (
-                    <div className="bg-white/40 backdrop-blur-xl rounded-3xl p-6 text-center border border-white/60 shadow-xs space-y-2">
-                      <p className="text-sm font-semibold text-slate-700">No routines for selected room</p>
-                      <p className="text-xs text-slate-400">Create a routine or scene to automate your devices.</p>
-                      <button
-                        type="button"
-                        onClick={() => handleProtectedAction(() => handleOpenCreateRoutine())}
-                        className="mt-2 inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold bg-[#0284c7] text-white hover:bg-sky-600 transition-colors shadow-xs cursor-pointer"
-                      >
-                        + Create Routine
-                      </button>
+                    <div className="w-full bg-white/40 backdrop-blur-2xl rounded-3xl p-5 border border-white/70 shadow-sm space-y-4">
+                      {/* Top: Space & User Live Identity */}
+                      <div className="flex items-center justify-between pb-3 border-b border-slate-200/50">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-2xl bg-[#0284c7] text-white flex items-center justify-center font-extrabold text-sm shadow-xs">
+                            {(currentUser?.full_name || currentUser?.email || 'N')[0].toUpperCase()}
+                          </div>
+                          <div>
+                            <h3 className="text-sm font-bold text-slate-900 leading-tight">
+                              {currentUser?.full_name || currentUser?.email || 'Smart Workspace User'}
+                            </h3>
+                            <p className="text-[11px] text-slate-500 font-medium">
+                              {activeHome?.name || 'Neurolinx Space'} &bull; {activeHome?.property_type || 'Residential'}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="text-right">
+                          <span className="text-xs font-mono font-bold text-slate-800 block">
+                            {timeFormatted}
+                          </span>
+                          <span className="text-[10px] text-slate-500 block">
+                            {dateFormatted}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Real-time Device Live Counters */}
+                      <div className="grid grid-cols-3 gap-2">
+                        <div className="bg-white/70 rounded-2xl p-2.5 text-center border border-white/80 shadow-2xs">
+                          <span className="text-xs font-bold text-slate-800 block">{devices.length}</span>
+                          <span className="text-[10px] text-slate-500 font-medium">Total Devices</span>
+                        </div>
+                        <div className="bg-white/70 rounded-2xl p-2.5 text-center border border-white/80 shadow-2xs">
+                          <div className="flex items-center justify-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_6px_#10b981]" />
+                            <span className="text-xs font-bold text-emerald-600">{onlineCount}</span>
+                          </div>
+                          <span className="text-[10px] text-slate-500 font-medium">Live Online</span>
+                        </div>
+                        <div className="bg-white/70 rounded-2xl p-2.5 text-center border border-white/80 shadow-2xs">
+                          <span className="text-xs font-bold text-slate-800 block">{offlineCount}</span>
+                          <span className="text-[10px] text-slate-500 font-medium">Inactive</span>
+                        </div>
+                      </div>
+
+                      {/* Subtle Database Status Notice */}
+                      <div className="py-2 text-center text-slate-400 space-y-0.5">
+                        <p className="text-xs font-semibold text-slate-600">No scenes or schedules saved in database</p>
+                        <p className="text-[11px] text-slate-400">Use the + button at the top right to create a Scene or Schedule</p>
+                      </div>
                     </div>
                   );
                 }
@@ -1592,7 +1654,9 @@ export function App() {
 
                               <div className="flex items-center gap-1">
                                 <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-50 text-[#0284c7] border border-sky-100 font-mono">
-                                  {routine.type === 'schedule' ? formatScheduleTimeToIst(routine.scheduleTime) : 'Scene'}
+                                  {routine.type === 'schedule' 
+                                    ? `ON ${formatScheduleTimeToIst(routine.scheduleTime)}` 
+                                    : 'Scene'}
                                 </span>
 
                                 <button
@@ -1612,9 +1676,11 @@ export function App() {
                             </h4>
 
                             <p className="text-[10px] sm:text-[11px] text-slate-400 line-clamp-1 mt-0.5">
-                              {routine.actions && routine.actions.length > 0 
-                                ? `${targetLabel} • ${routine.actions.length} action(s)` 
-                                : (routine.description || `${targetLabel} • Instant`)}
+                              {routine.type === 'schedule' && routine.scheduleOffTime
+                                ? `ON ${formatScheduleTimeToIst(routine.scheduleTime)} • OFF ${formatScheduleTimeToIst(routine.scheduleOffTime)}`
+                                : routine.actions && routine.actions.length > 0 
+                                  ? `${targetLabel} • ${routine.actions.length} action(s)` 
+                                  : (routine.description || `${targetLabel} • Instant`)}
                             </p>
                           </div>
 
@@ -2064,21 +2130,51 @@ export function App() {
               {/* Time Schedule Options (if schedule selected) */}
               {routineDraftType === 'schedule' && (
                 <div className="bg-sky-50/70 rounded-2xl p-3.5 border border-sky-100 space-y-3">
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between pb-1 border-b border-sky-100">
                     <div>
-                      <label className="text-xs font-bold text-slate-700 block">Schedule Time (IST)</label>
+                      <span className="text-xs font-bold text-slate-800 block">Switch State Schedule (IST)</span>
                       <span className="text-[10px] text-slate-500 font-mono">Indian Standard Time (UTC+05:30)</span>
                     </div>
-                    <div className="flex items-center gap-1.5">
-                      <input
-                        type="time"
-                        value={routineDraftScheduleTime}
-                        onChange={(e) => setRoutineDraftScheduleTime(e.target.value)}
-                        className="px-2.5 py-1.5 rounded-xl bg-white border border-sky-200 text-xs font-mono font-bold text-slate-800"
-                      />
-                      <span className="px-2 py-1 rounded-lg bg-sky-100 text-[#0284c7] font-bold text-[11px] font-mono">
-                        IST
-                      </span>
+                    <span className="px-2 py-0.5 rounded-full bg-sky-100 text-[#0284c7] font-bold text-[10px] font-mono">
+                      IST Schedule
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    {/* Turn ON Time */}
+                    <div className="bg-white rounded-xl p-2.5 border border-sky-200/80 shadow-2xs">
+                      <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                        Turn ON Time (IST)
+                      </label>
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type="time"
+                          value={routineDraftScheduleTime}
+                          onChange={(e) => setRoutineDraftScheduleTime(e.target.value)}
+                          className="flex-1 px-2.5 py-1.5 rounded-lg bg-slate-50 border border-slate-200 text-xs font-mono font-bold text-slate-800"
+                        />
+                        <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 font-bold text-[10px] font-mono">
+                          ON
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Turn OFF Time */}
+                    <div className="bg-white rounded-xl p-2.5 border border-sky-200/80 shadow-2xs">
+                      <label className="text-[11px] font-bold text-slate-700 block mb-1">
+                        Turn OFF Time (IST)
+                      </label>
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type="time"
+                          value={routineDraftScheduleOffTime}
+                          onChange={(e) => setRoutineDraftScheduleOffTime(e.target.value)}
+                          className="flex-1 px-2.5 py-1.5 rounded-lg bg-slate-50 border border-slate-200 text-xs font-mono font-bold text-slate-800"
+                        />
+                        <span className="px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 font-bold text-[10px] font-mono">
+                          OFF
+                        </span>
+                      </div>
                     </div>
                   </div>
 

@@ -44,6 +44,7 @@ import { homeApi, type Home, type Room } from '../services/home';
 import { resolveDeviceFromSsid } from './DynamicDeviceLayout';
 import { HARDWARE_ICONS } from '../utils/icons';
 import { getAssetUrl } from '../utils/assets';
+import { getNowIstIso } from '../utils/time';
 
 export interface DeviceModelItem {
   id: string;
@@ -1143,8 +1144,8 @@ export const AddDeviceScreen = ({
         endpoints: (provisionResult?.endpoints && provisionResult.endpoints.length > 0)
           ? provisionResult.endpoints
           : fallbackEndpoints,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
+        created_at: getNowIstIso(),
+        updated_at: getNowIstIso(),
       };
 
       setHardwareResponse(confirmation);

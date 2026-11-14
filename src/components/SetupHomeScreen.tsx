@@ -47,7 +47,7 @@ export const SetupHomeScreen = ({
   const [city, setCity] = useState('');
   const [latitude, setLatitude] = useState<number | null>(null);
   const [longitude, setLongitude] = useState<number | null>(null);
-  const [timezone] = useState(() => Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Kolkata');
+  const [timezone] = useState('Asia/Kolkata');
   
   // Wi-Fi Config
   const [wifiSsid, setWifiSsid] = useState('');

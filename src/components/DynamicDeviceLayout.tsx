@@ -29,6 +29,7 @@ import { getAssetUrl } from '../utils/assets';
 import { HARDWARE_ICONS } from '../utils/icons';
 import { deviceApi } from '../services/device';
 import { realtimeSocket } from '../services/socket';
+import { formatIstTime } from '../utils/time';
 
 export interface ResolvedDeviceMeta {
   modelCode: string;
@@ -1816,7 +1817,7 @@ export const GateControllerLayout = ({
   const recordTrigger = () => {
     const nextCount = triggerCount + 1;
     setTriggerCount(nextCount);
-    const nowStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const nowStr = formatIstTime(new Date(), true);
     setLastActionTime(nowStr);
     try {
       localStorage.setItem(`neuro_gate_triggers_${deviceId || modelCode}`, String(nextCount));
