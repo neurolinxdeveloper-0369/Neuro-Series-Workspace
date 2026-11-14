@@ -624,8 +624,8 @@ class DeviceService {
     }
 
     const device = devRes.rows[0];
-    const isOnline = Boolean(device.is_online) && device.last_seen_at && (Date.now() - new Date(device.last_seen_at).getTime() <= 12000);
-    if (!isOnline) {
+    const isOnline = Boolean(device.is_online) || (device.last_seen_at && (Date.now() - new Date(device.last_seen_at).getTime() <= 60000));
+    if (!isOnline && device.last_seen_at && (Date.now() - new Date(device.last_seen_at).getTime() > 120000)) {
       throw new Error(`Device ${device.device_id} is offline. Switches cannot be controlled.`);
     }
 

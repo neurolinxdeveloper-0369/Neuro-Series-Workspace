@@ -2,6 +2,38 @@ import { db } from '../../config/database.js';
 import { deviceService } from '../devices/device.service.js';
 import type { RoutineRecord, CreateRoutineDTO, UpdateRoutineDTO } from './routine.types.js';
 
+function parseTimeToMinutes(timeStr?: string | null): number | null {
+  if (!timeStr) return null;
+  const cleaned = timeStr.replace(/IST/gi, '').replace(/\s+/g, ' ').trim().toLowerCase();
+  const match = cleaned.match(/^(\d{1,2}):(\d{1,2})(?::\d{1,2})?\s*(am|pm)?$/i);
+  if (!match) return null;
+  let hours = parseInt(match[1], 10);
+  const minutes = parseInt(match[2], 10);
+  const ampm = match[3];
+  if (ampm) {
+    if (ampm === 'pm' && hours < 12) hours += 12;
+    if (ampm === 'am' && hours === 12) hours = 0;
+  }
+  return (hours % 24) * 60 + minutes;
+}
+
+function getCurrentIstMinutes(date: Date = new Date()): { minutes: number; day: string; timeStr: string } {
+  const parts = new Intl.DateTimeFormat('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    hour: 'numeric',
+    minute: 'numeric',
+    weekday: 'short',
+    hour12: false,
+  }).formatToParts(date);
+  const hour = parseInt(parts.find(p => p.type === 'hour')?.value || '0', 10);
+  const minute = parseInt(parts.find(p => p.type === 'minute')?.value || '0', 10);
+  const day = parts.find(p => p.type === 'weekday')?.value || '';
+  const normalizedHour = hour === 24 ? 0 : hour;
+  const minutes = normalizedHour * 60 + minute;
+  const timeStr = `${normalizedHour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+  return { minutes, day, timeStr };
+}
+
 export const routineService = {
   /**
    * Ensures the `routines` table exists in PostgreSQL.
@@ -250,43 +282,37 @@ export const routineService = {
     setInterval(async () => {
       try {
         const now = new Date();
-        const ist24 = new Intl.DateTimeFormat('en-IN', {
-          timeZone: 'Asia/Kolkata',
-          hour: '2-digit',
-          minute: '2-digit',
-          hour12: false,
-        }).format(now);
-
-        const istDay = new Intl.DateTimeFormat('en-IN', {
-          timeZone: 'Asia/Kolkata',
-          weekday: 'short',
-        }).format(now);
-
-        const minuteKey = `${istDay}_${ist24}`;
+        const { minutes: currentMinutes, day: istDay, timeStr: istTimeStr } = getCurrentIstMinutes(now);
+        const minuteKey = `${istDay}_${istTimeStr}`;
 
         const schedulesResult = await db.query(
-          `SELECT * FROM routines WHERE is_active = true AND type = 'schedule'`
+          `SELECT * FROM routines WHERE is_active = true AND (type = 'schedule' OR icon = 'clock')`
         );
         const schedules: RoutineRecord[] = schedulesResult.rows || [];
 
         for (const sched of schedules) {
           const repeatDays: string[] = Array.isArray(sched.repeat_days) ? sched.repeat_days : [];
-          if (repeatDays.length > 0 && !repeatDays.includes(istDay)) {
+          if (repeatDays.length > 0 && !repeatDays.some(d => d.toLowerCase().slice(0, 3) === istDay.toLowerCase().slice(0, 3))) {
             continue;
           }
 
           // Check ON Time match
           if (sched.schedule_time) {
-            const onClean = sched.schedule_time.replace(/ IST/i, '').trim();
-            if (onClean === ist24) {
+            const onMinutes = parseTimeToMinutes(sched.schedule_time);
+            if (onMinutes !== null && onMinutes === currentMinutes) {
               const onKey = `${sched.id}_on_${minuteKey}`;
               if (!firedKeys.has(onKey)) {
                 firedKeys.add(onKey);
-                console.log(`⏰ [SERVER SCHEDULER] Triggering ON: "${sched.name}" at ${minuteKey} IST`);
+                console.log(`⏰ [SERVER SCHEDULER] Triggering ON: "${sched.name}" at ${istTimeStr} IST (${istDay})`);
                 const actions = Array.isArray(sched.actions) ? sched.actions : [];
                 for (const act of actions) {
                   if (act.deviceId && act.channel) {
-                    await deviceService.controlSwitch(act.deviceId, act.channel, 'on').catch(() => {});
+                    try {
+                      await deviceService.controlSwitch(act.deviceId, act.channel, 'on');
+                      console.log(`✅ [SCHEDULER ACTION] Turn ON dev ${act.deviceId} ch ${act.channel} SUCCESS`);
+                    } catch (e: any) {
+                      console.error(`❌ [SCHEDULER ACTION] Turn ON dev ${act.deviceId} ch ${act.channel} FAILED:`, e.message);
+                    }
                   }
                 }
               }
@@ -295,16 +321,21 @@ export const routineService = {
 
           // Check OFF Time match
           if (sched.schedule_off_time) {
-            const offClean = sched.schedule_off_time.replace(/ IST/i, '').trim();
-            if (offClean === ist24) {
+            const offMinutes = parseTimeToMinutes(sched.schedule_off_time);
+            if (offMinutes !== null && offMinutes === currentMinutes) {
               const offKey = `${sched.id}_off_${minuteKey}`;
               if (!firedKeys.has(offKey)) {
                 firedKeys.add(offKey);
-                console.log(`⏰ [SERVER SCHEDULER] Triggering OFF: "${sched.name}" at ${minuteKey} IST`);
+                console.log(`⏰ [SERVER SCHEDULER] Triggering OFF: "${sched.name}" at ${istTimeStr} IST (${istDay})`);
                 const actions = Array.isArray(sched.actions) ? sched.actions : [];
                 for (const act of actions) {
                   if (act.deviceId && act.channel) {
-                    await deviceService.controlSwitch(act.deviceId, act.channel, 'off').catch(() => {});
+                    try {
+                      await deviceService.controlSwitch(act.deviceId, act.channel, 'off');
+                      console.log(`✅ [SCHEDULER ACTION] Turn OFF dev ${act.deviceId} ch ${act.channel} SUCCESS`);
+                    } catch (e: any) {
+                      console.error(`❌ [SCHEDULER ACTION] Turn OFF dev ${act.deviceId} ch ${act.channel} FAILED:`, e.message);
+                    }
                   }
                 }
               }
@@ -316,7 +347,7 @@ export const routineService = {
       } catch (err) {
         console.error('Error running automated server scheduler engine:', err);
       }
-    }, 20000);
+    }, 10000); // Poll every 10 seconds for real-time accuracy
   },
 };
 

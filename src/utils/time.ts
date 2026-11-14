@@ -96,42 +96,52 @@ export const formatScheduleTimeToIst = (timeStr?: string): string => {
 };
 
 /**
- * Checks if a stored schedule time matches the given Date (in IST)
+ * Converts any time string (12h, 24h, with or without AM/PM/IST) into minutes from midnight (0..1439)
+ * Examples:
+ * "02:05 AM IST" -> 125
+ * "02:05 PM IST" -> 845
+ * "14:05" -> 845
+ * "02:05" -> 125
+ * "2:5 am" -> 125
+ */
+export const parseTimeToMinutes = (timeStr?: string | null): number | null => {
+  if (!timeStr) return null;
+  const cleaned = timeStr.replace(/IST/gi, '').replace(/\s+/g, ' ').trim().toLowerCase();
+  const match = cleaned.match(/^(\d{1,2}):(\d{1,2})(?::\d{1,2})?\s*(am|pm)?$/i);
+  if (!match) return null;
+  let hours = parseInt(match[1], 10);
+  const minutes = parseInt(match[2], 10);
+  const ampm = match[3];
+  if (ampm) {
+    if (ampm === 'pm' && hours < 12) hours += 12;
+    if (ampm === 'am' && hours === 12) hours = 0;
+  }
+  return (hours % 24) * 60 + minutes;
+};
+
+/**
+ * Returns current minutes from midnight (0..1439) in Indian Standard Time (Asia/Kolkata)
+ */
+export const getCurrentIstMinutes = (date: Date = new Date()): number => {
+  const parts = new Intl.DateTimeFormat('en-IN', {
+    timeZone: IST_TIMEZONE,
+    hour: 'numeric',
+    minute: 'numeric',
+    hour12: false,
+  }).formatToParts(date);
+  const hour = parseInt(parts.find(p => p.type === 'hour')?.value || '0', 10);
+  const minute = parseInt(parts.find(p => p.type === 'minute')?.value || '0', 10);
+  return (hour === 24 ? 0 : hour) * 60 + minute;
+};
+
+/**
+ * Checks if a stored schedule time matches the given Date (in IST) with minute precision
  */
 export const isScheduleTimeMatch = (scheduleTimeStr?: string | null, date: Date = new Date()): boolean => {
-  if (!scheduleTimeStr) return false;
-
-  const ist24 = new Intl.DateTimeFormat('en-IN', {
-    timeZone: IST_TIMEZONE,
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  }).format(date);
-
-  const ist12 = new Intl.DateTimeFormat('en-IN', {
-    timeZone: IST_TIMEZONE,
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: true,
-  }).format(date).toUpperCase();
-
-  const cleaned = scheduleTimeStr.replace(/ IST/i, '').trim().toUpperCase();
-
-  if (cleaned === ist24 || cleaned === ist12) return true;
-
-  const parts = cleaned.split(':');
-  if (parts.length >= 2) {
-    const h = parseInt(parts[0], 10);
-    const m = parts[1].slice(0, 2);
-    if (!isNaN(h)) {
-      const ampm = h >= 12 ? 'PM' : 'AM';
-      const h12 = h % 12 || 12;
-      const formatted12 = `${h12 < 10 ? '0' : ''}${h12}:${m} ${ampm}`;
-      if (formatted12 === ist12) return true;
-    }
-  }
-
-  return false;
+  const targetMinutes = parseTimeToMinutes(scheduleTimeStr);
+  if (targetMinutes === null) return false;
+  const currentMinutes = getCurrentIstMinutes(date);
+  return targetMinutes === currentMinutes;
 };
 
 /**
@@ -143,6 +153,6 @@ export const isScheduleDayMatch = (repeatDays?: string[] | null, date: Date = ne
     timeZone: IST_TIMEZONE,
     weekday: 'short',
   }).format(date);
-  return repeatDays.includes(currentDay);
+  return repeatDays.some(d => d.toLowerCase().slice(0, 3) === currentDay.toLowerCase().slice(0, 3));
 };
 

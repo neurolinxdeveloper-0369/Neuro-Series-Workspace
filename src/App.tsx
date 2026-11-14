@@ -47,7 +47,7 @@ import { deviceApi } from './services/device';
 import { DynamicDeviceLayout } from './components/DynamicDeviceLayout';
 import { realtimeSocket } from './services/socket';
 import { routineApi, routineStorage, formatScheduleTimeToIst, type SmartRoutine, type RoutineAction } from './services/routine';
-import { formatIstTime, formatIstDate, isScheduleTimeMatch, isScheduleDayMatch } from './utils/time';
+import { formatIstTime, formatIstDate, isScheduleTimeMatch, isScheduleDayMatch, getCurrentIstMinutes } from './utils/time';
 import { SplashScreen } from '@capacitor/splash-screen';
 import { StatusBar, Style } from '@capacitor/status-bar';
 
@@ -584,12 +584,23 @@ export function App() {
     }
   };
 
+  const handleToggleRoutineActive = async (routine: SmartRoutine) => {
+    const nextActive = routine.isActive === false ? true : false;
+    setRoutines(prev => prev.map(r => r.id === routine.id ? { ...r, isActive: nextActive } : r));
+    try {
+      await routineApi.updateRoutine(routine.id, { isActive: nextActive });
+    } catch (err) {
+      console.error('Failed to toggle routine active:', err);
+    }
+  };
+
   const handleRunRoutine = async (routine: SmartRoutine) => {
     setRunningRoutineId(routine.id);
+    const isSchedule = routine.type === 'schedule' || routine.icon === 'clock';
     try {
       if (routine.actions && routine.actions.length > 0) {
         for (const action of routine.actions) {
-          const target = routine.type === 'schedule' ? 'on' : (action.targetState ? 'on' : 'off');
+          const target = isSchedule ? 'on' : (action.targetState ? 'on' : 'off');
           deviceApi.controlSwitch(action.deviceId, action.channel, target).catch(() => {});
         }
       }
@@ -605,17 +616,10 @@ export function App() {
   useEffect(() => {
     const checkSchedules = () => {
       const now = new Date();
-      const currentMinuteKey = new Intl.DateTimeFormat('en-IN', {
-        timeZone: 'Asia/Kolkata',
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: false,
-      }).format(now);
+      const currentIstMins = getCurrentIstMinutes(now);
+      const currentMinuteKey = `${now.toISOString().slice(0, 10)}_${currentIstMins}`;
 
-      const activeSchedules = routines.filter(r => r.isActive && r.type === 'schedule');
+      const activeSchedules = routines.filter(r => r.isActive !== false && (r.type === 'schedule' || r.icon === 'clock'));
 
       for (const schedule of activeSchedules) {
         if (!isScheduleDayMatch(schedule.repeatDays, now)) continue;
@@ -625,7 +629,7 @@ export function App() {
           const fireKey = `${schedule.id}_on_${currentMinuteKey}`;
           if (!lastFiredScheduleRef.current.has(fireKey)) {
             lastFiredScheduleRef.current.add(fireKey);
-            console.log(`⏰ [CLIENT SCHEDULER] Triggering ON: "${schedule.name}" at ${currentMinuteKey} IST`);
+            console.log(`⏰ [CLIENT SCHEDULER] Triggering ON: "${schedule.name}" at IST minute ${currentIstMins}`);
             if (schedule.actions && schedule.actions.length > 0) {
               for (const act of schedule.actions) {
                 deviceApi.controlSwitch(act.deviceId, act.channel, 'on').catch(() => {});
@@ -640,7 +644,7 @@ export function App() {
           const fireKey = `${schedule.id}_off_${currentMinuteKey}`;
           if (!lastFiredScheduleRef.current.has(fireKey)) {
             lastFiredScheduleRef.current.add(fireKey);
-            console.log(`⏰ [CLIENT SCHEDULER] Triggering OFF: "${schedule.name}" at ${currentMinuteKey} IST`);
+            console.log(`⏰ [CLIENT SCHEDULER] Triggering OFF: "${schedule.name}" at IST minute ${currentIstMins}`);
             if (schedule.actions && schedule.actions.length > 0) {
               for (const act of schedule.actions) {
                 deviceApi.controlSwitch(act.deviceId, act.channel, 'off').catch(() => {});
@@ -1753,11 +1757,33 @@ export function App() {
                             </p>
                           </div>
 
-                          {/* Bottom Action: Run Button */}
+                          {/* Bottom Action: Auto Run Toggle & Run Button */}
                           <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between">
-                            <span className="text-[10px] font-mono text-slate-400">
-                              {routine.type === 'schedule' && routine.icon === 'clock' ? 'Auto Run' : 'One-tap'}
-                            </span>
+                            {routine.type === 'schedule' && routine.icon === 'clock' ? (
+                              <button
+                                type="button"
+                                onClick={() => handleProtectedAction(() => handleToggleRoutineActive(routine))}
+                                className="flex items-center gap-1.5 cursor-pointer group/toggle p-0.5"
+                                title={routine.isActive !== false ? 'Auto Run is Active (Tap to pause)' : 'Auto Run is Paused (Tap to enable)'}
+                              >
+                                <div className={`w-7 h-4 rounded-full transition-colors relative p-0.5 flex items-center ${
+                                  routine.isActive !== false ? 'bg-emerald-500' : 'bg-slate-300'
+                                }`}>
+                                  <div className={`w-3 h-3 rounded-full bg-white shadow-xs transition-transform ${
+                                    routine.isActive !== false ? 'translate-x-3' : 'translate-x-0'
+                                  }`} />
+                                </div>
+                                <span className={`text-[10px] font-mono font-bold ${
+                                  routine.isActive !== false ? 'text-emerald-600' : 'text-slate-400'
+                                }`}>
+                                  {routine.isActive !== false ? 'Auto Run' : 'Paused'}
+                                </span>
+                              </button>
+                            ) : (
+                              <span className="text-[10px] font-mono text-slate-400">
+                                One-tap
+                              </span>
+                            )}
 
                             <button
                               type="button"
@@ -1777,7 +1803,7 @@ export function App() {
                               ) : (
                                 <>
                                   <Play className="w-3 h-3 fill-current" />
-                                  <span>Run</span>
+                                  <span>{routine.type === 'schedule' && routine.icon === 'clock' ? 'Run Now' : 'Run'}</span>
                                 </>
                               )}
                             </button>
