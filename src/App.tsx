@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { 
   Home,
   LayoutPanelTop, 
@@ -46,7 +46,7 @@ import { deviceApi } from './services/device';
 import { DynamicDeviceLayout } from './components/DynamicDeviceLayout';
 import { realtimeSocket } from './services/socket';
 import { routineApi, routineStorage, formatScheduleTimeToIst, type SmartRoutine, type RoutineAction } from './services/routine';
-import { formatIstTime, formatIstDate } from './utils/time';
+import { formatIstTime, formatIstDate, isScheduleTimeMatch, isScheduleDayMatch } from './utils/time';
 import { SplashScreen } from '@capacitor/splash-screen';
 import { StatusBar, Style } from '@capacitor/status-bar';
 
@@ -583,14 +583,77 @@ export function App() {
     try {
       if (routine.actions && routine.actions.length > 0) {
         for (const action of routine.actions) {
-          deviceApi.controlSwitch(action.deviceId, action.channel, action.targetState ? 'on' : 'off').catch(() => {});
+          const target = routine.type === 'schedule' ? 'on' : (action.targetState ? 'on' : 'off');
+          deviceApi.controlSwitch(action.deviceId, action.channel, target).catch(() => {});
         }
       }
-      routineApi.runRoutine(routine.id).catch(() => {});
+      await routineApi.runRoutine(routine.id).catch(() => {});
     } finally {
-      setTimeout(() => setRunningRoutineId(null), 1000);
+      setTimeout(() => setRunningRoutineId(null), 1200);
     }
   };
+
+  // Automated Time Scheduler Engine (Checks active schedules every 10s in Indian Standard Time)
+  const lastFiredScheduleRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    const checkSchedules = () => {
+      const now = new Date();
+      const currentMinuteKey = new Intl.DateTimeFormat('en-IN', {
+        timeZone: 'Asia/Kolkata',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+      }).format(now);
+
+      const activeSchedules = routines.filter(r => r.isActive && r.type === 'schedule');
+
+      for (const schedule of activeSchedules) {
+        if (!isScheduleDayMatch(schedule.repeatDays, now)) continue;
+
+        // Check Turn ON Time (IST)
+        if (schedule.scheduleTime && isScheduleTimeMatch(schedule.scheduleTime, now)) {
+          const fireKey = `${schedule.id}_on_${currentMinuteKey}`;
+          if (!lastFiredScheduleRef.current.has(fireKey)) {
+            lastFiredScheduleRef.current.add(fireKey);
+            console.log(`⏰ [CLIENT SCHEDULER] Triggering ON: "${schedule.name}" at ${currentMinuteKey} IST`);
+            if (schedule.actions && schedule.actions.length > 0) {
+              for (const act of schedule.actions) {
+                deviceApi.controlSwitch(act.deviceId, act.channel, 'on').catch(() => {});
+              }
+            }
+            routineApi.runRoutine(schedule.id).catch(() => {});
+          }
+        }
+
+        // Check Turn OFF Time (IST)
+        if (schedule.scheduleOffTime && isScheduleTimeMatch(schedule.scheduleOffTime, now)) {
+          const fireKey = `${schedule.id}_off_${currentMinuteKey}`;
+          if (!lastFiredScheduleRef.current.has(fireKey)) {
+            lastFiredScheduleRef.current.add(fireKey);
+            console.log(`⏰ [CLIENT SCHEDULER] Triggering OFF: "${schedule.name}" at ${currentMinuteKey} IST`);
+            if (schedule.actions && schedule.actions.length > 0) {
+              for (const act of schedule.actions) {
+                deviceApi.controlSwitch(act.deviceId, act.channel, 'off').catch(() => {});
+              }
+            }
+            routineApi.runRoutine(schedule.id).catch(() => {});
+          }
+        }
+      }
+
+      if (lastFiredScheduleRef.current.size > 200) {
+        lastFiredScheduleRef.current.clear();
+      }
+    };
+
+    const timer = setInterval(checkSchedules, 10000);
+    checkSchedules();
+    return () => clearInterval(timer);
+  }, [routines]);
 
   // Real-time Clock View with Date, Time, Day & Right-side User Details (Desktop & Laptops only)
   const renderRealTimeHeader = () => (
@@ -2338,7 +2401,7 @@ export function App() {
               `,
             }}
           >
-            {/* Top Navigation Bar: Back Button, Device Info, RSSI Badge */}
+            {/* Top Navigation Bar: Back Button, Room Name (Left), Online Status (Right) */}
             <header className="dedicated-device-header sticky top-0 z-30 w-full bg-[#d4edf4]/95 backdrop-blur-xl px-3 sm:px-6 py-2.5 sm:py-3 flex items-center justify-between border-b border-sky-200/60 shadow-xs flex-shrink-0 gap-2">
               <div className="flex items-center gap-2.5 min-w-0 flex-1">
                 {/* Compact Round Back Button */}
@@ -2351,43 +2414,16 @@ export function App() {
                   <ArrowLeft className="w-4 h-4 text-slate-700" strokeWidth={2.4} />
                 </button>
 
-                {/* Device Icon badge */}
-                <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-white shadow-xs border border-sky-100 flex items-center justify-center p-1.5 flex-shrink-0">
-                  {selectedDeviceForControl.model_code === 'GATE' ? (
-                    <div className="w-full h-full rounded-lg bg-gradient-to-br from-sky-500 to-indigo-600 flex items-center justify-center text-white">
-                      <svg className="w-4 h-4 sm:w-5 sm:h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M3 21h18" />
-                        <path d="M5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16" />
-                        <path d="M9 21v-4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v4" />
-                      </svg>
-                    </div>
-                  ) : (
-                    <img
-                      src={getAssetUrl('8S.png')}
-                      alt={selectedDeviceForControl.custom_name}
-                      className="w-full h-full object-contain"
-                    />
-                  )}
-                </div>
-
-                {/* Device Title & Room Label */}
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-1.5">
-                    <h1 className="text-sm sm:text-base font-extrabold text-slate-900 tracking-tight leading-tight truncate">
-                      {selectedDeviceForControl.custom_name}
-                    </h1>
-                    <span className="px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-sky-50 text-[#0284c7] border border-sky-100 font-mono flex-shrink-0">
-                      {selectedDeviceForControl.model_code || 'TP8'}
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-slate-500 font-sans flex items-center gap-1 mt-0.5 truncate">
-                    <span>{getRoomEmoji(roomLabel)}</span>
-                    <span className="font-semibold text-slate-600 truncate">{roomLabel}</span>
-                  </p>
+                {/* Left Side: Room Name */}
+                <div className="flex items-center gap-1.5 truncate">
+                  <span className="text-base sm:text-lg flex-shrink-0">{getRoomEmoji(roomLabel)}</span>
+                  <span className="font-extrabold text-slate-900 text-sm sm:text-base tracking-tight truncate">
+                    {roomLabel}
+                  </span>
                 </div>
               </div>
 
-              {/* Status Badge - Fixed right, never clips */}
+              {/* Right Side: Online Status Badge */}
               <div className="flex items-center flex-shrink-0 pl-1">
                 <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold border flex items-center gap-1.5 shadow-xs whitespace-nowrap ${
                   selectedDeviceForControl.is_online !== false
@@ -2409,20 +2445,38 @@ export function App() {
 
             {/* Screen Content Body */}
             <main className="w-full max-w-2xl mx-auto px-3.5 sm:px-6 py-3 sm:py-4 flex-1 flex flex-col gap-3 pb-[calc(3.5rem+max(var(--android-nav-bottom,0px),env(safe-area-inset-bottom,0px)))]">
-              {/* Meta details bar */}
-              <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-2 px-3.5 border border-sky-100/80 flex items-center justify-between text-[11px] font-mono text-slate-600 shadow-xs flex-wrap gap-1.5">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-slate-400 font-sans font-medium text-[10px]">Device ID:</span>
-                  <span className="font-bold text-[#0284c7]">{selectedDeviceForControl.device_id || `NEURO-${selectedDeviceForControl.model_code}-${selectedDeviceForControl.mac_4}`}</span>
+              {/* Device Name and Model Name (Device ID hidden, IP deleted) */}
+              <div className="flex items-center gap-2.5 px-1 py-1">
+                <div className="w-9 h-9 rounded-xl bg-white/90 shadow-xs border border-white flex items-center justify-center p-1.5 flex-shrink-0">
+                  {selectedDeviceForControl.model_code === 'GATE' ? (
+                    <div className="w-full h-full rounded-lg bg-gradient-to-br from-sky-500 to-indigo-600 flex items-center justify-center text-white">
+                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M3 21h18" />
+                        <path d="M5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16" />
+                        <path d="M9 21v-4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v4" />
+                      </svg>
+                    </div>
+                  ) : (
+                    <img
+                      src={getAssetUrl('8S.png')}
+                      alt={selectedDeviceForControl.custom_name}
+                      className="w-full h-full object-contain"
+                    />
+                  )}
                 </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-slate-400 font-sans font-medium text-[10px]">IP Address:</span>
-                  <span className="text-slate-700 font-semibold">{selectedDeviceForControl.ip_address || '192.168.1.x'}</span>
+
+                <div className="flex items-center gap-2 min-w-0">
+                  <h1 className="text-base sm:text-lg font-extrabold text-slate-900 tracking-tight leading-tight truncate">
+                    {selectedDeviceForControl.custom_name}
+                  </h1>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-[#0284c7] text-white shadow-2xs font-mono flex-shrink-0">
+                    {selectedDeviceForControl.model_code || 'TP8'}
+                  </span>
                 </div>
               </div>
 
-              {/* Dynamic Switch Controls */}
-              <div className="bg-white/90 backdrop-blur-md rounded-3xl p-3.5 sm:p-5 shadow-xs border border-white/80">
+              {/* Dynamic Switch Controls (Without nested white background card) */}
+              <div className="w-full">
                 <DynamicDeviceLayout 
                   modelCode={selectedDeviceForControl.model_code || 'TP8'}
                   deviceName={selectedDeviceForControl.custom_name}

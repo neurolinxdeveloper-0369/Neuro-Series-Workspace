@@ -227,4 +227,83 @@ export const routineService = {
 
     return { success: true, executedActions: count };
   },
+
+  /**
+   * Starts background automated scheduler engine for time-based hardware control
+   */
+  startSchedulerEngine: (): void => {
+    const firedKeys = new Set<string>();
+
+    setInterval(async () => {
+      try {
+        const now = new Date();
+        const ist24 = new Intl.DateTimeFormat('en-IN', {
+          timeZone: 'Asia/Kolkata',
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false,
+        }).format(now);
+
+        const istDay = new Intl.DateTimeFormat('en-IN', {
+          timeZone: 'Asia/Kolkata',
+          weekday: 'short',
+        }).format(now);
+
+        const minuteKey = `${istDay}_${ist24}`;
+
+        const schedulesResult = await db.query(
+          `SELECT * FROM routines WHERE is_active = true AND type = 'schedule'`
+        );
+        const schedules: RoutineRecord[] = schedulesResult.rows || [];
+
+        for (const sched of schedules) {
+          const repeatDays: string[] = Array.isArray(sched.repeat_days) ? sched.repeat_days : [];
+          if (repeatDays.length > 0 && !repeatDays.includes(istDay)) {
+            continue;
+          }
+
+          // Check ON Time match
+          if (sched.schedule_time) {
+            const onClean = sched.schedule_time.replace(/ IST/i, '').trim();
+            if (onClean === ist24) {
+              const onKey = `${sched.id}_on_${minuteKey}`;
+              if (!firedKeys.has(onKey)) {
+                firedKeys.add(onKey);
+                console.log(`⏰ [SERVER SCHEDULER] Triggering ON: "${sched.name}" at ${minuteKey} IST`);
+                const actions = Array.isArray(sched.actions) ? sched.actions : [];
+                for (const act of actions) {
+                  if (act.deviceId && act.channel) {
+                    await deviceService.controlSwitch(act.deviceId, act.channel, 'on').catch(() => {});
+                  }
+                }
+              }
+            }
+          }
+
+          // Check OFF Time match
+          if (sched.schedule_off_time) {
+            const offClean = sched.schedule_off_time.replace(/ IST/i, '').trim();
+            if (offClean === ist24) {
+              const offKey = `${sched.id}_off_${minuteKey}`;
+              if (!firedKeys.has(offKey)) {
+                firedKeys.add(offKey);
+                console.log(`⏰ [SERVER SCHEDULER] Triggering OFF: "${sched.name}" at ${minuteKey} IST`);
+                const actions = Array.isArray(sched.actions) ? sched.actions : [];
+                for (const act of actions) {
+                  if (act.deviceId && act.channel) {
+                    await deviceService.controlSwitch(act.deviceId, act.channel, 'off').catch(() => {});
+                  }
+                }
+              }
+            }
+          }
+        }
+
+        if (firedKeys.size > 200) firedKeys.clear();
+      } catch (err) {
+        console.error('Error running automated server scheduler engine:', err);
+      }
+    }, 20000);
+  },
 };
+

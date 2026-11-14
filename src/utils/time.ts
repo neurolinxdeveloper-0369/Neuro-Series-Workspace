@@ -94,3 +94,55 @@ export const formatScheduleTimeToIst = (timeStr?: string): string => {
   }
   return `${timeStr} IST`;
 };
+
+/**
+ * Checks if a stored schedule time matches the given Date (in IST)
+ */
+export const isScheduleTimeMatch = (scheduleTimeStr?: string | null, date: Date = new Date()): boolean => {
+  if (!scheduleTimeStr) return false;
+
+  const ist24 = new Intl.DateTimeFormat('en-IN', {
+    timeZone: IST_TIMEZONE,
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(date);
+
+  const ist12 = new Intl.DateTimeFormat('en-IN', {
+    timeZone: IST_TIMEZONE,
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+  }).format(date).toUpperCase();
+
+  const cleaned = scheduleTimeStr.replace(/ IST/i, '').trim().toUpperCase();
+
+  if (cleaned === ist24 || cleaned === ist12) return true;
+
+  const parts = cleaned.split(':');
+  if (parts.length >= 2) {
+    const h = parseInt(parts[0], 10);
+    const m = parts[1].slice(0, 2);
+    if (!isNaN(h)) {
+      const ampm = h >= 12 ? 'PM' : 'AM';
+      const h12 = h % 12 || 12;
+      const formatted12 = `${h12 < 10 ? '0' : ''}${h12}:${m} ${ampm}`;
+      if (formatted12 === ist12) return true;
+    }
+  }
+
+  return false;
+};
+
+/**
+ * Checks if today matches the repeat days of a routine (in IST)
+ */
+export const isScheduleDayMatch = (repeatDays?: string[] | null, date: Date = new Date()): boolean => {
+  if (!repeatDays || repeatDays.length === 0) return true;
+  const currentDay = new Intl.DateTimeFormat('en-IN', {
+    timeZone: IST_TIMEZONE,
+    weekday: 'short',
+  }).format(date);
+  return repeatDays.includes(currentDay);
+};
+

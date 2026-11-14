@@ -4,7 +4,6 @@ import {
   Gauge, 
   Waves, 
   Sliders, 
-  ToggleRight, 
   Power, 
   Tv, 
   Activity, 
@@ -202,7 +201,7 @@ export interface SwitchItemConfig {
 export const TouchPanelLayout = ({ 
   switchCount, 
   modelCode, 
-  deviceName, 
+  deviceName: _deviceName, 
   deviceId, 
   initialSwitches,
   isOnline = true
@@ -874,38 +873,28 @@ export const TouchPanelLayout = ({
   }
 
   return (
-    <div className="bg-white/80 backdrop-blur-xl rounded-[36px] p-4 sm:p-7 border border-white/90 shadow-[0_20px_50px_rgba(2,132,199,0.08),0_4px_16px_rgba(0,0,0,0.04)] select-none">
-      {/* Top Header Card: Model Display & Quick Batch Actions */}
-      <div className="flex items-center justify-between mb-5 pb-4 border-b border-sky-100/80">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-sky-50 text-[#0284c7] flex items-center justify-center border border-sky-100 shadow-xs">
-            <ToggleRight className="w-5 h-5" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-extrabold uppercase tracking-wider text-[#0284c7] font-mono bg-sky-50 px-2 py-0.5 rounded-md border border-sky-200/60 shadow-2xs">
-                {modelCode}
-              </span>
-              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider font-sans">
-                Capacitive Touch Panel
-              </span>
-            </div>
-            <div className="text-base sm:text-lg font-extrabold text-slate-900 tracking-tight mt-0.5">
-              {deviceName || `${switchCount} Gang Switches`}
-            </div>
-          </div>
+    <div className="w-full select-none">
+      {/* Top Header: Heading Name with Capacitive Touch Panel & Batch Actions */}
+      <div className="flex items-center justify-between mb-4 pb-3 border-b border-sky-200/50">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-extrabold uppercase tracking-wider text-[#0284c7] font-mono bg-white/70 px-2 py-0.5 rounded-md border border-sky-200/60 shadow-2xs">
+            {modelCode}
+          </span>
+          <span className="text-xs sm:text-sm font-extrabold text-slate-800 uppercase tracking-wider font-sans">
+            Capacitive Touch Panel
+          </span>
         </div>
 
-        {/* Quick Batch Actions */}
+        {/* Quick Batch Actions: All ON & All OFF with transparent bg */}
         <div className="flex items-center gap-2">
           <button
             type="button"
             disabled={!isOnline}
             onClick={allOn}
-            className={`px-3.5 py-1.5 rounded-full text-xs font-bold shadow-xs transition-all ${
+            className={`px-3.5 py-1.5 rounded-full text-xs font-bold transition-all shadow-2xs ${
               isOnline
                 ? 'bg-[#0284c7] hover:bg-[#0369a1] text-white active:scale-95 cursor-pointer'
-                : 'bg-slate-200 text-slate-400 cursor-not-allowed opacity-60'
+                : 'bg-slate-200/70 text-slate-400 cursor-not-allowed opacity-60'
             }`}
           >
             All ON
@@ -914,10 +903,10 @@ export const TouchPanelLayout = ({
             type="button"
             disabled={!isOnline}
             onClick={allOff}
-            className={`px-3.5 py-1.5 rounded-full text-xs font-bold border shadow-xs transition-all ${
+            className={`px-3.5 py-1.5 rounded-full text-xs font-bold border transition-all ${
               isOnline
-                ? 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200/80 active:scale-95 cursor-pointer'
-                : 'bg-slate-100 text-slate-400 border-slate-200/50 cursor-not-allowed opacity-60'
+                ? 'bg-transparent hover:bg-white/40 text-slate-700 border-slate-300/80 active:scale-95 cursor-pointer backdrop-blur-xs'
+                : 'bg-transparent text-slate-400 border-slate-200/50 cursor-not-allowed opacity-60'
             }`}
           >
             All OFF

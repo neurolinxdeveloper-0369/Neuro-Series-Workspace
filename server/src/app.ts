@@ -22,7 +22,9 @@ homeService.ensureTableExists().catch((err) => {
 deviceService.ensureTablesExist().catch((err) => {
   console.error('Error verifying device tables on boot:', err);
 });
-routineService.ensureTableExists().catch((err) => {
+routineService.ensureTableExists().then(() => {
+  routineService.startSchedulerEngine();
+}).catch((err) => {
   console.error('Error verifying routines table on boot:', err);
 });
 
