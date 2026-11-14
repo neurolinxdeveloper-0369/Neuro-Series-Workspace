@@ -27,7 +27,8 @@ import {
   Trash2,
   Play,
   CheckCircle2,
-  FolderPlus
+  FolderPlus,
+  ChevronRight
 } from 'lucide-react';
 import { ExploreCardSlider } from './components/ExploreCardSlider';
 import { QuickDevicesCard } from './components/QuickDevicesCard';
@@ -2476,6 +2477,58 @@ export function App() {
                   </span>
                 </div>
               </div>
+
+              {/* Total Scenes Running & Schedulers Count (Tap navigates to that room's scenes) */}
+              {(() => {
+                const devRoomId = selectedDeviceForControl.room_id;
+                const devId = selectedDeviceForControl.device_id || selectedDeviceForControl.id;
+
+                const roomScenes = routines.filter(r => 
+                  (r.type === 'scene' || !r.type) && 
+                  (r.roomId === devRoomId || r.roomId === 'all' || r.actions?.some(a => a.deviceId === devId))
+                );
+                const roomSchedulers = routines.filter(r => 
+                  r.type === 'schedule' && 
+                  (r.roomId === devRoomId || r.roomId === 'all' || r.actions?.some(a => a.deviceId === devId))
+                );
+
+                const runningScenesCount = roomScenes.filter(r => r.isActive !== false).length;
+                const schedulersCount = roomSchedulers.length;
+
+                return (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (devRoomId) {
+                        setRoutineRoomFilter(devRoomId);
+                      } else {
+                        setRoutineRoomFilter('all');
+                      }
+                      setSelectedDeviceForControl(null);
+                      setActiveTab('routines');
+                    }}
+                    className="w-full flex items-center justify-between p-2.5 sm:p-3 rounded-2xl bg-white/55 hover:bg-white/80 active:bg-white/95 border border-white/80 shadow-xs cursor-pointer active:scale-[0.99] transition-all backdrop-blur-md group text-left"
+                    title={`Tap to view ${roomLabel} scenes and schedules`}
+                  >
+                    <div className="flex items-center gap-2 sm:gap-2.5 min-w-0 flex-wrap">
+                      <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-900 text-xs font-bold shadow-2xs">
+                        <Sparkles className="w-3.5 h-3.5 text-amber-600 flex-shrink-0 animate-pulse" />
+                        <span>{runningScenesCount} {runningScenesCount === 1 ? 'Scene' : 'Scenes'} Running</span>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-sky-500/15 border border-sky-500/30 text-[#0369a1] text-xs font-bold shadow-2xs">
+                        <Clock className="w-3.5 h-3.5 text-[#0284c7] flex-shrink-0" />
+                        <span>{schedulersCount} {schedulersCount === 1 ? 'Scheduler' : 'Schedulers'}</span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1 text-xs font-bold text-[#0284c7] flex-shrink-0 pl-1.5 group-hover:translate-x-0.5 transition-transform">
+                      <span className="hidden xs:inline truncate max-w-[120px] sm:max-w-none">{roomLabel} Scenes</span>
+                      <ChevronRight className="w-4 h-4 text-[#0284c7]" strokeWidth={2.4} />
+                    </div>
+                  </button>
+                );
+              })()}
 
               {/* Dynamic Switch Controls (Without nested white background card) */}
               <div className="w-full">

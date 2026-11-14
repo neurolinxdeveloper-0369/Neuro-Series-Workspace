@@ -461,18 +461,6 @@ export const TouchPanelLayout = ({
     }
   };
 
-  const allOn = async () => {
-    if (!isOnline) return;
-    persistSwitches(switches.map(sw => ({ ...sw, state: true })));
-    if (deviceId) {
-      for (let i = 0; i < switches.length; i++) {
-        try {
-          await deviceApi.controlSwitch(deviceId, i + 1, 'on');
-        } catch {}
-      }
-    }
-  };
-
   const allOff = async () => {
     if (!isOnline) return;
     persistSwitches(switches.map(sw => ({ ...sw, state: false })));
@@ -965,20 +953,8 @@ export const TouchPanelLayout = ({
           </span>
         </div>
 
-        {/* Quick Batch Actions: All ON & All OFF with transparent bg */}
+        {/* Quick Batch Action: All OFF with transparent bg (All ON removed) */}
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            disabled={!isOnline}
-            onClick={allOn}
-            className={`px-3.5 py-1.5 rounded-full text-xs font-bold transition-all shadow-2xs ${
-              isOnline
-                ? 'bg-[#0284c7] hover:bg-[#0369a1] text-white active:scale-95 cursor-pointer'
-                : 'bg-slate-200/70 text-slate-400 cursor-not-allowed opacity-60'
-            }`}
-          >
-            All ON
-          </button>
           <button
             type="button"
             disabled={!isOnline}
