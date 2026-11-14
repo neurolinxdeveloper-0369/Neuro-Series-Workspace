@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   Zap, 
   Gauge, 
@@ -188,6 +189,7 @@ interface TouchPanelProps {
   deviceName?: string;
   deviceId?: string;
   initialSwitches?: Record<string, boolean>;
+  switchConfigs?: Array<{ index: number; name: string; iconPath?: string }>;
   isOnline?: boolean;
 }
 
@@ -204,12 +206,30 @@ export const TouchPanelLayout = ({
   deviceName: _deviceName, 
   deviceId, 
   initialSwitches,
+  switchConfigs,
   isOnline = true
 }: TouchPanelProps) => {
   // Initialize default switch names strictly as "Switch 1", "Switch 2", "Switch 3"...
   const [switches, setSwitches] = useState<SwitchItemConfig[]>(() => {
+    // 1. Check switchConfigs prop from server (PostgreSQL)
+    if (Array.isArray(switchConfigs) && switchConfigs.length > 0) {
+      return Array.from({ length: switchCount }, (_, i) => {
+        const found = switchConfigs.find((c: any) => c.index === i);
+        return {
+          index: i,
+          name: found?.name || `Switch ${i + 1}`,
+          iconPath: found?.iconPath || '',
+          state: initialSwitches?.[String(i + 1)] !== undefined 
+            ? Boolean(initialSwitches[String(i + 1)]) 
+            : false,
+        };
+      });
+    }
+
+    // 2. Check localStorage (per-device fallback)
     try {
-      const stored = localStorage.getItem(`neuro_touch_panel_${modelCode}_${switchCount}`);
+      const storageKey = deviceId ? `neuro_switch_configs_${deviceId}` : `neuro_touch_panel_${modelCode}_${switchCount}`;
+      const stored = localStorage.getItem(storageKey);
       if (stored) {
         const parsed = JSON.parse(stored);
         if (Array.isArray(parsed) && parsed.length === switchCount) {
@@ -224,6 +244,7 @@ export const TouchPanelLayout = ({
     } catch {
       // ignore
     }
+
     return Array.from({ length: switchCount }, (_, i) => ({
       index: i,
       name: `Switch ${i + 1}`,
@@ -231,6 +252,23 @@ export const TouchPanelLayout = ({
       state: initialSwitches?.[String(i + 1)] !== undefined ? Boolean(initialSwitches[String(i + 1)]) : false,
     }));
   });
+
+  // Sync state if switchConfigs prop updates (e.g. loaded after initial render)
+  useEffect(() => {
+    if (Array.isArray(switchConfigs) && switchConfigs.length > 0) {
+      setSwitches(prev => prev.map((sw, i) => {
+        const found = switchConfigs.find((c: any) => c.index === i);
+        if (found) {
+          return {
+            ...sw,
+            name: found.name || sw.name,
+            iconPath: found.iconPath !== undefined ? found.iconPath : sw.iconPath,
+          };
+        }
+        return sw;
+      }));
+    }
+  }, [switchConfigs]);
 
   // Track pending rollback timers by channel number
   const rollbackTimersRef = useRef<Map<number, NodeJS.Timeout>>(new Map());
@@ -261,6 +299,29 @@ export const TouchPanelLayout = ({
     if (!deviceId) return;
     const unsubscribe = realtimeSocket.subscribe((incomingDeviceId, incomingState) => {
       if (incomingDeviceId === deviceId && incomingState) {
+        // Handle switchConfigs updates across browser and app!
+        if (incomingState?.switchConfigs && Array.isArray(incomingState.switchConfigs)) {
+          setSwitches(prev => {
+            const updated = prev.map((sw, i) => {
+              const cfg = incomingState.switchConfigs.find((c: any) => c.index === i);
+              if (cfg) {
+                return {
+                  ...sw,
+                  name: cfg.name || sw.name,
+                  iconPath: cfg.iconPath !== undefined ? cfg.iconPath : sw.iconPath,
+                };
+              }
+              return sw;
+            });
+            try {
+              if (deviceId) {
+                localStorage.setItem(`neuro_switch_configs_${deviceId}`, JSON.stringify(updated));
+              }
+            } catch {}
+            return updated;
+          });
+        }
+
         const switchMap = incomingState.switches || incomingState.payload || (typeof incomingState.state === 'object' ? incomingState.state : null);
         if (switchMap && typeof switchMap === 'object') {
           // Acknowledged by hardware: clear rollback timer for each updated channel
@@ -315,6 +376,9 @@ export const TouchPanelLayout = ({
   const persistSwitches = (updated: SwitchItemConfig[]) => {
     setSwitches(updated);
     try {
+      if (deviceId) {
+        localStorage.setItem(`neuro_switch_configs_${deviceId}`, JSON.stringify(updated));
+      }
       localStorage.setItem(`neuro_touch_panel_${modelCode}_${switchCount}`, JSON.stringify(updated));
     } catch {
       // ignore
@@ -503,7 +567,7 @@ export const TouchPanelLayout = ({
     }
   };
 
-  const handleSaveCustomization = () => {
+  const handleSaveCustomization = async () => {
     if (editingIndex === null) return;
     const finalName = draftName.trim() || `Switch ${editingIndex + 1}`;
     
@@ -520,6 +584,20 @@ export const TouchPanelLayout = ({
 
     persistSwitches(updated);
     setEditingIndex(null);
+
+    // Sync to PostgreSQL backend & broadcast to all active sessions (e.g. browser)
+    if (deviceId) {
+      try {
+        const configsToSync = updated.map(s => ({
+          index: s.index,
+          name: s.name,
+          iconPath: s.iconPath || '',
+        }));
+        await deviceApi.updateSwitchConfigs(deviceId, configsToSync);
+      } catch (err) {
+        console.warn('Failed to sync switch configs to backend:', err);
+      }
+    }
   };
 
   // Quick preset labels
@@ -594,9 +672,9 @@ export const TouchPanelLayout = ({
         <img 
           src={getAssetUrl(`ICONS/${sw.iconPath}`)} 
           alt=""
-          className={`w-7 h-7 sm:w-9 sm:h-9 object-contain transition-all duration-300 pointer-events-none brightness-0 invert ${
+          className={`w-10 h-10 sm:w-12 sm:h-12 object-contain transition-all duration-300 pointer-events-none brightness-0 invert ${
             isOn 
-              ? 'filter drop-shadow-[0_0_12px_rgba(56,189,248,1)] opacity-100' 
+              ? 'filter drop-shadow-[0_0_14px_rgba(56,189,248,1)] opacity-100 scale-105' 
               : 'opacity-90 group-hover:opacity-100'
           }`}
         />
@@ -621,67 +699,68 @@ export const TouchPanelLayout = ({
 
     return (
       <IconComp 
-        className={`w-7 h-7 sm:w-8 sm:h-8 transition-all duration-300 pointer-events-none text-white ${
+        className={`w-9 h-9 sm:w-11 sm:h-11 transition-all duration-300 pointer-events-none text-white ${
           isOn 
-            ? 'drop-shadow-[0_0_12px_rgba(56,189,248,1)] opacity-100' 
+            ? 'drop-shadow-[0_0_14px_rgba(56,189,248,1)] opacity-100 scale-105' 
             : 'opacity-90 group-hover:opacity-100'
         }`}
-        strokeWidth={2.3}
+        strokeWidth={2.4}
       />
     );
   };
 
-  // Dedicated Full-Screen Switch Customization View (Pushed on Long Press)
-  if (editingIndex !== null) {
-    return (
-      <div className="fixed inset-0 z-50 bg-[#090d16] text-white flex flex-col overflow-hidden animate-in fade-in select-none">
-        {/* Dedicated Screen Top Header */}
-        <header className="w-full bg-[#0d1527] border-b border-slate-800/90 px-4 sm:px-6 pt-[max(0.75rem,calc(env(safe-area-inset-top,0px)+var(--android-status-top,0px)))] pb-3.5 flex items-center justify-between flex-shrink-0 shadow-lg">
-          <button
-            type="button"
-            onClick={() => setEditingIndex(null)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-800/90 hover:bg-slate-700 text-slate-200 hover:text-white text-xs sm:text-sm font-bold transition-all cursor-pointer border border-slate-700 active:scale-95"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            <span>Back</span>
-          </button>
+  // Dedicated Full-Screen Switch Customization View (Pushed on Long Press, rendered via Portal)
+  if (editingIndex !== null && typeof document !== 'undefined') {
+    return createPortal(
+      <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4 select-none animate-in fade-in">
+        <div className="bg-[#0b1329] border border-slate-700/80 rounded-t-[32px] sm:rounded-3xl w-full max-w-lg max-h-[92vh] flex flex-col shadow-2xl overflow-hidden text-white">
+          {/* Dedicated Screen Top Header */}
+          <header className="w-full bg-[#0d1730] border-b border-slate-800/90 px-4 sm:px-6 py-3.5 flex items-center justify-between flex-shrink-0 shadow-lg">
+            <button
+              type="button"
+              onClick={() => setEditingIndex(null)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-800/90 hover:bg-slate-700 text-slate-200 hover:text-white text-xs sm:text-sm font-bold transition-all cursor-pointer border border-slate-700 active:scale-95"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span>Back</span>
+            </button>
 
-          <div className="text-center px-2">
-            <h2 className="text-sm sm:text-base font-extrabold text-white tracking-tight">
-              Edit Switch {editingIndex + 1}
-            </h2>
-            <p className="text-[10px] sm:text-[11px] text-[#38bdf8] font-mono">
-              {modelCode} &bull; Channel {editingIndex + 1}
-            </p>
-          </div>
+            <div className="text-center px-2">
+              <h2 className="text-sm sm:text-base font-extrabold text-white tracking-tight">
+                Edit Switch {editingIndex + 1}
+              </h2>
+              <p className="text-[10px] sm:text-[11px] text-[#38bdf8] font-mono">
+                {modelCode} &bull; Channel {editingIndex + 1}
+              </p>
+            </div>
 
-          <button
-            type="button"
-            onClick={handleSaveCustomization}
-            className="px-4 py-1.5 rounded-full bg-[#0284c7] hover:bg-sky-500 text-white text-xs sm:text-sm font-bold transition-all shadow-md active:scale-95 cursor-pointer flex items-center gap-1.5"
-          >
-            <CheckCircle2 className="w-4 h-4" />
-            <span>Save</span>
-          </button>
-        </header>
+            <button
+              type="button"
+              onClick={handleSaveCustomization}
+              className="px-4 py-1.5 rounded-full bg-[#0284c7] hover:bg-sky-500 text-white text-xs sm:text-sm font-bold transition-all shadow-md active:scale-95 cursor-pointer flex items-center gap-1.5"
+            >
+              <CheckCircle2 className="w-4 h-4" />
+              <span>Save</span>
+            </button>
+          </header>
 
-        {/* Dedicated Screen Scrollable Body */}
-        <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-4 space-y-4 max-w-2xl mx-auto w-full pb-[calc(2rem+max(var(--android-nav-bottom,0px),env(safe-area-inset-bottom,0px)))]">
-          
-          {/* Live Switch Preview Card */}
-          <div className="bg-[#101b33] rounded-3xl p-4 border border-sky-500/20 shadow-md flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="relative rounded-full aspect-square w-14 h-14 bg-[#0b1424] border-2 border-white ring-2 ring-[#38bdf8] flex items-center justify-center shadow-[0_0_15px_rgba(56,189,248,0.6)]">
-                {draftIconPath ? (
-                  <img 
-                    src={getAssetUrl(`ICONS/${draftIconPath}`)} 
-                    alt="Preview" 
-                    className="w-7 h-7 object-contain brightness-0 invert"
-                  />
-                ) : (
-                  <Power className="w-7 h-7 text-white" />
-                )}
-              </div>
+          {/* Dedicated Screen Scrollable Body */}
+          <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-4 space-y-4 max-w-2xl mx-auto w-full pb-[calc(2rem+max(var(--android-nav-bottom,0px),env(safe-area-inset-bottom,0px)))]">
+            
+            {/* Live Switch Preview Card */}
+            <div className="bg-[#101b33] rounded-3xl p-4 border border-sky-500/20 shadow-md flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="relative rounded-full aspect-square w-16 h-16 bg-[#0b1424] border-2 border-white ring-4 ring-[#38bdf8] flex items-center justify-center shadow-[0_0_20px_rgba(56,189,248,0.7)]">
+                  {draftIconPath ? (
+                    <img 
+                      src={getAssetUrl(`ICONS/${draftIconPath}`)} 
+                      alt="Preview" 
+                      className="w-10 h-10 object-contain brightness-0 invert drop-shadow-[0_0_12px_rgba(56,189,248,1)]"
+                    />
+                  ) : (
+                    <Power className="w-9 h-9 text-white drop-shadow-[0_0_12px_rgba(56,189,248,1)]" />
+                  )}
+                </div>
               <div>
                 <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block">Preview</span>
                 <span className="text-sm sm:text-base font-bold text-white font-sans">
@@ -866,11 +945,12 @@ export const TouchPanelLayout = ({
               <span>Save Switch</span>
             </button>
           </div>
-
         </div>
       </div>
-    );
-  }
+    </div>,
+    document.body
+  );
+}
 
   return (
     <div className="w-full select-none">
@@ -937,6 +1017,13 @@ export const TouchPanelLayout = ({
                     onTouchStart={() => handleTouchStart(idx)}
                     onTouchEnd={handleTouchEnd}
                     onTouchCancel={handleTouchEnd}
+                    onMouseDown={() => handleTouchStart(idx)}
+                    onMouseUp={handleTouchEnd}
+                    onMouseLeave={handleTouchEnd}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      if (isOnline) openCustomizeModal(idx);
+                    }}
                     onClick={() => handleClick(idx)}
                     className={`group relative rounded-full aspect-square w-[68px] h-[68px] sm:w-22 sm:h-22 flex items-center justify-center select-none transition-all duration-300 ease-out ${
                       !isOnline
@@ -2089,6 +2176,7 @@ interface DynamicDeviceLayoutProps {
   deviceName?: string;
   deviceId?: string;
   initialSwitches?: Record<string, boolean>;
+  switchConfigs?: Array<{ index: number; name: string; iconPath?: string }>;
   isOnline?: boolean;
 }
 
@@ -2097,6 +2185,7 @@ export const DynamicDeviceLayout = ({
   deviceName, 
   deviceId, 
   initialSwitches,
+  switchConfigs,
   isOnline = true
 }: DynamicDeviceLayoutProps) => {
   const registered = MODEL_REGISTRY[modelCode] || MODEL_REGISTRY['TP8'];
@@ -2120,6 +2209,7 @@ export const DynamicDeviceLayout = ({
           deviceName={deviceName}
           deviceId={deviceId}
           initialSwitches={initialSwitches}
+          switchConfigs={switchConfigs}
           isOnline={isOnline}
         />
       );

@@ -70,6 +70,7 @@ class DeviceService {
       CREATE INDEX IF NOT EXISTS idx_devices_home_id ON devices(home_id);
       ALTER TABLE devices ADD COLUMN IF NOT EXISTS icon VARCHAR(255);
       ALTER TABLE devices ADD COLUMN IF NOT EXISTS switches JSONB DEFAULT '{}';
+      ALTER TABLE devices ADD COLUMN IF NOT EXISTS switch_configs JSONB DEFAULT '[]';
       ALTER TABLE devices ADD COLUMN IF NOT EXISTS uptime_sec INT DEFAULT NULL;
 
       CREATE TABLE IF NOT EXISTS device_endpoints (
@@ -77,6 +78,7 @@ class DeviceService {
           device_id VARCHAR(64) NOT NULL REFERENCES devices(device_id) ON DELETE CASCADE,
           endpoint_index INT NOT NULL,
           name VARCHAR(100) NOT NULL,
+          icon VARCHAR(255) DEFAULT NULL,
           endpoint_type VARCHAR(20) NOT NULL CHECK (endpoint_type IN ('RELAY', 'PHASE', 'SENSOR')),
           state JSONB DEFAULT '{"status": "OFF"}',
           is_favorite BOOLEAN DEFAULT FALSE,
@@ -680,6 +682,55 @@ class DeviceService {
       state: targetState,
       switches: updatedSwitches,
     };
+  }
+
+  /**
+   * Updates switch names and icons across PostgreSQL and broadcasts to all clients
+   */
+  public async updateSwitchConfigs(
+    deviceId: string,
+    configs: Array<{ index: number; name: string; iconPath?: string }>
+  ): Promise<any> {
+    try {
+      // 1. Update devices table switch_configs
+      await db.query(
+        `UPDATE devices 
+         SET switch_configs = $1::jsonb,
+             updated_at = CURRENT_TIMESTAMP 
+         WHERE device_id = $2 OR id::text = $2`,
+        [JSON.stringify(configs), deviceId]
+      );
+
+      // 2. Update device_endpoints rows
+      for (const item of configs) {
+        const endpointIndex = item.index + 1;
+        if (item.name) {
+          await db.query(
+            `UPDATE device_endpoints 
+             SET name = $1, icon = $2 
+             WHERE (device_id = $3 OR device_id = (SELECT device_id FROM devices WHERE id::text = $3))
+               AND endpoint_index = $4`,
+            [item.name, item.iconPath || null, deviceId, endpointIndex]
+          ).catch(() => {});
+        }
+      }
+
+      // 3. Broadcast to all WebSocket clients (mobile app + web browser)
+      socketManager.broadcastDeviceUpdate(deviceId, {
+        deviceId,
+        switchConfigs: configs,
+      });
+
+      console.log(`🔄 [SWITCH CONFIGS SYNC] Updated switch configs for device ${deviceId} and broadcasted`);
+      return {
+        success: true,
+        deviceId,
+        switchConfigs: configs,
+      };
+    } catch (err) {
+      console.error(`❌ Failed to update switch configs for device ${deviceId}:`, err);
+      throw err;
+    }
   }
 }
 

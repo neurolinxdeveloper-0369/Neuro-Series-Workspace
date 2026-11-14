@@ -12,6 +12,8 @@ export interface Device {
   ip_address?: string;
   firmware_version?: string;
   is_online?: boolean;
+  switches?: Record<string, boolean>;
+  switch_configs?: Array<{ index: number; name: string; iconPath?: string }>;
   endpoints?: any[];
   created_at?: string;
   updated_at?: string;
@@ -145,5 +147,17 @@ export const deviceApi = {
       state: boolean;
       switches: Record<string, boolean>;
     }>(`/devices/${id}/action`, { channel, action });
+  },
+
+  updateSwitchConfigs: async (id: string, configs: Array<{ index: number; name: string; iconPath?: string }>): Promise<{
+    success: boolean;
+    deviceId: string;
+    switchConfigs: Array<{ index: number; name: string; iconPath?: string }>;
+  }> => {
+    return api.put<{
+      success: boolean;
+      deviceId: string;
+      switchConfigs: Array<{ index: number; name: string; iconPath?: string }>;
+    }>(`/devices/${id}/switches/config`, { configs });
   },
 };

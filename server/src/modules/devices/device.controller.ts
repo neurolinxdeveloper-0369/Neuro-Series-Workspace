@@ -116,3 +116,23 @@ deviceRouter.patch('/:id/state', async (req, res) => {
   }
 });
 
+// PUT & POST /api/devices/:id/switches/config - Update switch names and icons across devices
+const handleSwitchConfigsUpdate = async (req: any, res: any) => {
+  try {
+    const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const configs = req.body.configs || req.body.switchConfigs || req.body;
+    if (!Array.isArray(configs)) {
+      return res.status(400).json({ success: false, error: 'Array of switch configurations is required' });
+    }
+    const result = await deviceService.updateSwitchConfigs(id, configs);
+    return res.json({ success: true, ...result });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Failed to update switch configs';
+    return res.status(500).json({ success: false, error: message });
+  }
+};
+
+deviceRouter.put('/:id/switches/config', handleSwitchConfigsUpdate);
+deviceRouter.post('/:id/switches/config', handleSwitchConfigsUpdate);
+deviceRouter.put('/:id/switch-configs', handleSwitchConfigsUpdate);
+deviceRouter.post('/:id/switch-configs', handleSwitchConfigsUpdate);

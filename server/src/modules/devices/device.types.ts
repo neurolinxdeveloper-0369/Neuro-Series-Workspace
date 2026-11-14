@@ -30,6 +30,8 @@ export interface DeviceRecord {
   rssi?: number | null;
   ip_address?: string | null;
   firmware_version?: string | null;
+  switches?: Record<string, boolean>;
+  switch_configs?: Array<{ index: number; name: string; iconPath?: string }>;
   is_online: boolean;
   last_seen_at?: string | null;
   created_at: string;
@@ -41,6 +43,7 @@ export interface DeviceEndpointRecord {
   device_id: string;
   endpoint_index: number;
   name: string;
+  icon?: string | null;
   endpoint_type: 'RELAY' | 'PHASE' | 'SENSOR';
   state: Record<string, unknown>;
   is_favorite: boolean;

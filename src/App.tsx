@@ -188,6 +188,7 @@ export function App() {
             rssi: incomingState.rssi !== undefined ? incomingState.rssi : dev.rssi,
             last_seen_at: incomingState.last_seen_at || nowIso,
             switches: incomingState.switches ? { ...dev.switches, ...incomingState.switches } : dev.switches,
+            switch_configs: incomingState.switchConfigs || dev.switch_configs,
           };
         }
         return dev;
@@ -201,6 +202,7 @@ export function App() {
             rssi: incomingState.rssi !== undefined ? incomingState.rssi : prev.rssi,
             last_seen_at: incomingState.last_seen_at || nowIso,
             switches: incomingState.switches ? { ...prev.switches, ...incomingState.switches } : prev.switches,
+            switch_configs: incomingState.switchConfigs || prev.switch_configs,
           };
         }
         return prev;
@@ -2482,6 +2484,7 @@ export function App() {
                   deviceName={selectedDeviceForControl.custom_name}
                   deviceId={selectedDeviceForControl.device_id || selectedDeviceForControl.id}
                   initialSwitches={selectedDeviceForControl.switches}
+                  switchConfigs={selectedDeviceForControl.switch_configs}
                   isOnline={selectedDeviceForControl.is_online !== false}
                 />
               </div>
