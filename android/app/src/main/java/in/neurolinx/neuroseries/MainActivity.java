@@ -543,6 +543,16 @@ public class MainActivity extends BridgeActivity {
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         
+        // Ensure status bar seamlessly matches #d4edf4 theme with dark icons
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            getWindow().setStatusBarColor(android.graphics.Color.parseColor("#d4edf4"));
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            getWindow().getDecorView().setSystemUiVisibility(
+                getWindow().getDecorView().getSystemUiVisibility() | android.view.View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+            );
+        }
+        
         // Runtime camera, location, and Wi-Fi permissions for Android 6.0+ (API 23+)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             String[] perms;

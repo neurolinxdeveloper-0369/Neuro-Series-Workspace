@@ -121,8 +121,8 @@
     pointer-events: none;
     background-color: #d4edf4;
     background-image: 
-      radial-gradient(circle max(240px, 30vw) at 0% 0%, #ffffff 0%, rgba(255, 255, 255, 0.85) 25%, rgba(255, 255, 255, 0.35) 60%, rgba(255, 255, 255, 0) 100%),
-      radial-gradient(circle max(240px, 30vw) at 100% 100%, #ffffff 0%, rgba(255, 255, 255, 0.85) 25%, rgba(255, 255, 255, 0.35) 60%, rgba(255, 255, 255, 0) 100%);
+      radial-gradient(circle max(320px, 40vw) at 0% 0%, rgba(255, 255, 255, 0.40) 0%, rgba(255, 255, 255, 0.15) 45%, transparent 100%),
+      radial-gradient(circle max(320px, 40vw) at 100% 100%, rgba(255, 255, 255, 0.40) 0%, rgba(255, 255, 255, 0.15) 45%, transparent 100%);
     background-repeat: no-repeat;
   }
   .brand-text-responsive {
@@ -206,11 +206,19 @@
     box-shadow: 0 12px 32px -4px rgba(15, 23, 42, 0.14), 0 4px 12px rgba(0, 0, 0, 0.05), inset 0 1.5px 2px #ffffff !important;
   }
 
-  /* Content wrapper adjustment to ensure bottom card clears lifted nav bar and top clears phone status icons and 2-row header */
+  /* Content wrapper adjustment to ensure bottom card clears lifted nav bar and top clears phone status icons and header */
   .explore-slider-wrapper {
     top: calc(7rem + max(var(--android-status-top, 0px), env(safe-area-inset-top, 0px), 24px)) !important;
     bottom: calc(4.75rem + max(var(--android-nav-bottom, 0px), env(safe-area-inset-bottom, 0px))) !important;
     padding-bottom: calc(1.75rem + max(var(--android-nav-bottom, 0px), env(safe-area-inset-bottom, 0px))) !important;
+  }
+
+  .explore-slider-wrapper.top-header-1row {
+    top: calc(4rem + max(var(--android-status-top, 0px), env(safe-area-inset-top, 0px), 24px)) !important;
+  }
+
+  .explore-slider-wrapper.top-header-2rows {
+    top: calc(7rem + max(var(--android-status-top, 0px), env(safe-area-inset-top, 0px), 24px)) !important;
   }
 
   /* Status Bar safe area top padding for mobile screen headers & full-page containers */

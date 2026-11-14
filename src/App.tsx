@@ -49,6 +49,7 @@ import { DynamicDeviceLayout } from './components/DynamicDeviceLayout';
 import { realtimeSocket } from './services/socket';
 import { routineStorage, formatScheduleTimeToIst, type SmartRoutine, type RoutineAction } from './services/routine';
 import { SplashScreen } from '@capacitor/splash-screen';
+import { StatusBar, Style } from '@capacitor/status-bar';
 
 export function App() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -363,6 +364,12 @@ export function App() {
     };
 
     updateNavInsets();
+    try {
+      StatusBar.setStyle({ style: Style.Dark });
+      StatusBar.setBackgroundColor({ color: '#d4edf4' });
+    } catch {
+      // web fallback
+    }
     window.addEventListener('resize', updateNavInsets);
     return () => window.removeEventListener('resize', updateNavInsets);
   }, []);
@@ -1281,7 +1288,7 @@ export function App() {
       )}
 
       {/* 4. Mobile & Tablet Content (Explore Slider + Pure White Cards based on activeTab; Menu has all content cleared) */}
-      <main className="explore-slider-wrapper fixed inset-x-0 top-[6.75rem] sm:top-28 bottom-20 sm:bottom-6 overflow-y-auto overflow-x-hidden flex flex-col items-center justify-start pointer-events-none z-20 px-4 sm:px-6 sm:pl-24 pb-8 space-y-3.5">
+      <main className={`explore-slider-wrapper ${isSignedIn && activeTab === 'home' ? 'top-header-2rows' : 'top-header-1row'} fixed inset-x-0 top-[6.75rem] sm:top-28 bottom-20 sm:bottom-6 overflow-y-auto overflow-x-hidden flex flex-col items-center justify-start pointer-events-none z-20 px-4 sm:px-6 sm:pl-24 pb-8 space-y-3.5`}>
         {activeTab === 'home' && (
           <>
             {/* Real-time Clock View & User Details */}
@@ -1389,23 +1396,14 @@ export function App() {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center">
                   <button
                     type="button"
                     onClick={() => handleProtectedAction(() => setIsCreateRoomOpen(true))}
-                    className="flex items-center gap-1.5 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-full text-xs font-bold bg-[#0284c7] hover:bg-sky-600 text-white shadow-xs transition-all active:scale-95 cursor-pointer"
+                    className="flex items-center gap-1.5 px-3.5 py-1.5 sm:px-4 sm:py-2 rounded-full text-xs font-bold bg-[#0284c7] hover:bg-sky-600 text-white shadow-xs transition-all active:scale-95 cursor-pointer"
                   >
                     <FolderPlus className="w-3.5 h-3.5" />
                     <span>+ Create Room</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handleProtectedAction(() => setIsAddDeviceOpen(true))}
-                    className="flex items-center gap-1 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-full text-xs font-bold bg-white hover:bg-slate-50 text-slate-700 border border-slate-200/90 shadow-xs transition-all active:scale-95 cursor-pointer"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span className="hidden sm:inline">Add Device</span>
                   </button>
                 </div>
               </div>
