@@ -488,11 +488,11 @@ export function App() {
     }
   };
 
-  const handleOpenCreateRoutine = () => {
+  const handleOpenCreateRoutine = (initialType: 'scene' | 'schedule' = 'scene') => {
     setEditingRoutine(null);
     setRoutineDraftName('');
-    setRoutineDraftType('scene');
-    setRoutineDraftIcon('sun');
+    setRoutineDraftType(initialType);
+    setRoutineDraftIcon(initialType === 'scene' ? 'sun' : 'clock');
     setRoutineDraftRoomId('all');
     setRoutineDraftScheduleTime('07:30');
     setRoutineDraftRepeatDays(['Mon', 'Tue', 'Wed', 'Thu', 'Fri']);
@@ -725,6 +725,166 @@ export function App() {
     </div>
   );
 
+  // Contextual Plus Button & Dropdown for Top-Right Header across all screens
+  const renderContextualPlusDropdown = () => (
+    <div className="relative" data-dropdown>
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          setIsPlusMenuOpen(!isPlusMenuOpen);
+          setIsDotsMenuOpen(false);
+          setIsHomeDropdownOpen(false);
+        }}
+        className="w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-white/90 hover:bg-white text-slate-800 flex items-center justify-center transition-all duration-200 hover:scale-105 active:scale-95 shadow-sm border border-white/80 cursor-pointer"
+        title="Add actions"
+      >
+        <Plus className="w-5 h-5 text-slate-800" strokeWidth={2.4} />
+      </button>
+
+      {isPlusMenuOpen && (
+        <div 
+          onClick={(e) => e.stopPropagation()}
+          className="absolute right-0 top-12 w-56 rounded-3xl bg-white shadow-2xl border border-slate-100/90 p-2 z-50 animate-in fade-in zoom-in-95 duration-150"
+          style={{
+            boxShadow: '0 20px 48px -10px rgba(15, 23, 42, 0.18), 0 4px 16px rgba(0, 0, 0, 0.04)',
+          }}
+        >
+          {activeTab === 'devices' && (
+            <>
+              <button
+                onClick={() => {
+                  setIsPlusMenuOpen(false);
+                  handleProtectedAction(() => setIsCreateRoomOpen(true));
+                }}
+                className="w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-2xl hover:bg-slate-50 text-slate-900 text-sm font-semibold transition-colors cursor-pointer"
+              >
+                <FolderPlus className="w-4 h-4 text-[#0284c7]" strokeWidth={2.3} />
+                <span>Add Room</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  setIsPlusMenuOpen(false);
+                  handleProtectedAction(() => setIsAddDeviceOpen(true));
+                }}
+                className="w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-2xl hover:bg-slate-50 text-slate-900 text-sm font-semibold transition-colors cursor-pointer"
+              >
+                <Plus className="w-4 h-4 text-[#0284c7]" strokeWidth={2.3} />
+                <span>Add Device</span>
+              </button>
+            </>
+          )}
+
+          {activeTab === 'routines' && (
+            <>
+              <button
+                onClick={() => {
+                  setIsPlusMenuOpen(false);
+                  handleProtectedAction(() => handleOpenCreateRoutine('scene'));
+                }}
+                className="w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-2xl hover:bg-slate-50 text-slate-900 text-sm font-semibold transition-colors cursor-pointer"
+              >
+                <Sparkles className="w-4 h-4 text-amber-500" strokeWidth={2.3} />
+                <span>Add Scene</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  setIsPlusMenuOpen(false);
+                  handleProtectedAction(() => handleOpenCreateRoutine('schedule'));
+                }}
+                className="w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-2xl hover:bg-slate-50 text-slate-900 text-sm font-semibold transition-colors cursor-pointer"
+              >
+                <Clock className="w-4 h-4 text-[#0284c7]" strokeWidth={2.3} />
+                <span>Add Schedule</span>
+              </button>
+            </>
+          )}
+
+          {activeTab === 'explore' && (
+            <>
+              <button
+                onClick={() => {
+                  setIsPlusMenuOpen(false);
+                  setIsExploreDismissed(false);
+                  if (typeof window !== 'undefined') {
+                    sessionStorage.removeItem('neuro_explore_dismissed');
+                  }
+                }}
+                className="w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-2xl hover:bg-slate-50 text-slate-900 text-sm font-semibold transition-colors cursor-pointer"
+              >
+                <Zap className="w-4 h-4 text-amber-500" strokeWidth={2.3} />
+                <span>Smart Feature</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  setIsPlusMenuOpen(false);
+                  setIsExploreDismissed(false);
+                  if (typeof window !== 'undefined') {
+                    sessionStorage.removeItem('neuro_explore_dismissed');
+                  }
+                }}
+                className="w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-2xl hover:bg-slate-50 text-slate-900 text-sm font-semibold transition-colors cursor-pointer"
+              >
+                <Layers className="w-4 h-4 text-[#0284c7]" strokeWidth={2.3} />
+                <span>Explore Features</span>
+              </button>
+            </>
+          )}
+
+          {(activeTab === 'home' || activeTab === 'menu') && (
+            <>
+              <button
+                onClick={() => {
+                  setIsPlusMenuOpen(false);
+                  handleProtectedAction(() => setIsAddDeviceOpen(true));
+                }}
+                className="w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-2xl hover:bg-slate-50 text-slate-900 text-sm font-semibold transition-colors cursor-pointer"
+              >
+                <Plus className="w-4 h-4 text-[#0284c7]" strokeWidth={2.3} />
+                <span>Add Device</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  setIsPlusMenuOpen(false);
+                  handleProtectedAction(() => setIsCreateRoomOpen(true));
+                }}
+                className="w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-2xl hover:bg-slate-50 text-slate-900 text-sm font-semibold transition-colors cursor-pointer"
+              >
+                <FolderPlus className="w-4 h-4 text-[#0284c7]" strokeWidth={2.3} />
+                <span>Add Room</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  setIsPlusMenuOpen(false);
+                  handleProtectedAction(() => handleOpenCreateRoutine('scene'));
+                }}
+                className="w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-2xl hover:bg-slate-50 text-slate-900 text-sm font-semibold transition-colors cursor-pointer"
+              >
+                <Sparkles className="w-4 h-4 text-amber-500" strokeWidth={2.3} />
+                <span>Add Routine</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  setIsPlusMenuOpen(false);
+                  handleProtectedAction(() => setIsInviteMemberOpen(true));
+                }}
+                className="w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-2xl hover:bg-slate-50 text-slate-900 text-sm font-semibold transition-colors cursor-pointer"
+              >
+                <User className="w-4 h-4 text-emerald-500" strokeWidth={2.3} />
+                <span>Invite Member</span>
+              </button>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+
   // Room Sub-Tabs bar with integrated mobile & desktop search
   const renderRoomTabsBar = () => {
     if (!isSignedIn) return null;
@@ -831,7 +991,7 @@ export function App() {
         }}
       />
 
-      {/* Top Row: YOUR SPACE CONNECTIVITY (Left) & + Add Device (Right) */}
+      {/* Top Row: YOUR SPACE CONNECTIVITY */}
       <div className="relative z-10 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
           <span className="w-2 h-2 rounded-full bg-[#0284c7] shadow-[0_0_8px_#38bdf8] flex-shrink-0" />
@@ -839,15 +999,6 @@ export function App() {
             Your Space Connectivity
           </h2>
         </div>
-
-        <button
-          type="button"
-          onClick={() => handleProtectedAction(() => setIsAddDeviceOpen(true))}
-          className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold bg-[#0284c7] hover:bg-sky-600 text-white transition-all shadow-xs cursor-pointer active:scale-95 flex-shrink-0"
-        >
-          <Plus className="w-3.5 h-3.5" strokeWidth={2.5} />
-          <span>Add Device</span>
-        </button>
       </div>
 
       {/* Divider */}
@@ -1040,28 +1191,12 @@ export function App() {
             {renderHomeSelectorDropdown()}
           </div>
 
-          {/* Top-Right: Plus and Three-Dots Action Capsule */}
-          <div className="flex items-center pointer-events-auto select-none">
+          {/* Top-Right: Plus and Three-Dots Action Capsules */}
+          <div className="flex items-center pointer-events-auto select-none gap-2">
+            {renderContextualPlusDropdown()}
+
+            {/* Three Dots Button */}
             <div className="relative flex items-center h-10 sm:h-11 rounded-full bg-white/90 hover:bg-white border border-white/80 shadow-sm px-1.5" data-dropdown>
-              
-              {/* Plus Button */}
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setIsPlusMenuOpen(!isPlusMenuOpen);
-                  setIsDotsMenuOpen(false);
-                  setIsHomeDropdownOpen(false);
-                }}
-                className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-slate-100 text-slate-800 transition-colors cursor-pointer"
-                title="Add actions"
-              >
-                <Plus className="w-5 h-5 text-slate-800" strokeWidth={2.4} />
-              </button>
-
-              {/* Vertical divider */}
-              <div className="w-px h-4 bg-slate-200 mx-1" />
-
-              {/* Three Dots Button */}
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -1074,58 +1209,6 @@ export function App() {
               >
                 <MoreVertical className="w-4 h-4 text-slate-800" strokeWidth={2.4} />
               </button>
-
-              {/* Plus Quick Actions Dropdown Menu (Reference 2) */}
-              {isPlusMenuOpen && (
-                <div 
-                  onClick={(e) => e.stopPropagation()}
-                  className="absolute right-0 top-12 w-56 rounded-[28px] bg-white shadow-2xl border border-slate-100/90 p-2 z-50 animate-in fade-in zoom-in-95 duration-150"
-                  style={{
-                    boxShadow: '0 20px 48px -10px rgba(15, 23, 42, 0.18), 0 4px 16px rgba(0, 0, 0, 0.04)',
-                  }}
-                >
-                  <button
-                    onClick={() => {
-                      setIsPlusMenuOpen(false);
-                    }}
-                    className="w-full text-left px-4 py-2.5 rounded-2xl hover:bg-slate-50 text-slate-900 text-sm sm:text-base font-semibold transition-colors cursor-pointer"
-                  >
-                    Add favorites
-                  </button>
-
-                  <div className="h-px bg-slate-100 my-1 mx-2" />
-
-                  <button
-                    onClick={() => {
-                      setIsPlusMenuOpen(false);
-                      setIsAddDeviceOpen(true);
-                    }}
-                    className="w-full text-left px-4 py-2.5 rounded-2xl hover:bg-slate-50 text-slate-900 text-sm sm:text-base font-semibold transition-colors cursor-pointer"
-                  >
-                    Add device
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      setIsPlusMenuOpen(false);
-                      setActiveTab('routines');
-                    }}
-                    className="w-full text-left px-4 py-2.5 rounded-2xl hover:bg-slate-50 text-slate-900 text-sm sm:text-base font-semibold transition-colors cursor-pointer"
-                  >
-                    Create routine
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      setIsPlusMenuOpen(false);
-                      setIsInviteMemberOpen(true);
-                    }}
-                    className="w-full text-left px-4 py-2.5 rounded-2xl hover:bg-slate-50 text-slate-900 text-sm sm:text-base font-semibold transition-colors cursor-pointer"
-                  >
-                    Invite member
-                  </button>
-                </div>
-              )}
 
               {/* Three Dots Context Dropdown Menu */}
               {isDotsMenuOpen && (
@@ -1158,7 +1241,6 @@ export function App() {
                   </button>
                 </div>
               )}
-
             </div>
           </div>
           </div>
@@ -1169,10 +1251,13 @@ export function App() {
           </div>
         </header>
       ) : isSignedIn ? (
-        /* When Signed In on other tabs (Devices, Explore, Routines, Menu): Display ONLY Home Selector Capsule */
+        /* When Signed In on other tabs (Devices, Explore, Routines, Menu): Display Home Selector Capsule & Contextual Plus Dropdown */
         <header className="app-top-header fixed top-4 sm:top-5 inset-x-0 z-30 flex items-center justify-between px-4 sm:px-6 md:px-8 pointer-events-none">
           <div className="flex items-center pointer-events-auto select-none">
             {renderHomeSelectorDropdown()}
+          </div>
+          <div className="flex items-center pointer-events-auto select-none">
+            {renderContextualPlusDropdown()}
           </div>
         </header>
       ) : (
@@ -1310,17 +1395,6 @@ export function App() {
                     </p>
                   </div>
                 </div>
-
-                <div className="flex items-center">
-                  <button
-                    type="button"
-                    onClick={() => handleProtectedAction(() => setIsCreateRoomOpen(true))}
-                    className="flex items-center gap-1.5 px-3.5 py-1.5 sm:px-4 sm:py-2 rounded-full text-xs font-bold bg-[#0284c7] hover:bg-sky-600 text-white shadow-xs transition-all active:scale-95 cursor-pointer"
-                  >
-                    <FolderPlus className="w-3.5 h-3.5" />
-                    <span>+ Create Room</span>
-                  </button>
-                </div>
               </div>
 
               {/* Room Tabs & Search Bar for filtering devices */}
@@ -1428,15 +1502,6 @@ export function App() {
                     </p>
                   </div>
                 </div>
-
-                <button
-                  type="button"
-                  onClick={() => handleProtectedAction(() => handleOpenCreateRoutine())}
-                  className="flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-bold bg-[#0284c7] hover:bg-sky-600 text-white shadow-xs transition-all active:scale-95 cursor-pointer"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>+ Create Routine</span>
-                </button>
               </div>
 
               {/* Room Filter Pills Bar: "All Devices" + List of Rooms */}
