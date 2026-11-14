@@ -518,10 +518,11 @@ export function App() {
   };
 
   const handleOpenEditRoutine = (routine: SmartRoutine) => {
+    const isSchedule = routine.type === 'schedule' && routine.icon === 'clock';
     setEditingRoutine(routine);
     setRoutineDraftName(routine.name);
-    setRoutineDraftType(routine.type || 'scene');
-    setRoutineDraftIcon(routine.icon || 'sun');
+    setRoutineDraftType(isSchedule ? 'schedule' : 'scene');
+    setRoutineDraftIcon(routine.icon || (isSchedule ? 'clock' : 'sun'));
     setRoutineDraftRoomId(routine.roomId || 'all');
     setRoutineDraftScheduleTime(routine.scheduleTime ? routine.scheduleTime.replace(/ IST/i, '') : '06:30');
     setRoutineDraftScheduleOffTime(routine.scheduleOffTime ? routine.scheduleOffTime.replace(/ IST/i, '') : '22:00');
@@ -531,31 +532,33 @@ export function App() {
   };
 
   const handleSaveRoutine = async () => {
-    const finalName = routineDraftName.trim() || (routineDraftType === 'scene' ? 'Custom Scene' : 'Timed Schedule');
-    const onTimeIst = routineDraftType === 'schedule' ? formatScheduleTimeToIst(routineDraftScheduleTime) : undefined;
-    const offTimeIst = routineDraftType === 'schedule' && routineDraftScheduleOffTime ? formatScheduleTimeToIst(routineDraftScheduleOffTime) : undefined;
+    const isSchedule = routineDraftType === 'schedule';
+    const finalName = routineDraftName.trim() || (isSchedule ? 'Timed Schedule' : 'Custom Scene');
+    const finalIcon = routineDraftIcon || (isSchedule ? 'clock' : 'sun');
+    const onTimeIst = isSchedule ? formatScheduleTimeToIst(routineDraftScheduleTime) : undefined;
+    const offTimeIst = isSchedule && routineDraftScheduleOffTime ? formatScheduleTimeToIst(routineDraftScheduleOffTime) : undefined;
 
     try {
       if (editingRoutine) {
         await routineApi.updateRoutine(editingRoutine.id, {
           name: finalName,
           type: routineDraftType,
-          icon: routineDraftIcon,
+          icon: finalIcon,
           roomId: routineDraftRoomId,
-          scheduleTime: onTimeIst,
-          scheduleOffTime: offTimeIst,
-          repeatDays: routineDraftType === 'schedule' ? routineDraftRepeatDays : undefined,
+          scheduleTime: isSchedule ? onTimeIst : undefined,
+          scheduleOffTime: isSchedule ? offTimeIst : undefined,
+          repeatDays: isSchedule ? routineDraftRepeatDays : [],
           actions: routineDraftActions,
         });
       } else {
         await routineApi.createRoutine({
           name: finalName,
           type: routineDraftType,
-          icon: routineDraftIcon,
+          icon: finalIcon,
           roomId: routineDraftRoomId,
           scheduleTime: onTimeIst,
           scheduleOffTime: offTimeIst,
-          repeatDays: routineDraftType === 'schedule' ? routineDraftRepeatDays : undefined,
+          repeatDays: isSchedule ? routineDraftRepeatDays : undefined,
           actions: routineDraftActions,
           isActive: true,
         }, activeHome?.id || undefined);
@@ -1720,7 +1723,7 @@ export function App() {
 
                               <div className="flex items-center gap-1">
                                 <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-50 text-[#0284c7] border border-sky-100 font-mono">
-                                  {routine.type === 'schedule' 
+                                  {routine.type === 'schedule' && routine.icon === 'clock' && routine.scheduleTime
                                     ? `ON ${formatScheduleTimeToIst(routine.scheduleTime)}` 
                                     : 'Scene'}
                                 </span>
@@ -1742,7 +1745,7 @@ export function App() {
                             </h4>
 
                             <p className="text-[10px] sm:text-[11px] text-slate-400 line-clamp-1 mt-0.5">
-                              {routine.type === 'schedule' && routine.scheduleOffTime
+                              {routine.type === 'schedule' && routine.icon === 'clock' && routine.scheduleOffTime
                                 ? `ON ${formatScheduleTimeToIst(routine.scheduleTime)} • OFF ${formatScheduleTimeToIst(routine.scheduleOffTime)}`
                                 : routine.actions && routine.actions.length > 0 
                                   ? `${targetLabel} • ${routine.actions.length} action(s)` 
@@ -1753,7 +1756,7 @@ export function App() {
                           {/* Bottom Action: Run Button */}
                           <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between">
                             <span className="text-[10px] font-mono text-slate-400">
-                              {routine.type === 'schedule' ? 'Auto Run' : 'One-tap'}
+                              {routine.type === 'schedule' && routine.icon === 'clock' ? 'Auto Run' : 'One-tap'}
                             </span>
 
                             <button
@@ -2133,7 +2136,10 @@ export function App() {
                 <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 rounded-2xl border border-slate-200">
                   <button
                     type="button"
-                    onClick={() => setRoutineDraftType('scene')}
+                    onClick={() => {
+                      setRoutineDraftType('scene');
+                      if (routineDraftIcon === 'clock') setRoutineDraftIcon('sun');
+                    }}
                     className={`py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
                       routineDraftType === 'scene'
                         ? 'bg-white text-[#0284c7] shadow-xs'
@@ -2145,7 +2151,10 @@ export function App() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => setRoutineDraftType('schedule')}
+                    onClick={() => {
+                      setRoutineDraftType('schedule');
+                      if (routineDraftIcon !== 'clock') setRoutineDraftIcon('clock');
+                    }}
                     className={`py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
                       routineDraftType === 'schedule'
                         ? 'bg-white text-[#0284c7] shadow-xs'
@@ -2155,6 +2164,43 @@ export function App() {
                     <Clock className="w-3.5 h-3.5" />
                     <span>Time Schedule</span>
                   </button>
+                </div>
+              </div>
+
+              {/* Icon Selector */}
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1.5">
+                  Choose Icon
+                </label>
+                <div className="flex items-center gap-2">
+                  {[
+                    { id: 'sun', label: 'Sun', Icon: Sun },
+                    { id: 'moon', label: 'Moon', Icon: Moon },
+                    { id: 'sparkles', label: 'Scene', Icon: Sparkles },
+                    { id: 'zap', label: 'Power', Icon: Zap },
+                    { id: 'clock', label: 'Clock', Icon: Clock },
+                  ].map(item => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => {
+                        setRoutineDraftIcon(item.id as any);
+                        if (item.id === 'clock') {
+                          setRoutineDraftType('schedule');
+                        } else if (routineDraftType === 'schedule' && item.id !== 'clock') {
+                          setRoutineDraftType('scene');
+                        }
+                      }}
+                      className={`flex-1 py-2 rounded-xl flex items-center justify-center border transition-all cursor-pointer ${
+                        routineDraftIcon === item.id
+                          ? 'bg-[#0284c7] text-white border-[#0284c7] shadow-xs'
+                          : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                      }`}
+                      title={item.label}
+                    >
+                      <item.Icon className="w-4 h-4" />
+                    </button>
+                  ))}
                 </div>
               </div>
 
@@ -2448,51 +2494,31 @@ export function App() {
 
             {/* Screen Content Body */}
             <main className="w-full max-w-2xl mx-auto px-3.5 sm:px-6 py-3 sm:py-4 flex-1 flex flex-col gap-3 pb-[calc(3.5rem+max(var(--android-nav-bottom,0px),env(safe-area-inset-bottom,0px)))]">
-              {/* Device Name and Model Name (Device ID hidden, IP deleted) */}
-              <div className="flex items-center gap-2.5 px-1 py-1">
-                <div className="w-9 h-9 rounded-xl bg-white/90 shadow-xs border border-white flex items-center justify-center p-1.5 flex-shrink-0">
-                  {selectedDeviceForControl.model_code === 'GATE' ? (
-                    <div className="w-full h-full rounded-lg bg-gradient-to-br from-sky-500 to-indigo-600 flex items-center justify-center text-white">
-                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M3 21h18" />
-                        <path d="M5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16" />
-                        <path d="M9 21v-4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v4" />
-                      </svg>
-                    </div>
-                  ) : (
-                    <img
-                      src={getAssetUrl('8S.png')}
-                      alt={selectedDeviceForControl.custom_name}
-                      className="w-full h-full object-contain"
-                    />
-                  )}
-                </div>
-
-                <div className="flex items-center gap-2 min-w-0">
-                  <h1 className="text-base sm:text-lg font-extrabold text-slate-900 tracking-tight leading-tight truncate">
-                    {selectedDeviceForControl.custom_name}
-                  </h1>
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-[#0284c7] text-white shadow-2xs font-mono flex-shrink-0">
-                    {selectedDeviceForControl.model_code || 'TP8'}
-                  </span>
-                </div>
+              {/* Device Custom Name (8 Gang Image & Model Name Badge Removed) */}
+              <div className="px-1 py-1">
+                <h1 className="text-base sm:text-lg font-extrabold text-slate-900 tracking-tight leading-tight truncate">
+                  {selectedDeviceForControl.custom_name}
+                </h1>
               </div>
 
-              {/* Total Scenes Running & Schedulers Count (Tap navigates to that room's scenes) */}
+              {/* Total Scenes & Schedulers Count (Accurately distinguishes Scenes and Schedulers) */}
               {(() => {
                 const devRoomId = selectedDeviceForControl.room_id;
                 const devId = selectedDeviceForControl.device_id || selectedDeviceForControl.id;
 
+                const isSched = (r: SmartRoutine) => r.type === 'schedule' && r.icon === 'clock';
+                const isScn = (r: SmartRoutine) => r.type === 'scene' || r.icon !== 'clock';
+
                 const roomScenes = routines.filter(r => 
-                  (r.type === 'scene' || !r.type) && 
+                  isScn(r) && 
                   (r.roomId === devRoomId || r.roomId === 'all' || r.actions?.some(a => a.deviceId === devId))
                 );
                 const roomSchedulers = routines.filter(r => 
-                  r.type === 'schedule' && 
+                  isSched(r) && 
                   (r.roomId === devRoomId || r.roomId === 'all' || r.actions?.some(a => a.deviceId === devId))
                 );
 
-                const runningScenesCount = roomScenes.filter(r => r.isActive !== false).length;
+                const scenesCount = roomScenes.length;
                 const schedulersCount = roomSchedulers.length;
 
                 return (
@@ -2513,7 +2539,7 @@ export function App() {
                     <div className="flex items-center gap-2 sm:gap-2.5 min-w-0 flex-wrap">
                       <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-900 text-xs font-bold shadow-2xs">
                         <Sparkles className="w-3.5 h-3.5 text-amber-600 flex-shrink-0 animate-pulse" />
-                        <span>{runningScenesCount} {runningScenesCount === 1 ? 'Scene' : 'Scenes'} Running</span>
+                        <span>{scenesCount} {scenesCount === 1 ? 'Scene' : 'Scenes'}</span>
                       </div>
 
                       <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-sky-500/15 border border-sky-500/30 text-[#0369a1] text-xs font-bold shadow-2xs">
@@ -2523,7 +2549,7 @@ export function App() {
                     </div>
 
                     <div className="flex items-center gap-1 text-xs font-bold text-[#0284c7] flex-shrink-0 pl-1.5 group-hover:translate-x-0.5 transition-transform">
-                      <span className="hidden xs:inline truncate max-w-[120px] sm:max-w-none">{roomLabel} Scenes</span>
+                      <span className="hidden xs:inline truncate max-w-[120px] sm:max-w-none">{roomLabel} Automations</span>
                       <ChevronRight className="w-4 h-4 text-[#0284c7]" strokeWidth={2.4} />
                     </div>
                   </button>

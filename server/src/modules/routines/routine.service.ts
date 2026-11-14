@@ -106,17 +106,18 @@ export const routineService = {
       RETURNING *;
     `;
 
+    const isSchedule = data.type === 'schedule';
     const values = [
       data.homeId || null,
       userId || null,
       data.name,
       data.description || null,
-      data.icon || 'sun',
+      data.icon || (isSchedule ? 'clock' : 'sun'),
       data.type || 'scene',
       data.roomId || 'all',
-      data.scheduleTime || null,
-      data.scheduleOffTime || null,
-      JSON.stringify(data.repeatDays || []),
+      isSchedule ? (data.scheduleTime || null) : null,
+      isSchedule ? (data.scheduleOffTime || null) : null,
+      JSON.stringify(isSchedule ? (data.repeatDays || []) : []),
       JSON.stringify(data.actions || []),
       data.isActive !== undefined ? data.isActive : true,
     ];
@@ -147,6 +148,18 @@ export const routineService = {
     if (updates.type !== undefined) {
       values.push(updates.type);
       fields.push(`type = $${values.length}`);
+
+      if (updates.type === 'scene') {
+        if (updates.scheduleTime === undefined) {
+          fields.push(`schedule_time = NULL`);
+        }
+        if (updates.scheduleOffTime === undefined) {
+          fields.push(`schedule_off_time = NULL`);
+        }
+        if (updates.repeatDays === undefined) {
+          fields.push(`repeat_days = '[]'::jsonb`);
+        }
+      }
     }
     if (updates.roomId !== undefined) {
       values.push(updates.roomId);

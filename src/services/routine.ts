@@ -97,21 +97,25 @@ export const routineApi = {
       const url = homeId ? `/routines?homeId=${encodeURIComponent(homeId)}` : '/routines';
       const res = await api.get<{ success: boolean; routines: any[] }>(url);
       if (res.success && Array.isArray(res.routines)) {
-        const mapped: SmartRoutine[] = res.routines.map((r: any) => ({
-          id: r.id,
-          name: r.name,
-          description: r.description || undefined,
-          icon: r.icon || 'sun',
-          type: r.type || 'scene',
-          roomId: r.room_id || 'all',
-          scheduleTime: r.schedule_time || undefined,
-          scheduleOffTime: r.schedule_off_time || undefined,
-          repeatDays: Array.isArray(r.repeat_days) ? r.repeat_days : [],
-          actions: Array.isArray(r.actions) ? r.actions : [],
-          isActive: r.is_active !== undefined ? Boolean(r.is_active) : true,
-          created_at: r.created_at,
-          updated_at: r.updated_at,
-        }));
+        const mapped: SmartRoutine[] = res.routines.map((r: any) => {
+          const isSchedule = r.icon === 'clock' || (r.type === 'schedule' && (r.schedule_time || r.schedule_off_time) && r.icon !== 'sun' && r.icon !== 'sparkles' && r.icon !== 'moon');
+          const resolvedType: 'scene' | 'schedule' = isSchedule ? 'schedule' : 'scene';
+          return {
+            id: r.id,
+            name: r.name,
+            description: r.description || undefined,
+            icon: r.icon || (resolvedType === 'schedule' ? 'clock' : 'sun'),
+            type: resolvedType,
+            roomId: r.room_id || 'all',
+            scheduleTime: resolvedType === 'schedule' ? (r.schedule_time || undefined) : undefined,
+            scheduleOffTime: resolvedType === 'schedule' ? (r.schedule_off_time || undefined) : undefined,
+            repeatDays: Array.isArray(r.repeat_days) ? r.repeat_days : [],
+            actions: Array.isArray(r.actions) ? r.actions : [],
+            isActive: r.is_active !== undefined ? Boolean(r.is_active) : true,
+            created_at: r.created_at,
+            updated_at: r.updated_at,
+          };
+        });
         routineStorage.saveRoutines(mapped);
         return mapped;
       }
@@ -173,9 +177,15 @@ export const routineApi = {
   updateRoutine: async (id: string, updates: Partial<SmartRoutine>): Promise<SmartRoutine | null> => {
     try {
       const payload: any = { ...updates };
-      if (updates.roomId !== undefined) payload.roomId = updates.roomId;
-      if (updates.scheduleTime !== undefined) payload.scheduleTime = updates.scheduleTime;
-      if (updates.scheduleOffTime !== undefined) payload.scheduleOffTime = updates.scheduleOffTime;
+      if (updates.type === 'scene') {
+        payload.scheduleTime = null;
+        payload.scheduleOffTime = null;
+        payload.repeatDays = [];
+      } else {
+        if (updates.roomId !== undefined) payload.roomId = updates.roomId;
+        if (updates.scheduleTime !== undefined) payload.scheduleTime = updates.scheduleTime;
+        if (updates.scheduleOffTime !== undefined) payload.scheduleOffTime = updates.scheduleOffTime;
+      }
       const res = await api.put<{ success: boolean; routine: any }>(`/routines/${id}`, payload);
       if (res.success && res.routine) {
         const r = res.routine;
