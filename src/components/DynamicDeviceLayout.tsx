@@ -660,10 +660,10 @@ export const TouchPanelLayout = ({
         <img 
           src={getAssetUrl(`ICONS/${sw.iconPath}`)} 
           alt=""
-          className={`w-[52px] h-[52px] sm:w-[66px] sm:h-[66px] object-contain transition-all duration-300 pointer-events-none brightness-0 invert ${
+          className={`w-10 h-10 sm:w-12 sm:h-12 object-contain transition-all duration-300 pointer-events-none brightness-0 invert ${
             isOn 
-              ? 'filter drop-shadow-[0_0_14px_rgba(56,189,248,1)] opacity-100 scale-130 sm:scale-135' 
-              : 'opacity-90 group-hover:opacity-100 scale-120 sm:scale-125'
+              ? 'filter drop-shadow-[0_0_14px_rgba(56,189,248,1)] opacity-100 scale-105' 
+              : 'opacity-90 group-hover:opacity-100'
           }`}
         />
       );
@@ -748,7 +748,7 @@ export const TouchPanelLayout = ({
                   <img 
                     src={getAssetUrl(`ICONS/${draftIconPath}`)} 
                     alt="Preview" 
-                    className="w-12 h-12 object-contain brightness-0 invert drop-shadow-[0_0_10px_rgba(56,189,248,1)] scale-125"
+                    className="w-10 h-10 object-contain brightness-0 invert drop-shadow-[0_0_10px_rgba(56,189,248,1)]"
                   />
                 ) : (
                   <Power className="w-9 h-9 text-white drop-shadow-[0_0_10px_rgba(56,189,248,1)]" />
@@ -887,14 +887,14 @@ export const TouchPanelLayout = ({
               <button
                 type="button"
                 onClick={() => setDraftIconPath('')}
-                className={`aspect-square rounded-2xl p-2 flex flex-col items-center justify-center transition-all cursor-pointer border ${
+                className={`aspect-square rounded-2xl p-2.5 flex flex-col items-center justify-center transition-all cursor-pointer border ${
                   !draftIconPath
                     ? 'bg-[#0284c7] border-white ring-2 ring-[#0284c7] shadow-[0_0_14px_rgba(2,132,199,0.45)] scale-105'
                     : 'bg-[#0f172a] border-slate-700/80 hover:bg-slate-800'
                 }`}
                 title="Default Power Icon"
               >
-                <Power className="w-6 h-6 text-white" />
+                <Power className="w-7 h-7 text-white" />
               </button>
 
               {filteredIcons.map((iconName) => {
@@ -904,7 +904,7 @@ export const TouchPanelLayout = ({
                     key={iconName}
                     type="button"
                     onClick={() => setDraftIconPath(iconName)}
-                    className={`aspect-square rounded-2xl p-2 flex items-center justify-center transition-all cursor-pointer relative group border ${
+                    className={`aspect-square rounded-2xl p-2.5 flex items-center justify-center transition-all cursor-pointer relative group border ${
                       isSelected
                         ? 'bg-[#0284c7] border-white ring-2 ring-[#0284c7] shadow-[0_0_14px_rgba(2,132,199,0.45)] scale-105'
                         : 'bg-[#0f172a] border-slate-700/80 hover:bg-slate-800 hover:border-[#0284c7]'
