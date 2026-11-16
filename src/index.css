@@ -218,7 +218,7 @@
   }
 
   .explore-slider-wrapper.top-header-2rows {
-    top: calc(7rem + max(var(--android-status-top, 0px), env(safe-area-inset-top, 0px), 24px)) !important;
+    top: calc(7.85rem + max(var(--android-status-top, 0px), env(safe-area-inset-top, 0px), 24px)) !important;
   }
 
   /* Status Bar safe area top padding for mobile screen headers & full-page containers */
