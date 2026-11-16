@@ -115,9 +115,9 @@ export class OpenWAService {
   /**
    * Sends arbitrary text message to a WhatsApp recipient
    */
-  public async sendTextMessage(chatIdOrPhone: string, text: string, displayPhone?: string) {
+  public async sendTextMessage(chatIdOrPhone: string, text: string, displayPhone?: string, explicitSessionId?: string) {
     const chatId = chatIdOrPhone.includes('@') ? chatIdOrPhone : this.getChatId(chatIdOrPhone);
-    let sessionId = await this.getSessionId();
+    let sessionId = explicitSessionId || await this.getSessionId();
 
     const doSend = async (sid: string) => {
       const url = `${ENV.OPENWA_BASE_URL}/sessions/${sid}/messages/send-text`;
