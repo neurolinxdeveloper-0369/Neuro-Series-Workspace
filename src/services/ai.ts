@@ -2,12 +2,14 @@ import { api } from './api';
 import { authStorage } from './auth';
 
 export interface AiChatAction {
-  type: 'control' | 'scene' | 'nav';
+  type: 'control' | 'scene' | 'nav' | 'whatsapp_support';
   deviceId?: string;
   channel?: number;
   targetState?: 'on' | 'off';
   routineId?: string;
   tabId?: string;
+  phone?: string;
+  prefillText?: string;
   label: string;
 }
 

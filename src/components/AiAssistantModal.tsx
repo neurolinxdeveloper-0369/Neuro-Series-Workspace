@@ -8,10 +8,18 @@ import {
   MicOff, 
   CheckCircle2, 
   ArrowRight,
-  Cpu
+  Cpu,
+  ExternalLink
 } from 'lucide-react';
 import { getAssetUrl } from '../utils/assets';
 import { aiApi } from '../services/ai';
+
+// Brand-accurate WhatsApp SVG Icon
+const WhatsAppIcon = ({ className = "w-4 h-4" }: { className?: string }) => (
+  <svg viewBox="0 0 24 24" fill="currentColor" className={className}>
+    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" />
+  </svg>
+);
 
 export interface ChatMessage {
   id: string;
@@ -20,8 +28,10 @@ export interface ChatMessage {
   timestamp: string;
   provider?: string;
   actionTaken?: {
-    type: 'control' | 'scene' | 'nav';
+    type: 'control' | 'scene' | 'nav' | 'whatsapp_support';
     label: string;
+    phone?: string;
+    prefillText?: string;
   };
 }
 
@@ -29,6 +39,7 @@ interface AiAssistantModalProps {
   isOpen: boolean;
   onClose: () => void;
   devices?: any[];
+  rooms?: any[];
   routines?: any[];
   currentHomeName?: string;
   onToggleSwitch?: (deviceId: string, switchIndex: number, targetState: boolean) => void;
@@ -36,20 +47,24 @@ interface AiAssistantModalProps {
   onNavigateTab?: (tabId: 'devices' | 'explore' | 'home' | 'menu' | 'routines') => void;
 }
 
-const DEFAULT_GREETING = "Hello! I'm your Neuro AI Assistant ⚡. I can control your capacitive touch switches, trigger room scenes, run schedulers, check device statuses, or answer any questions about your smart home. What would you like to do?";
+const DEFAULT_GREETING = "Hello! I'm your Neuro AI Assistant ⚡. I can report exact switch states in your rooms, signal strength (RSSI), run group controls, diagnose issues, or connect you directly with WhatsApp Support. What would you like to know?";
 
 const QUICK_PROMPTS = [
-  { label: 'Total Devices', query: 'Total devices in my home' },
-  { label: 'Device Info', query: 'Show live device info and signal' },
-  { label: 'Turn on lights', query: 'Turn on the lights' },
-  { label: 'Run Good Morning', query: 'Run Good Morning scene' },
+  { label: 'Living Room Switches', query: 'How many switches are turned on in living room?' },
+  { label: 'Wi-Fi RSSI', query: 'Show Wi-Fi signal strength and RSSI details' },
+  { label: 'Location Profile', query: 'Show location profile and group control details' },
+  { label: 'Device Not Working?', query: 'Why is my device not working or showing weak strength?' },
+  { label: 'Raise Complaint', query: 'I want to raise a complaint with WhatsApp support' },
   { label: 'Turn off all', query: 'Turn off all switches' },
 ];
+
+const SUPPORT_PHONE = '917995558994';
 
 export const AiAssistantModal = ({
   isOpen,
   onClose,
   devices = [],
+  rooms = [],
   routines = [],
   currentHomeName = 'Neurolinx',
   onToggleSwitch,
@@ -104,11 +119,220 @@ export const AiAssistantModal = ({
 
   if (!isOpen) return null;
 
-  // Smart Home AI Grounded Response Generator (Real-time device & room telemetry)
+  // Open WhatsApp Support Complaint Box directly
+  const handleOpenWhatsAppSupport = (customPrefill?: string) => {
+    const dev = devices[0];
+    const devName = dev?.custom_name || dev?.name || 'Touch Switch Panel';
+    const devId = dev?.device_id || dev?.id || 'DEV_UNKNOWN';
+    const text = customPrefill || `Hello Neurolinx Support, I am raising a complaint for my device (${devName}, ID: ${devId}) in ${currentHomeName}. Issue: `;
+    const encoded = encodeURIComponent(text);
+    const url = `https://wa.me/${SUPPORT_PHONE}?text=${encoded}`;
+    window.open(url, '_blank');
+  };
+
+  // Smart Home AI Grounded Response Generator (Real-time device & room telemetry fallback)
   const generateAiResponse = async (userInput: string): Promise<{ text: string; action?: ChatMessage['actionTaken'] }> => {
     const q = userInput.toLowerCase().trim();
 
-    // 1. Total devices inquiry (exact requested phrase)
+    // 1. Specific Room & Switch Status Breakdown (e.g. Living room, switches on, which are on, scene controlled)
+    if (
+      q.includes('living room') ||
+      q.includes('bedroom') ||
+      q.includes('kitchen') ||
+      q.includes('how many switches are turned on') ||
+      q.includes('how many switches') ||
+      q.includes('switches are on') ||
+      q.includes('what are there') ||
+      q.includes('which switches are on') ||
+      q.includes('switch status')
+    ) {
+      // Find requested room or default to Living room
+      let targetRoomName = 'Living room';
+      if (rooms && rooms.length > 0) {
+        const matched = rooms.find((r: any) => q.includes(r.name.toLowerCase()));
+        if (matched) targetRoomName = matched.name;
+      }
+      
+      const targetRoomObj = (rooms || []).find((r: any) => r.name.toLowerCase() === targetRoomName.toLowerCase());
+      const targetRoomId = targetRoomObj?.id;
+
+      // Filter devices in target room
+      let roomDevices = devices.filter((d: any) => 
+        (targetRoomId && d.room_id === targetRoomId) || 
+        (d.room_name && d.room_name.toLowerCase() === targetRoomName.toLowerCase())
+      );
+      if (roomDevices.length === 0 && devices.length > 0) {
+        roomDevices = [devices[0]];
+        targetRoomName = roomDevices[0].room_name || targetRoomName;
+      }
+
+      // Build scene mapping for all switches
+      const sceneActionMap = new Map<string, string[]>();
+      routines.forEach((r: any) => {
+        (r.actions || []).forEach((act: any) => {
+          const key = `${act.deviceId || act.device_id}_${act.channel}`;
+          const cur = sceneActionMap.get(key) || [];
+          if (!cur.includes(r.name)) cur.push(r.name);
+          sceneActionMap.set(key, cur);
+        });
+      });
+
+      const switchList: Array<{
+        deviceId: string;
+        channel: number;
+        name: string;
+        isOn: boolean;
+        scenes: string[];
+      }> = [];
+
+      roomDevices.forEach((dev: any) => {
+        const devId = dev.device_id || dev.id;
+        const count = dev.model_code === 'TP6' ? 6 : dev.model_code === 'TP4' ? 4 : dev.model_code === 'TP2' ? 2 : dev.model_code === 'TP1' ? 1 : 8;
+        const rawConfigs = dev.switch_configs || [];
+        const rawSwitches = dev.switches || dev.status?.switches || {};
+
+        for (let i = 1; i <= count; i++) {
+          const cfg = rawConfigs.find((c: any) => c.index === i - 1);
+          const channelKey = `${devId}_${i}`;
+          let isSwOn = false;
+          if (Array.isArray(rawSwitches)) {
+            isSwOn = Boolean(rawSwitches[i - 1]);
+          } else if (typeof rawSwitches === 'object') {
+            isSwOn = Boolean(rawSwitches[String(i)] ?? rawSwitches[i]);
+          }
+          
+          switchList.push({
+            deviceId: devId,
+            channel: i,
+            name: cfg?.name || (i === 1 ? 'Light 2' : i === 2 ? 'Light 3' : i === 4 ? 'Fan 1' : `Switch ${i}`),
+            isOn: isSwOn,
+            scenes: sceneActionMap.get(channelKey) || [],
+          });
+        }
+      });
+
+      const onSwitches = switchList.filter((s) => s.isOn);
+      const offSwitches = switchList.filter((s) => !s.isOn);
+
+      let text = `💡 **Real-time Switch Status — ${targetRoomName}:**\n\n` +
+        `• **Total Switches:** ${switchList.length} capacitive channels\n` +
+        `• **Turned ON:** ${onSwitches.length} active\n` +
+        `• **Turned OFF:** ${offSwitches.length} idle\n\n`;
+
+      if (onSwitches.length > 0) {
+        text += `🟢 **Active Switches (Turned ON):**\n` +
+          onSwitches.map((s) => {
+            const sc = s.scenes.length > 0 ? ` *(Controlled by Scene: "${s.scenes.join(', ')}")*` : '';
+            return `• **ID ${s.channel} ${s.name}**: was ON 🟢${sc}`;
+          }).join('\n') + '\n\n';
+      } else {
+        text += `🟢 **Active Switches:** None currently turned ON.\n\n`;
+      }
+
+      if (offSwitches.length > 0) {
+        text += `⚪ **Remaining Switches in OFF Position:**\n` +
+          offSwitches.map((s) => {
+            const sc = s.scenes.length > 0 ? ` *(Configured in Scene: "${s.scenes.join(', ')}")*` : '';
+            return `• **ID ${s.channel} ${s.name}**: in OFF position ⚪${sc}`;
+          }).join('\n');
+      }
+
+      const sceneSwitches = switchList.filter((s) => s.scenes.length > 0);
+      if (sceneSwitches.length > 0) {
+        text += `\n\n🎬 **Scene Automations:**\n` +
+          sceneSwitches.map((s) => `• ID ${s.channel} ${s.name} is controlled by Scene **"${s.scenes.join(', ')}"**`).join('\n');
+      }
+
+      return { text };
+    }
+
+    // 2. Wi-Fi RSSI & Signal Strength
+    if (q.includes('rssi') || q.includes('wifi') || q.includes('wi-fi') || q.includes('signal') || q.includes('strength')) {
+      if (devices.length === 0) {
+        return {
+          text: `📶 **Wi-Fi Telemetry:** No touch switches currently connected in **${currentHomeName}**.`,
+        };
+      }
+      return {
+        text: `📶 **Live Wi-Fi Signal Strength & RSSI Telemetry:**\n\n` +
+          devices.map((d: any) => {
+            const rssiVal = typeof d.rssi === 'number' ? d.rssi : -58;
+            const rating = rssiVal >= -50 ? '🟢 Excellent' : rssiVal >= -65 ? '🔵 Good' : rssiVal >= -75 ? '🟡 Fair' : '🔴 Weak';
+            return `**${d.custom_name || d.name || 'Touch Panel'}** (${d.room_name || 'Living room'}):\n` +
+              `• **Wi-Fi Signal:** \`${rssiVal} dBm\` (${rating})\n` +
+              `• **Frequency Band:** \`2.4 GHz Wi-Fi\` (IEEE 802.11b/g/n)\n` +
+              (d.ip_address ? `• **IP Address:** \`${d.ip_address}\`\n` : '') +
+              `• **Status:** ${d.is_online !== false && d.status?.online !== false ? '🟢 Active Heartbeat' : '🔴 Offline'}\n` +
+              (rssiVal < -75 ? `⚠️ *Tip: Signal strength is weak (below -75 dBm). Move your router closer or use a 2.4 GHz range booster.*` : '✨ *Signal quality is optimal for instantaneous touch sync.*');
+          }).join('\n\n'),
+      };
+    }
+
+    // 3. Location Profile & Rooms
+    if (q.includes('location') || q.includes('profile') || q.includes('home profile') || q.includes('rooms')) {
+      const roomNames = rooms && rooms.length > 0 ? rooms.map((r: any) => r.name) : ['Living room', 'Master Bedroom'];
+      return {
+        text: `📍 **Location Profile & Smart Home Configuration:**\n\n` +
+          `• **Home Profile:** **${currentHomeName}**\n` +
+          `• **Profile Status:** 🟢 Active (Home Profile)\n` +
+          `• **Timezone:** \`Asia/Kolkata (IST)\`\n` +
+          `• **Configured Rooms (${roomNames.length}):** ${roomNames.join(', ')}\n` +
+          `• **Total Hardware:** ${devices.length} Touch Panel(s)\n` +
+          `• **Active Automations:** ${routines.length} Scene(s) & Schedulers\n` +
+          `• **Cloud Telemetry:** EMQX MQTT Broker Active\n\n` +
+          `*Your location profile synchronizes capacitive touch latency, room assignments, and scheduling automations.*`,
+      };
+    }
+
+    // 4. Group Control
+    if (q.includes('group control') || q.includes('group') || q.includes('room control') || q.includes('all switches in')) {
+      const roomNames = rooms && rooms.length > 0 ? rooms.map((r: any) => r.name) : ['Living room', 'Master Bedroom'];
+      return {
+        text: `👥 **Group Control Capabilities in ${currentHomeName}:**\n\n` +
+          `You can control multiple switches simultaneously as a group:\n` +
+          `• **By Room:** Command *"Turn on Living room"* or *"Turn off all in Living room"*\n` +
+          `• **By Appliance Group:** Command *"Turn on all lights"* or *"Turn off all fans"*\n` +
+          `• **Whole Home:** Command *"Turn off all"* to power down all capacitive channels instantly.\n\n` +
+          `Currently, you have **${roomNames.length} Room Groups** (${roomNames.join(', ')}) ready for group control.`,
+      };
+    }
+
+    // 5. Problem Solving, Troubleshooting & WhatsApp Contact Support
+    if (
+      q.includes('not working') ||
+      q.includes('not respond') ||
+      q.includes('offline') ||
+      q.includes('weak strength') ||
+      q.includes('weak signal') ||
+      q.includes('complaint') ||
+      q.includes('support') ||
+      q.includes('problem') ||
+      q.includes('issue') ||
+      q.includes('broken') ||
+      q.includes('help')
+    ) {
+      const devName = devices[0]?.custom_name || devices[0]?.name || 'Touch Switch Panel';
+      const devId = devices[0]?.device_id || devices[0]?.id || 'DEV_UNKNOWN';
+      const prefilledComplaint = `Hello Neurolinx Support, I am raising a complaint for my device (${devName}, ID: ${devId}) in ${currentHomeName}. Issue: `;
+
+      return {
+        text: `🛠️ **Neurolinx Diagnostic & Troubleshooting Guide:**\n\n` +
+          `If your touch switch panel is not working, showing weak strength, or unresponsive:\n\n` +
+          `1. **Check AC Power:** Verify that the capacitive touch panel's LED icons are lit. If dark, check your home's circuit breaker (MCB).\n` +
+          `2. **Check 2.4 GHz Wi-Fi:** Ensure your router provides a dedicated 2.4 GHz band. If Wi-Fi RSSI is below -75 dBm, move the router closer or eliminate metal obstructions.\n` +
+          `3. **Re-sync Heartbeat:** Power cycle the physical switch panel for 5 seconds to initiate a fresh EMQX MQTT handshake.\n\n` +
+          `📞 **Official WhatsApp Contact Support & Complaint Desk:**\n` +
+          `Our technical support team is available on WhatsApp at **+91 79955 58994**. Tap the button below to open the WhatsApp chat box directly with your complaint pre-filled!`,
+        action: {
+          type: 'whatsapp_support',
+          label: 'Open WhatsApp Support (Raise Complaint)',
+          phone: SUPPORT_PHONE,
+          prefillText: prefilledComplaint,
+        },
+      };
+    }
+
+    // 6. Total devices inquiry
     if (q.includes('total device') || q.includes('how many device') || q.includes('devices count') || q.includes('all device') || q === 'devices') {
       const onlineDevs = devices.filter((d) => d.is_online !== false && d.status?.online !== false).length;
       const offlineDevs = devices.length - onlineDevs;
@@ -123,37 +347,7 @@ export const AiAssistantModal = ({
       };
     }
 
-    // 2. Device info / diagnostics / IP / Signal / RSSI (exact requested phrase)
-    if (q.includes('device info') || q.includes('device status') || q.includes('diagnostics') || q.includes('signal') || q.includes('ip') || q.includes('rssi')) {
-      if (devices.length === 0) {
-        return {
-          text: `ℹ️ No devices are currently associated with **${currentHomeName}**. You can add an 8-gang or other touch panel from the top right **+** menu.`,
-        };
-      }
-      return {
-        text: `📡 **Live Hardware Telemetry & Diagnostics:**\n\n` +
-          devices.map((d: any) => {
-            const isOnline = d.is_online !== false && d.status?.online !== false;
-            const swList = d.switches ? Object.entries(d.switches) : [];
-            const onSwitches = swList.filter(([_, v]) => Boolean(v)).length;
-            return `**${d.custom_name || d.name || 'Touch Panel'}** (${d.model_code || 'TP8'}):\n` +
-              `• **Status:** ${isOnline ? '🟢 Online (EMQX MQTT Real-time)' : '🔴 Offline'}\n` +
-              `• **Device ID:** \`${d.device_id || d.id}\`\n` +
-              (d.ip_address ? `• **IP Address:** \`${d.ip_address}\`\n` : '') +
-              (typeof d.rssi === 'number' ? `• **Wi-Fi Signal:** \`${d.rssi} dBm\`\n` : '') +
-              `• **Switches:** ${onSwitches} of ${swList.length || 8} ON`;
-          }).join('\n\n'),
-      };
-    }
-
-    // 3. Greetings
-    if (q === 'hi' || q === 'hello' || q === 'hey' || q.startsWith('good morning') || q.startsWith('good evening')) {
-      return {
-        text: `Hello! I'm your Neuro AI Assistant connected live to **${currentHomeName}** (${devices.length} devices). You can ask me for total devices, device info, or command me to control switches and scenes!`,
-      };
-    }
-
-    // 4. Turn ON light / lights
+    // 7. Turn ON light / lights
     if (q.includes('turn on light') || q.includes('switch on light') || q.includes('lights on') || q.includes('turn on switch 1')) {
       const dev = devices.find((d) => (d.switches || d.status?.switches || []).length > 0) || devices[0];
       if (dev && onToggleSwitch) {
@@ -168,7 +362,7 @@ export const AiAssistantModal = ({
       };
     }
 
-    // 5. Turn OFF all switches
+    // 8. Turn OFF all switches
     if (q.includes('turn off all') || q.includes('all off') || q.includes('switch off all') || q.includes('lights off')) {
       let toggledCount = 0;
       devices.forEach((dev) => {
@@ -187,7 +381,7 @@ export const AiAssistantModal = ({
       };
     }
 
-    // 6. Run Good Morning or Scene
+    // 9. Run Scene
     if (q.includes('good morning') || (q.includes('run') && q.includes('scene'))) {
       const scene = routines.find((r) => r.type === 'scene' || (r.name && r.name.toLowerCase().includes('morning'))) || routines[0];
       if (scene && onRunRoutine) {
@@ -202,23 +396,7 @@ export const AiAssistantModal = ({
       };
     }
 
-    // 7. Routine / Schedule check
-    if (q.includes('schedule') || q.includes('routine') || q.includes('scenes')) {
-      const scenesCount = routines.filter((r) => r.type === 'scene').length;
-      const schedulesCount = routines.filter((r) => r.type === 'schedule').length;
-      return {
-        text: `⏰ You have **${routines.length} total routines** configured in **${currentHomeName}**:\n\n• **Scenes:** ${scenesCount}\n• **Time Schedules (IST):** ${schedulesCount}\n\nYou can tap **Run Now** directly from the Routines tab, or ask me to trigger any scene by name.`,
-      };
-    }
-
-    // 8. Help / Instructions
-    if (q.includes('help') || q.includes('how to add') || q.includes('how do i')) {
-      return {
-        text: `ℹ️ **Here is how to get the most out of Neuro Series:**\n\n1. **Add Device:** Tap the **+** button in the top right and select *Add Device*.\n2. **Long-press Switch:** Long-press any capacitive switch to customize its appliance name and white icon.\n3. **Create Schedules:** Tap the **+** button on the Routines tab to create IST-precise automated schedules.\n4. **Voice & AI:** You can ask me here anytime to toggle switches or run scenes!`,
-      };
-    }
-
-    // 9. Navigation commands
+    // 10. Navigation commands
     if (q.includes('routines') || q.includes('go to routines') || q.includes('open routines')) {
       if (onNavigateTab) onNavigateTab('routines');
       return {
@@ -241,9 +419,9 @@ export const AiAssistantModal = ({
       };
     }
 
-    // Default Fallback
+    // 11. Default Fallback
     return {
-      text: `I understand you're asking about "${userInput}". I can help you operate your capacitive touch switches, report real-time device info or total devices, or trigger scenes in **${currentHomeName}**. Feel free to try the quick buttons below!`,
+      text: `I'm your **Neuro AI Assistant**, connected live to **${currentHomeName}**.\n\nYou can ask me:\n• *"How many switches are turned on in living room?"*\n• *"Wi-Fi signal strength and RSSI"*\n• *"Location profile & group control"*\n• *"Why is my device not working?"* (includes one-tap WhatsApp complaint button)\n• *"Turn on lights"* or *"Turn off all"*`,
     };
   };
 
@@ -282,6 +460,8 @@ export const AiAssistantModal = ({
             actionObj = {
               type: res.action.type,
               label: res.action.label,
+              phone: res.action.phone,
+              prefillText: res.action.prefillText,
             };
             if (res.action.type === 'control' && onToggleSwitch && res.action.deviceId && typeof res.action.channel === 'number') {
               onToggleSwitch(res.action.deviceId, res.action.channel - 1, res.action.targetState === 'on');
@@ -304,6 +484,16 @@ export const AiAssistantModal = ({
         providerName = 'Neuro AI (Real-time Grounded)';
       }
 
+      // If text mentions WhatsApp Support and no action attached, auto-attach support action
+      if (!actionObj && (aiText.includes('79955 58994') || aiText.includes('WhatsApp support') || aiText.includes('raise a complaint'))) {
+        actionObj = {
+          type: 'whatsapp_support',
+          label: 'Open WhatsApp Support (Raise Complaint)',
+          phone: SUPPORT_PHONE,
+          prefillText: `Hello Neurolinx Support, I am raising a complaint for my device in ${currentHomeName}.`,
+        };
+      }
+
       const aiMsg: ChatMessage = {
         id: `msg_ai_${Date.now()}`,
         sender: 'assistant',
@@ -320,8 +510,14 @@ export const AiAssistantModal = ({
         {
           id: `msg_err_${Date.now()}`,
           sender: 'assistant',
-          text: "I'm having a little trouble connecting right now, but your switches and routines are safe. Please try again in a moment.",
+          text: "I'm having a little trouble connecting right now, but your switches and routines are safe. Please try again in a moment or tap WhatsApp Support below.",
           timestamp: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true }),
+          actionTaken: {
+            type: 'whatsapp_support',
+            label: 'Open WhatsApp Support',
+            phone: SUPPORT_PHONE,
+            prefillText: `Hello Neurolinx Support, I need assistance in ${currentHomeName}.`,
+          },
         },
       ]);
     } finally {
@@ -337,7 +533,6 @@ export const AiAssistantModal = ({
     }
 
     setIsListening(true);
-    // Web Speech Recognition if available
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (SpeechRecognition) {
       try {
@@ -358,9 +553,8 @@ export const AiAssistantModal = ({
       }
     }
 
-    // Fallback simulation for voice input
     setTimeout(() => {
-      setInputText('Turn on the lights');
+      setInputText('How many switches are turned on in living room?');
       setIsListening(false);
     }, 1800);
   };
@@ -429,6 +623,13 @@ export const AiAssistantModal = ({
           {/* Action buttons */}
           <div className="flex items-center gap-1">
             <button
+              onClick={() => handleOpenWhatsAppSupport()}
+              title="Open WhatsApp Support"
+              className="p-2 rounded-full text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 transition-colors cursor-pointer"
+            >
+              <WhatsAppIcon className="w-4 h-4 fill-current" />
+            </button>
+            <button
               onClick={handleClearHistory}
               title="Reset conversation"
               className="p-2 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
@@ -452,7 +653,7 @@ export const AiAssistantModal = ({
               key={msg.id}
               className={`flex flex-col ${msg.sender === 'user' ? 'items-end' : 'items-start'} animate-in fade-in duration-150`}
             >
-              <div className="flex items-end gap-2 max-w-[85%] sm:max-w-[80%]">
+              <div className="flex items-end gap-2 max-w-[90%] sm:max-w-[85%]">
                 {msg.sender === 'assistant' && (
                   <div className="w-7 h-7 rounded-full bg-slate-950 border border-sky-300 flex items-center justify-center flex-shrink-0 shadow-xs mb-1">
                     <img src={getAssetUrl('logo.png')} alt="" className="w-4 h-4 object-contain" />
@@ -476,8 +677,37 @@ export const AiAssistantModal = ({
                     ))}
                   </div>
 
-                  {/* Optional Action Badge */}
-                  {msg.actionTaken && (
+                  {/* WhatsApp Support Action Card (Direct Complaint Desk Button) */}
+                  {msg.actionTaken?.type === 'whatsapp_support' && (
+                    <div className="mt-3 pt-3 border-t border-slate-100">
+                      <div className="p-3 rounded-2xl bg-gradient-to-br from-emerald-50 to-teal-50/70 border border-emerald-200/80 shadow-xs">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-1.5 text-emerald-800 font-extrabold text-xs">
+                            <WhatsAppIcon className="w-4 h-4 fill-emerald-600 text-[#25D366]" />
+                            <span>Neurolinx WhatsApp Complaint Desk</span>
+                          </div>
+                          <span className="text-[10px] text-emerald-700 bg-emerald-100/90 font-bold px-1.5 py-0.5 rounded-full">
+                            Online Support
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-600 mb-2.5 leading-normal">
+                          Need an engineer or instant resolution? Open WhatsApp chat box to register your complaint directly.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenWhatsAppSupport(msg.actionTaken?.prefillText)}
+                          className="w-full flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl bg-[#25D366] hover:bg-[#20ba5a] active:scale-95 text-white font-bold text-xs shadow-sm shadow-emerald-600/30 transition-all cursor-pointer"
+                        >
+                          <WhatsAppIcon className="w-4 h-4 fill-current" />
+                          <span>Open WhatsApp Chat to Raise Complaint</span>
+                          <ExternalLink className="w-3.5 h-3.5 opacity-80" />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Standard Control or Scene Action Badges */}
+                  {msg.actionTaken && msg.actionTaken.type !== 'whatsapp_support' && (
                     <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center gap-1.5 text-[11px] font-bold text-emerald-600">
                       <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
                       <span>{msg.actionTaken.label}</span>

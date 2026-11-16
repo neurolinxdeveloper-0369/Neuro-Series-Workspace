@@ -2654,6 +2654,7 @@ export function App() {
         isOpen={isAiAssistantOpen}
         onClose={() => setIsAiAssistantOpen(false)}
         devices={devices}
+        rooms={rooms}
         routines={routines}
         currentHomeName={activeHome?.name || 'Neurolinx'}
         onToggleSwitch={(deviceId, switchIndex, targetState) => {
