@@ -822,42 +822,46 @@ export function App() {
     </div>
   );
 
-  // Floating Neuro AI Assistant Circular Button (Bottom Left, directly above the menu bar)
-  const renderFloatingAiAssistantButton = () => (
-    <div 
-      className="fixed z-40 select-none pointer-events-auto transition-all duration-300 left-3.5 sm:left-6"
-      style={{
-        bottom: 'calc(4.75rem + max(var(--android-nav-bottom, 0px), env(safe-area-inset-bottom, 0px)))',
-      }}
-    >
-      <button
-        type="button"
-        onClick={(e) => {
-          e.stopPropagation();
-          setIsAiAssistantOpen(true);
-          setIsPlusMenuOpen(false);
-          setIsDotsMenuOpen(false);
-          setIsHomeDropdownOpen(false);
+  // Floating Neuro AI Assistant Circular Button (Routines tab only, shifted to bottom-right, elevated above nav bar with transparent background)
+  const renderFloatingAiAssistantButton = () => {
+    if (activeTab !== 'routines') return null;
+
+    return (
+      <div 
+        className="fixed z-40 select-none pointer-events-auto transition-all duration-300 right-4 sm:right-6 md:right-8"
+        style={{
+          bottom: 'calc(6.25rem + max(var(--android-nav-bottom, 0px), env(safe-area-inset-bottom, 0px)))',
         }}
-        className="group relative w-12 h-12 sm:w-13 sm:h-13 rounded-full bg-white/95 hover:bg-white border-2 border-white/90 shadow-[0_8px_24px_-4px_rgba(14,165,233,0.35),0_2px_8px_rgba(0,0,0,0.08)] flex items-center justify-center transition-all duration-200 hover:scale-110 active:scale-95 cursor-pointer backdrop-blur-md"
-        title="Neuro AI Assistant"
-        aria-label="Open Neuro AI Assistant"
       >
-        {/* Subtle luminous aura */}
-        <div className="absolute inset-0 rounded-full bg-radial from-sky-400/25 via-transparent to-transparent opacity-80 group-hover:opacity-100 transition-opacity animate-pulse pointer-events-none" />
-        
-        {/* Brand Logo */}
-        <img 
-          src={getAssetUrl('logo.png')} 
-          alt="Neuro AI" 
-          className="w-6 h-6 sm:w-7 sm:h-7 object-contain transition-transform duration-200 group-hover:scale-110 drop-shadow-xs" 
-        />
-        
-        {/* Active Online Status Badge */}
-        <span className="absolute bottom-1 right-1 w-2.5 h-2.5 bg-emerald-500 rounded-full border-2 border-white shadow-2xs" />
-      </button>
-    </div>
-  );
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setIsAiAssistantOpen(true);
+            setIsPlusMenuOpen(false);
+            setIsDotsMenuOpen(false);
+            setIsHomeDropdownOpen(false);
+          }}
+          className="group relative w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-transparent hover:bg-sky-400/15 active:bg-sky-400/25 flex items-center justify-center transition-all duration-200 hover:scale-110 active:scale-95 cursor-pointer"
+          title="Neuro AI Assistant"
+          aria-label="Open Neuro AI Assistant"
+        >
+          {/* Luminous aura */}
+          <div className="absolute inset-0 rounded-full bg-radial from-sky-400/20 via-transparent to-transparent opacity-70 group-hover:opacity-100 transition-opacity animate-pulse pointer-events-none" />
+          
+          {/* Brand Logo with transparent background */}
+          <img 
+            src={getAssetUrl('logo.png')} 
+            alt="Neuro AI" 
+            className="w-9 h-9 sm:w-10 sm:h-10 object-contain transition-transform duration-200 group-hover:scale-110 filter drop-shadow-[0_4px_12px_rgba(2,132,199,0.35)]" 
+          />
+          
+          {/* Active Online Status Badge */}
+          <span className="absolute bottom-1 right-1 w-2.5 h-2.5 bg-emerald-500 rounded-full border border-white shadow-xs" />
+        </button>
+      </div>
+    );
+  };
 
   // Contextual Plus Button & Dropdown for Top-Right Header across all screens
   const renderContextualPlusDropdown = () => (
