@@ -80,6 +80,20 @@ export const authApi = {
     return response;
   },
 
+  // Request 6-digit verification code to WhatsApp via OpenWA Gateway
+  sendWhatsAppOtp: async (phoneNumber: string): Promise<{ success: boolean; message: string; phoneNumber?: string }> => {
+    return api.post<{ success: boolean; message: string; phoneNumber?: string }>('/auth/whatsapp/send-otp', { phoneNumber });
+  },
+
+  // Verify WhatsApp OTP and authenticate
+  verifyWhatsAppOtp: async (phoneNumber: string, otp: string, fullName?: string): Promise<AuthResponse> => {
+    const response = await api.post<AuthResponse>('/auth/whatsapp/verify-otp', { phoneNumber, otp, fullName });
+    if (response.success && response.token && response.user) {
+      authStorage.setSession(response.token, response.user);
+    }
+    return response;
+  },
+
   // Phone number login / registration
   loginWithPhone: async (phoneNumber: string, fullName?: string): Promise<AuthResponse> => {
     const response = await api.post<AuthResponse>('/auth/phone', { phoneNumber, fullName });

@@ -3,11 +3,15 @@ import { OAuth2Client } from 'google-auth-library';
 import nodemailer from 'nodemailer';
 import { db } from '../../config/database.js';
 import { ENV } from '../../config/env.js';
+import { openwaService } from './openwa.service.js';
 
 const googleClient = new OAuth2Client(ENV.GOOGLE_WEB_CLIENT_ID);
 
 export class AuthService {
-  // Ensure users, auth_identities, and email_otps tables exist
+  // In-memory fallback for phone OTPs when PostgreSQL is temporarily offline or local
+  private inMemoryPhoneOtps = new Map<string, { otp: string; expiresAt: number; attempts: number; verified: boolean }>();
+
+  // Ensure users, auth_identities, email_otps, and phone_otps tables exist
   public async ensureTablesExist() {
     try {
       await db.query(`
@@ -42,8 +46,20 @@ export class AuthService {
         );
 
         CREATE INDEX IF NOT EXISTS idx_email_otps_email ON email_otps(email);
+
+        CREATE TABLE IF NOT EXISTS phone_otps (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          phone_number VARCHAR(50) NOT NULL,
+          otp VARCHAR(10) NOT NULL,
+          expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+          verified BOOLEAN DEFAULT FALSE,
+          attempts INT DEFAULT 0,
+          created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_phone_otps_phone ON phone_otps(phone_number);
       `);
-      console.log('✅ Users, Auth Identities, and Email OTP tables verified in PostgreSQL');
+      console.log('✅ Users, Auth Identities, Email OTP, and Phone OTP tables verified in PostgreSQL');
     } catch (err) {
       console.error('❌ Failed to ensure auth tables exist:', err);
     }
@@ -238,6 +254,192 @@ export class AuthService {
       throw error;
     } finally {
       client.release();
+    }
+  }
+
+  // Send 6-digit OTP to WhatsApp via OpenWA Gateway (5-minute expiry)
+  public async sendWhatsAppOtp(rawPhone: string) {
+    const cleanPhone = openwaService.cleanPhoneNumber(rawPhone);
+    if (!cleanPhone || cleanPhone.length < 10) {
+      throw new Error('Please enter a valid phone number (at least 10 digits)');
+    }
+
+    // Generate 6-digit OTP
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiryMs = Date.now() + 5 * 60 * 1000; // 5 minutes
+
+    // Store in PostgreSQL database (with in-memory fallback)
+    try {
+      await db.query(
+        `DELETE FROM phone_otps WHERE phone_number = $1 AND verified = FALSE`,
+        [cleanPhone]
+      );
+
+      await db.query(
+        `INSERT INTO phone_otps (phone_number, otp, expires_at)
+         VALUES ($1, $2, NOW() + INTERVAL '5 minutes')`,
+        [cleanPhone, otp]
+      );
+    } catch (dbErr) {
+      console.warn('⚠️ [Postgres OTP Table Warning] Falling back to in-memory OTP cache:', dbErr);
+      this.inMemoryPhoneOtps.set(cleanPhone, {
+        otp,
+        expiresAt: expiryMs,
+        attempts: 0,
+        verified: false,
+      });
+    }
+
+    // Always update in-memory cache as secondary resilience
+    this.inMemoryPhoneOtps.set(cleanPhone, {
+      otp,
+      expiresAt: expiryMs,
+      attempts: 0,
+      verified: false,
+    });
+
+    console.log(`🔑 [WHATSAPP OTP GENERATED] Phone: ${cleanPhone} => Code: ${otp} (Valid: 5 mins)`);
+
+    // Dispatch via OpenWA WhatsApp Gateway
+    let messageId: string | undefined;
+    try {
+      const sendRes = await openwaService.sendOtp(cleanPhone, otp, 5);
+      messageId = sendRes.messageId;
+      console.log(`📱 [WHATSAPP DELIVERED] Code ${otp} delivered to ${cleanPhone} via OpenWA (${messageId || 'ok'})`);
+    } catch (waErr: unknown) {
+      const msg = waErr instanceof Error ? waErr.message : String(waErr);
+      console.error(`❌ [OpenWA Dispatch Error] Could not send via OpenWA (${msg}). Code is logged for dev/fallback.`);
+      throw new Error(`WhatsApp delivery failed: ${msg}`);
+    }
+
+    return {
+      success: true,
+      message: 'Verification code sent to your WhatsApp',
+      phoneNumber: cleanPhone,
+      messageId,
+    };
+  }
+
+  // Verify 6-digit WhatsApp OTP and Sign In / Register User
+  public async verifyWhatsAppOtp(rawPhone: string, rawOtp: string, fullName?: string) {
+    const cleanPhone = openwaService.cleanPhoneNumber(rawPhone);
+    const otp = rawOtp.trim();
+
+    if (!cleanPhone || !otp) {
+      throw new Error('Phone number and verification code are required');
+    }
+
+    let isMatch = false;
+
+    // Check DB first
+    try {
+      const client = await db.connect();
+      try {
+        await client.query('BEGIN');
+
+        const otpRes = await client.query(
+          `SELECT id, attempts, expires_at 
+           FROM phone_otps 
+           WHERE phone_number = $1 AND otp = $2 AND verified = FALSE AND expires_at > NOW() 
+           ORDER BY created_at DESC 
+           LIMIT 1`,
+          [cleanPhone, otp]
+        );
+
+        if (otpRes.rows.length > 0) {
+          isMatch = true;
+          await client.query(`UPDATE phone_otps SET verified = TRUE WHERE id = $1`, [otpRes.rows[0].id]);
+        } else {
+          await client.query(
+            `UPDATE phone_otps SET attempts = attempts + 1 WHERE phone_number = $1 AND verified = FALSE`,
+            [cleanPhone]
+          );
+        }
+
+        if (isMatch) {
+          // Find or create user
+          const existingUser = await client.query(
+            `SELECT id, full_name, email, phone_number, avatar_url FROM users WHERE phone_number = $1`,
+            [cleanPhone]
+          );
+
+          let userId: string;
+
+          if (existingUser.rows.length > 0) {
+            userId = existingUser.rows[0].id;
+            await client.query(
+              `INSERT INTO auth_identities (user_id, provider, provider_key, last_login)
+               VALUES ($1, 'whatsapp', $2, NOW())
+               ON CONFLICT (provider, provider_key) DO UPDATE SET last_login = NOW()`,
+              [userId, cleanPhone]
+            );
+          } else {
+            const defaultName = fullName?.trim() || `User ${cleanPhone.slice(-4)}`;
+            const newUserRes = await client.query(
+              `INSERT INTO users (full_name, phone_number)
+               VALUES ($1, $2)
+               ON CONFLICT (phone_number) DO UPDATE SET updated_at = NOW()
+               RETURNING id, full_name, email, phone_number, avatar_url`,
+              [defaultName, cleanPhone]
+            );
+            userId = newUserRes.rows[0].id;
+
+            await client.query(
+              `INSERT INTO auth_identities (user_id, provider, provider_key, last_login)
+               VALUES ($1, 'whatsapp', $2, NOW())
+               ON CONFLICT (provider, provider_key) DO UPDATE SET last_login = NOW()`,
+              [userId, cleanPhone]
+            );
+          }
+
+          await client.query('COMMIT');
+
+          const userProfile = await db.query('SELECT * FROM users WHERE id = $1', [userId]);
+          const user = userProfile.rows[0];
+          const token = this.generateToken(user.id, user.email, user.phone_number);
+
+          // Clear from in-memory cache
+          this.inMemoryPhoneOtps.delete(cleanPhone);
+
+          console.log(`✅ [WHATSAPP OTP VERIFIED] User ${cleanPhone} (${user.id}) signed in successfully`);
+          return { user, token };
+        }
+
+        await client.query('COMMIT');
+      } catch (dbErr) {
+        await client.query('ROLLBACK');
+        throw dbErr;
+      } finally {
+        client.release();
+      }
+    } catch (dbErr) {
+      // In-memory fallback check
+      const memOtp = this.inMemoryPhoneOtps.get(cleanPhone);
+      if (memOtp && memOtp.otp === otp && !memOtp.verified && memOtp.expiresAt > Date.now()) {
+        memOtp.verified = true;
+        this.inMemoryPhoneOtps.delete(cleanPhone);
+
+        const fallbackUser = {
+          id: 'usr_' + cleanPhone,
+          full_name: fullName?.trim() || `User ${cleanPhone.slice(-4)}`,
+          email: null,
+          phone_number: cleanPhone,
+          avatar_url: null,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+        const token = this.generateToken(fallbackUser.id, undefined, fallbackUser.phone_number);
+
+        console.log(`✅ [WHATSAPP OTP IN-MEMORY VERIFIED] User ${cleanPhone} signed in via cache`);
+        return { user: fallbackUser, token };
+      }
+
+      console.error('Database error during WhatsApp OTP verification:', dbErr);
+      throw new Error('Invalid or expired verification code');
+    }
+
+    if (!isMatch) {
+      throw new Error('Invalid or expired verification code');
     }
   }
 

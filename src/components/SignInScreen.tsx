@@ -7,6 +7,13 @@ import { Browser } from '@capacitor/browser';
 import { App as CapApp } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
 
+// Brand-accurate WhatsApp SVG Icon
+const WhatsAppIcon = ({ className = "w-5 h-5" }: { className?: string }) => (
+  <svg viewBox="0 0 24 24" className={className} fill="currentColor">
+    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" />
+  </svg>
+);
+
 declare global {
   interface Window {
     google?: {
@@ -46,6 +53,7 @@ interface SignInScreenProps {
 
 export const SignInScreen = ({ isOpen, onClose, onSignInSuccess }: SignInScreenProps) => {
   const [step, setStep] = useState<'identifier' | 'otp'>('identifier');
+  const [authMethod, setAuthMethod] = useState<'whatsapp' | 'email'>('whatsapp');
   const [identifier, setIdentifier] = useState('');
   const [otp, setOtp] = useState<string[]>(['', '', '', '', '', '']);
   const [rememberId, setRememberId] = useState(false);
@@ -138,10 +146,12 @@ export const SignInScreen = ({ isOpen, onClose, onSignInSuccess }: SignInScreenP
     setSuccessMessage(null);
 
     const isEmail = cleanId.includes('@');
+    const effectiveMethod = isEmail ? 'email' : authMethod;
 
     try {
-      if (isEmail) {
+      if (effectiveMethod === 'email') {
         // Send Email OTP
+        setAuthMethod('email');
         const res = await authApi.sendEmailOtp(cleanId.toLowerCase());
         if (res.success) {
           setStep('otp');
@@ -157,20 +167,20 @@ export const SignInScreen = ({ isOpen, onClose, onSignInSuccess }: SignInScreenP
           setErrorMessage(res.message || 'Failed to send OTP code');
         }
       } else {
-        // Phone login flow
-        const [res] = await Promise.all([
-          authApi.loginWithPhone(cleanId),
-          new Promise((resolve) => setTimeout(resolve, 800)),
-        ]);
-        if (res.success && res.user) {
-          onSignInSuccess?.(res.user);
-          onClose();
+        // WhatsApp OTP flow via OpenWA Gateway
+        setAuthMethod('whatsapp');
+        const res = await authApi.sendWhatsAppOtp(cleanId);
+        if (res.success) {
+          setStep('otp');
+          setOtp(['', '', '', '', '', '']);
+          setSuccessMessage(`A 6-digit verification code has been sent to your WhatsApp at ${res.phoneNumber || cleanId}`);
+          setResendCooldown(60);
         } else {
-          setErrorMessage(res.error || 'Authentication failed');
+          setErrorMessage(res.message || 'Failed to send WhatsApp verification code');
         }
       }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Failed to sign in';
+      const msg = err instanceof Error ? err.message : 'Failed to send verification code';
       setErrorMessage(msg);
     } finally {
       setIsLoading(false);
@@ -219,7 +229,7 @@ export const SignInScreen = ({ isOpen, onClose, onSignInSuccess }: SignInScreenP
     otpInputsRef.current[nextIndex]?.focus();
   };
 
-  // Verify OTP submission
+  // Verify OTP submission (Supports both WhatsApp and Email)
   const handleOtpSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const code = otp.join('');
@@ -229,7 +239,11 @@ export const SignInScreen = ({ isOpen, onClose, onSignInSuccess }: SignInScreenP
     setErrorMessage(null);
 
     try {
-      const res = await authApi.verifyEmailOtp(identifier.trim().toLowerCase(), code);
+      const isEmail = identifier.includes('@') || authMethod === 'email';
+      const res = isEmail
+        ? await authApi.verifyEmailOtp(identifier.trim().toLowerCase(), code)
+        : await authApi.verifyWhatsAppOtp(identifier.trim(), code);
+
       if (res.success && res.user) {
         onSignInSuccess?.(res.user);
         onClose();
@@ -252,17 +266,28 @@ export const SignInScreen = ({ isOpen, onClose, onSignInSuccess }: SignInScreenP
     setSuccessMessage(null);
 
     try {
-      const res = await authApi.sendEmailOtp(identifier.trim().toLowerCase());
-      if (res.success) {
-        setResendCooldown(60);
-        if (res.debugOtp) {
-          setOtp(res.debugOtp.split(''));
-          setSuccessMessage(`Verification code: ${res.debugOtp} (Server SMTP credentials not yet set)`);
+      const isEmail = identifier.includes('@') || authMethod === 'email';
+      if (isEmail) {
+        const res = await authApi.sendEmailOtp(identifier.trim().toLowerCase());
+        if (res.success) {
+          setResendCooldown(60);
+          if (res.debugOtp) {
+            setOtp(res.debugOtp.split(''));
+            setSuccessMessage(`Verification code: ${res.debugOtp} (Server SMTP credentials not yet set)`);
+          } else {
+            setSuccessMessage('A new verification code has been sent to your email!');
+          }
         } else {
-          setSuccessMessage('A new verification code has been sent to your email!');
+          setErrorMessage(res.message || 'Failed to resend OTP');
         }
       } else {
-        setErrorMessage(res.message || 'Failed to resend OTP');
+        const res = await authApi.sendWhatsAppOtp(identifier.trim());
+        if (res.success) {
+          setResendCooldown(60);
+          setSuccessMessage(`A new verification code has been sent to your WhatsApp at ${res.phoneNumber || identifier}`);
+        } else {
+          setErrorMessage(res.message || 'Failed to resend WhatsApp OTP');
+        }
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Could not resend OTP';
@@ -390,7 +415,7 @@ export const SignInScreen = ({ isOpen, onClose, onSignInSuccess }: SignInScreenP
         {/* Step 1: Identifier Entry */}
         {step === 'identifier' && (
           <div className="w-full flex flex-col items-center animate-in fade-in duration-200">
-            <h1 className="text-xl sm:text-2xl font-bold text-slate-900 text-center leading-snug tracking-tight mb-8 max-w-sm sm:max-w-md font-sans">
+            <h1 className="text-xl sm:text-2xl font-bold text-slate-900 text-center leading-snug tracking-tight mb-6 max-w-sm sm:max-w-md font-sans">
               Every smart home begins with a single connection
             </h1>
 
@@ -402,19 +427,96 @@ export const SignInScreen = ({ isOpen, onClose, onSignInSuccess }: SignInScreenP
               </div>
             )}
 
+            {/* WhatsApp OTP vs Email OTP Method Tabs */}
+            <div className="flex items-center justify-center p-1 bg-white/80 backdrop-blur-md rounded-2xl border border-white/90 shadow-2xs mb-5 w-full">
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthMethod('whatsapp');
+                  setErrorMessage(null);
+                  if (identifier.includes('@')) setIdentifier('');
+                }}
+                className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl font-bold text-xs sm:text-sm transition-all cursor-pointer ${
+                  authMethod === 'whatsapp'
+                    ? 'bg-[#25D366] text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-white/40'
+                }`}
+              >
+                <WhatsAppIcon className="w-4 h-4" />
+                <span>WhatsApp OTP</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthMethod('email');
+                  setErrorMessage(null);
+                  if (!identifier.includes('@') && /^\d+$/.test(identifier)) setIdentifier('');
+                }}
+                className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl font-bold text-xs sm:text-sm transition-all cursor-pointer ${
+                  authMethod === 'email'
+                    ? 'bg-[#0284c7] text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-white/40'
+                }`}
+              >
+                <Mail className="w-4 h-4" />
+                <span>Email OTP</span>
+              </button>
+            </div>
+
             {/* Identifier Form */}
             <form onSubmit={handleIdentifierSubmit} className="w-full space-y-4">
-              <div>
-                <input
-                  type="text"
-                  value={identifier}
-                  onChange={(e) => setIdentifier(e.target.value)}
-                  placeholder="Phone number or email"
-                  disabled={isLoading}
-                  required
-                  className="w-full px-4 py-3.5 rounded-2xl bg-white border border-slate-300 text-slate-900 placeholder:text-slate-400 font-sans text-sm sm:text-base outline-none focus:border-[#0284c7] focus:ring-4 focus:ring-sky-100 shadow-xs transition-all disabled:opacity-60"
-                />
-              </div>
+              {authMethod === 'whatsapp' ? (
+                <div>
+                  <div className="relative flex items-center bg-white rounded-2xl border border-slate-300 focus-within:border-[#25D366] focus-within:ring-4 focus-within:ring-emerald-100 shadow-xs transition-all">
+                    <div className="pl-4 pr-2.5 flex items-center gap-1.5 text-slate-600 font-semibold text-xs sm:text-sm select-none border-r border-slate-200 my-2">
+                      <WhatsAppIcon className="w-4 h-4 text-[#25D366]" />
+                      <span>+91</span>
+                    </div>
+                    <input
+                      type="tel"
+                      value={identifier}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setIdentifier(val);
+                        if (val.includes('@')) setAuthMethod('email');
+                      }}
+                      placeholder="Enter 10-digit mobile number"
+                      disabled={isLoading}
+                      required
+                      autoFocus
+                      className="w-full px-3.5 py-3.5 bg-transparent text-slate-900 placeholder:text-slate-400 font-sans text-sm sm:text-base outline-none disabled:opacity-60 font-medium"
+                    />
+                  </div>
+                  <p className="text-[11px] sm:text-xs text-slate-500 font-medium mt-1.5 px-1">
+                    A 6-digit login OTP will be sent directly to your WhatsApp.
+                  </p>
+                </div>
+              ) : (
+                <div>
+                  <div className="relative flex items-center bg-white rounded-2xl border border-slate-300 focus-within:border-[#0284c7] focus-within:ring-4 focus-within:ring-sky-100 shadow-xs transition-all">
+                    <div className="pl-4 pr-2 text-slate-400">
+                      <Mail className="w-4 h-4 text-[#0284c7]" />
+                    </div>
+                    <input
+                      type="email"
+                      value={identifier}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setIdentifier(val);
+                        if (!val.includes('@') && /^\d{3,}$/.test(val)) setAuthMethod('whatsapp');
+                      }}
+                      placeholder="name@example.com"
+                      disabled={isLoading}
+                      required
+                      autoFocus
+                      className="w-full px-3 py-3.5 bg-transparent text-slate-900 placeholder:text-slate-400 font-sans text-sm sm:text-base outline-none disabled:opacity-60"
+                    />
+                  </div>
+                  <p className="text-[11px] sm:text-xs text-slate-500 font-medium mt-1.5 px-1">
+                    A 6-digit verification code will be sent to your email.
+                  </p>
+                </div>
+              )}
 
               {/* Remember my ID */}
               <div className="flex items-center pt-0.5">
@@ -436,9 +538,22 @@ export const SignInScreen = ({ isOpen, onClose, onSignInSuccess }: SignInScreenP
                 <button
                   type="submit"
                   disabled={isLoading}
-                  className="w-full py-3.5 px-6 rounded-2xl bg-[#0284c7] hover:bg-[#0369a1] text-white font-bold text-sm sm:text-base tracking-wide transition-all duration-200 shadow-md shadow-sky-600/25 active:scale-[0.99] flex items-center justify-center cursor-pointer disabled:opacity-70"
+                  className={`w-full py-3.5 px-6 rounded-2xl text-white font-bold text-sm sm:text-base tracking-wide transition-all duration-200 shadow-md active:scale-[0.99] flex items-center justify-center cursor-pointer disabled:opacity-70 ${
+                    authMethod === 'whatsapp'
+                      ? 'bg-[#25D366] hover:bg-[#1ebd59] shadow-emerald-600/25'
+                      : 'bg-[#0284c7] hover:bg-[#0369a1] shadow-sky-600/25'
+                  }`}
                 >
-                  {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Next'}
+                  {isLoading ? (
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                  ) : authMethod === 'whatsapp' ? (
+                    <span className="flex items-center gap-2">
+                      <WhatsAppIcon className="w-4 h-4" />
+                      <span>Send WhatsApp OTP</span>
+                    </span>
+                  ) : (
+                    'Send Email OTP'
+                  )}
                 </button>
               </div>
 
@@ -464,19 +579,26 @@ export const SignInScreen = ({ isOpen, onClose, onSignInSuccess }: SignInScreenP
           </div>
         )}
 
-        {/* Step 2: Email OTP Verification */}
+        {/* Step 2: OTP Verification (WhatsApp or Email) */}
         {step === 'otp' && (
           <div className="w-full flex flex-col items-center animate-in fade-in duration-200">
-            {/* Branded Mail Icon badge */}
-            <div className="w-16 h-16 rounded-full bg-white shadow-md border border-sky-100 flex items-center justify-center mb-4">
-              <Mail className="w-8 h-8 text-[#0284c7]" strokeWidth={2.2} />
-            </div>
+            {/* Branded Icon badge */}
+            {authMethod === 'whatsapp' ? (
+              <div className="w-16 h-16 rounded-full bg-emerald-50 shadow-md border-2 border-emerald-400/50 flex items-center justify-center mb-4 text-[#25D366]">
+                <WhatsAppIcon className="w-8 h-8" />
+              </div>
+            ) : (
+              <div className="w-16 h-16 rounded-full bg-white shadow-md border border-sky-100 flex items-center justify-center mb-4">
+                <Mail className="w-8 h-8 text-[#0284c7]" strokeWidth={2.2} />
+              </div>
+            )}
 
             <h1 className="text-xl sm:text-2xl font-bold text-slate-900 text-center leading-snug tracking-tight mb-2 font-sans">
-              Verify your email
+              {authMethod === 'whatsapp' ? 'Verify your WhatsApp' : 'Verify your email'}
             </h1>
             <p className="text-xs sm:text-sm text-slate-600 text-center mb-6 max-w-xs font-sans">
               Enter the 6-digit verification code sent to{' '}
+              {authMethod === 'whatsapp' ? 'your WhatsApp at ' : ''}
               <span className="font-semibold text-slate-900 break-all">{identifier}</span>
             </p>
 
@@ -512,7 +634,11 @@ export const SignInScreen = ({ isOpen, onClose, onSignInSuccess }: SignInScreenP
                     onChange={(e) => handleOtpChange(idx, e.target.value)}
                     onKeyDown={(e) => handleOtpKeyDown(idx, e)}
                     disabled={isLoading}
-                    className="w-12 h-14 sm:w-13 sm:h-16 text-center text-xl sm:text-2xl font-bold text-slate-900 bg-white border-2 border-slate-300 rounded-2xl outline-none focus:border-[#0284c7] focus:ring-4 focus:ring-sky-100 shadow-xs transition-all disabled:opacity-60"
+                    className={`w-12 h-14 sm:w-13 sm:h-16 text-center text-xl sm:text-2xl font-bold text-slate-900 bg-white border-2 rounded-2xl outline-none shadow-xs transition-all disabled:opacity-60 ${
+                      authMethod === 'whatsapp'
+                        ? 'border-slate-300 focus:border-[#25D366] focus:ring-4 focus:ring-emerald-100'
+                        : 'border-slate-300 focus:border-[#0284c7] focus:ring-4 focus:ring-sky-100'
+                    }`}
                   />
                 ))}
               </div>
@@ -521,7 +647,11 @@ export const SignInScreen = ({ isOpen, onClose, onSignInSuccess }: SignInScreenP
               <button
                 type="submit"
                 disabled={isLoading || otp.join('').length < 6}
-                className="w-full py-3.5 px-6 rounded-2xl bg-[#0284c7] hover:bg-[#0369a1] text-white font-bold text-sm sm:text-base tracking-wide transition-all duration-200 shadow-md shadow-sky-600/25 active:scale-[0.99] flex items-center justify-center cursor-pointer disabled:opacity-50"
+                className={`w-full py-3.5 px-6 rounded-2xl text-white font-bold text-sm sm:text-base tracking-wide transition-all duration-200 shadow-md active:scale-[0.99] flex items-center justify-center cursor-pointer disabled:opacity-50 ${
+                  authMethod === 'whatsapp'
+                    ? 'bg-[#25D366] hover:bg-[#1ebd59] shadow-emerald-600/25'
+                    : 'bg-[#0284c7] hover:bg-[#0369a1] shadow-sky-600/25'
+                }`}
               >
                 {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Verify & Sign In'}
               </button>
@@ -537,10 +667,14 @@ export const SignInScreen = ({ isOpen, onClose, onSignInSuccess }: SignInScreenP
                     type="button"
                     onClick={handleResendOtp}
                     disabled={isLoading}
-                    className="text-[#0284c7] hover:text-[#0369a1] font-semibold flex items-center gap-1.5 cursor-pointer disabled:opacity-60"
+                    className={`font-semibold flex items-center gap-1.5 cursor-pointer disabled:opacity-60 ${
+                      authMethod === 'whatsapp'
+                        ? 'text-emerald-600 hover:text-emerald-700'
+                        : 'text-[#0284c7] hover:text-[#0369a1]'
+                    }`}
                   >
                     <RotateCw className="w-3.5 h-3.5" />
-                    Resend code
+                    <span>Resend code {authMethod === 'whatsapp' ? 'via WhatsApp' : 'via email'}</span>
                   </button>
                 )}
 
@@ -553,7 +687,7 @@ export const SignInScreen = ({ isOpen, onClose, onSignInSuccess }: SignInScreenP
                   }}
                   className="text-slate-500 hover:text-slate-800 transition-colors cursor-pointer"
                 >
-                  Change email address
+                  Change {authMethod === 'whatsapp' ? 'phone number' : 'email address'}
                 </button>
               </div>
             </form>

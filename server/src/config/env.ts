@@ -28,4 +28,10 @@ export const ENV = {
   SMTP_USER: process.env.SMTP_USER || 'neurolinxdeveloper@gmail.com',
   SMTP_PASS: process.env.SMTP_PASS || 'kneqkybqykdazikj',
   SMTP_FROM: process.env.SMTP_FROM || 'Neuro Series <neurolinxdeveloper@gmail.com>',
+
+  // OpenWA WhatsApp Gateway Configuration
+  OPENWA_BASE_URL: process.env.OPENWA_BASE_URL || 'http://50.6.45.177:2785/api',
+  OPENWA_API_KEY: process.env.OPENWA_API_KEY || 'owa_k1_9d8e7367ca2f93d6f975264d97481742af73bfde9aa6531fe50bd345df0a6e72',
+  OPENWA_SESSION_NAME: process.env.OPENWA_SESSION_NAME || 'neuro-touch',
+  OPENWA_SESSION_ID: process.env.OPENWA_SESSION_ID || '40f62065-9a8e-4f77-8120-7f3bd73f50ea',
 };
