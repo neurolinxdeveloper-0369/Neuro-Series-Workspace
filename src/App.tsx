@@ -381,8 +381,12 @@ export function App() {
 
     updateNavInsets();
     try {
-      StatusBar.setStyle({ style: Style.Dark });
+      StatusBar.setStyle({ style: Style.Light }); // Dark/black system status bar icons for light background
       StatusBar.setBackgroundColor({ color: '#d4edf4' });
+      const bridge = (window as any).AndroidWifiBridge;
+      if (bridge && typeof bridge.setSystemIconsBlack === 'function') {
+        bridge.setSystemIconsBlack();
+      }
     } catch {
       // web fallback
     }
@@ -818,29 +822,41 @@ export function App() {
     </div>
   );
 
-  // Neuro AI Assistant Header Circular Button with Logo
-  const renderAiAssistantButton = () => (
-    <button
-      type="button"
-      onClick={(e) => {
-        e.stopPropagation();
-        setIsAiAssistantOpen(true);
-        setIsPlusMenuOpen(false);
-        setIsDotsMenuOpen(false);
-        setIsHomeDropdownOpen(false);
+  // Floating Neuro AI Assistant Circular Button (Bottom Left, directly above the menu bar)
+  const renderFloatingAiAssistantButton = () => (
+    <div 
+      className="fixed z-40 select-none pointer-events-auto transition-all duration-300 left-3.5 sm:left-6"
+      style={{
+        bottom: 'calc(4.75rem + max(var(--android-nav-bottom, 0px), env(safe-area-inset-bottom, 0px)))',
       }}
-      className="group relative w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-white/90 hover:bg-white border border-white/80 shadow-sm flex items-center justify-center transition-all duration-200 hover:scale-105 active:scale-95 cursor-pointer overflow-hidden flex-shrink-0"
-      title="Neuro AI Assistant"
-      aria-label="Open Neuro AI Assistant"
     >
-      <div className="absolute inset-0 bg-radial from-sky-400/25 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-      <img 
-        src={getAssetUrl('logo.png')} 
-        alt="Neuro AI" 
-        className="w-5 h-5 sm:w-6 sm:h-6 object-contain transition-transform duration-200 group-hover:scale-110 drop-shadow-2xs" 
-      />
-      <span className="absolute bottom-1 right-1 w-2 h-2 bg-emerald-500 rounded-full border border-white shadow-2xs" />
-    </button>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          setIsAiAssistantOpen(true);
+          setIsPlusMenuOpen(false);
+          setIsDotsMenuOpen(false);
+          setIsHomeDropdownOpen(false);
+        }}
+        className="group relative w-12 h-12 sm:w-13 sm:h-13 rounded-full bg-white/95 hover:bg-white border-2 border-white/90 shadow-[0_8px_24px_-4px_rgba(14,165,233,0.35),0_2px_8px_rgba(0,0,0,0.08)] flex items-center justify-center transition-all duration-200 hover:scale-110 active:scale-95 cursor-pointer backdrop-blur-md"
+        title="Neuro AI Assistant"
+        aria-label="Open Neuro AI Assistant"
+      >
+        {/* Subtle luminous aura */}
+        <div className="absolute inset-0 rounded-full bg-radial from-sky-400/25 via-transparent to-transparent opacity-80 group-hover:opacity-100 transition-opacity animate-pulse pointer-events-none" />
+        
+        {/* Brand Logo */}
+        <img 
+          src={getAssetUrl('logo.png')} 
+          alt="Neuro AI" 
+          className="w-6 h-6 sm:w-7 sm:h-7 object-contain transition-transform duration-200 group-hover:scale-110 drop-shadow-xs" 
+        />
+        
+        {/* Active Online Status Badge */}
+        <span className="absolute bottom-1 right-1 w-2.5 h-2.5 bg-emerald-500 rounded-full border-2 border-white shadow-2xs" />
+      </button>
+    </div>
   );
 
   // Contextual Plus Button & Dropdown for Top-Right Header across all screens
@@ -1311,7 +1327,6 @@ export function App() {
 
           {/* Top-Right: Plus and Three-Dots Action Capsules */}
           <div className="flex items-center pointer-events-auto select-none gap-2">
-            {renderAiAssistantButton()}
             {renderContextualPlusDropdown()}
 
             {/* Three Dots Button */}
@@ -1375,8 +1390,7 @@ export function App() {
           <div className="flex items-center pointer-events-auto select-none">
             {renderHomeSelectorDropdown()}
           </div>
-          <div className="flex items-center pointer-events-auto select-none gap-2">
-            {renderAiAssistantButton()}
+          <div className="flex items-center pointer-events-auto select-none">
             {renderContextualPlusDropdown()}
           </div>
         </header>
@@ -1389,8 +1403,7 @@ export function App() {
             </span>
           </div>
 
-          <div className="flex items-center justify-end pointer-events-auto flex-shrink-0 gap-2">
-            {renderAiAssistantButton()}
+          <div className="flex items-center justify-end pointer-events-auto flex-shrink-0">
             <button
               onClick={() => setIsSignInOpen(true)}
               data-bg-light="true"
@@ -1862,6 +1875,9 @@ export function App() {
           />
         )}
       </main>
+
+      {/* Floating Neuro AI Assistant Button (Bottom Left, directly above the menu bar) */}
+      {renderFloatingAiAssistantButton()}
 
       {/* 7. Responsive Navigation Bar: Horizontal on Mobile (< 640px), Vertical on Tabs & Desktop (>= 640px) */}
       <nav 

@@ -537,21 +537,70 @@ public class MainActivity extends BridgeActivity {
                 return "{\"status\":0,\"ok\":false,\"error\":\"Network error\"}";
             }
         }
+
+        @JavascriptInterface
+        public void setSystemIconsBlack() {
+            applySystemBarsAppearance();
+        }
+    }
+
+    public void applySystemBarsAppearance() {
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    // Set status bar and navigation bar background color to light blue theme #d4edf4
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                        getWindow().setStatusBarColor(android.graphics.Color.parseColor("#d4edf4"));
+                        getWindow().setNavigationBarColor(android.graphics.Color.parseColor("#d4edf4"));
+                    }
+
+                    // Android 11+ (API 30+) WindowInsetsController
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                        android.view.WindowInsetsController controller = getWindow().getInsetsController();
+                        if (controller != null) {
+                            int appearance = android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS |
+                                             android.view.WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS;
+                            controller.setSystemBarsAppearance(appearance, appearance);
+                        }
+                    } else {
+                        // Android 8.0+ (API 26+) / Android 6.0+ (API 23+)
+                        int flags = getWindow().getDecorView().getSystemUiVisibility();
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                            flags |= android.view.View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
+                        }
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            flags |= android.view.View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
+                        }
+                        getWindow().getDecorView().setSystemUiVisibility(flags);
+                    }
+                } catch (Exception e) {
+                    android.util.Log.e("MainActivity", "applySystemBarsAppearance error: " + e.getMessage());
+                }
+            }
+        });
+    }
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        applySystemBarsAppearance();
+    }
+
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        if (hasFocus) {
+            applySystemBarsAppearance();
+        }
     }
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         
-        // Ensure status bar seamlessly matches #d4edf4 theme with dark icons
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            getWindow().setStatusBarColor(android.graphics.Color.parseColor("#d4edf4"));
-        }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            getWindow().getDecorView().setSystemUiVisibility(
-                getWindow().getDecorView().getSystemUiVisibility() | android.view.View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
-            );
-        }
+        // Ensure status bar and navigation bar have black/dark icons on light background
+        applySystemBarsAppearance();
         
         // Runtime camera, location, and Wi-Fi permissions for Android 6.0+ (API 23+)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
