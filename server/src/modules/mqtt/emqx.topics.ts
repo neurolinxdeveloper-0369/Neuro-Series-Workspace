@@ -13,9 +13,14 @@ export const MQTT_TOPICS = {
   // Example: devices/nt8k-BC88-TP8/set
   getCommandTopic: (deviceId: string) => `devices/${deviceId}/set`,
 
+  // Dedicated Hardware Energy Reset Topic (subscribed by energy meter firmware)
+  // Example: devices/NEURO-EMS1-A1B2/reset_energy
+  getEnergyResetTopic: (deviceId: string) => `devices/${deviceId}/reset_energy`,
+
   // Backwards compatibility topics
   DEVICE_STATE: `${ENV.MQTT_TOPIC_PREFIX}/+/state`,
   DEVICE_TELEMETRY: `${ENV.MQTT_TOPIC_PREFIX}/+/telemetry`,
   DEVICE_STATUS: `${ENV.MQTT_TOPIC_PREFIX}/+/status`,
   getLegacyCommandTopic: (deviceId: string) => `${ENV.MQTT_TOPIC_PREFIX}/${deviceId}/set`,
+  getLegacyEnergyResetTopic: (deviceId: string) => `${ENV.MQTT_TOPIC_PREFIX}/${deviceId}/reset_energy`,
 };

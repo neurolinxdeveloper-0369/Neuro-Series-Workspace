@@ -15,6 +15,28 @@ export interface Device {
   switches?: Record<string, boolean>;
   switch_configs?: Array<{ index: number; name: string; iconPath?: string }>;
   endpoints?: any[];
+  voltage?: number;
+  current?: number;
+  power?: number;
+  apparent_power?: number;
+  reactive_power?: number;
+  power_factor?: number;
+  frequency?: number;
+  energy_kwh?: number;
+  energy_wh?: number;
+  relay?: boolean;
+  rssi?: number;
+  trip_reason?: string;
+  alerts?: {
+    message?: string;
+    over_current?: boolean;
+    under_voltage?: boolean;
+    over_voltage?: boolean;
+    low_pf?: boolean;
+    freq_error?: boolean;
+    reverse_power?: boolean;
+  };
+  energy_data?: any;
   created_at?: string;
   updated_at?: string;
 }
@@ -159,5 +181,9 @@ export const deviceApi = {
       deviceId: string;
       switchConfigs: Array<{ index: number; name: string; iconPath?: string }>;
     }>(`/devices/${id}/switches/config`, { configs });
+  },
+
+  resetEnergy: async (id: string): Promise<{ success: boolean; message: string }> => {
+    return api.post<{ success: boolean; message: string }>(`/devices/${id}/reset-energy`, {});
   },
 };

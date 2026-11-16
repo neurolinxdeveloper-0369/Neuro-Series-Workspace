@@ -23,7 +23,9 @@ import {
   CheckCircle2, 
   Info,
   AlertTriangle,
-  ArrowLeft
+  ArrowLeft,
+  RotateCcw,
+  Wifi
 } from 'lucide-react';
 import { getAssetUrl } from '../utils/assets';
 import { HARDWARE_ICONS } from '../utils/icons';
@@ -1065,110 +1067,377 @@ interface EnergyMeterProps {
   isThreePhase?: boolean;
   hasSwitch?: boolean;
   modelCode: string;
+  deviceName?: string;
+  deviceId?: string;
+  isOnline?: boolean;
+  device?: any;
+  initialSwitches?: Record<string, boolean>;
 }
 
-export const EnergyMeterLayout = ({ isThreePhase = false, hasSwitch = false, modelCode }: EnergyMeterProps) => {
-  const [relayOn, setRelayOn] = useState(true);
+export const EnergyMeterLayout = ({ 
+  isThreePhase = false, 
+  hasSwitch = false, 
+  modelCode,
+  deviceName,
+  deviceId,
+  isOnline = true,
+  device,
+  initialSwitches
+}: EnergyMeterProps) => {
+  // Telemetry state with initial fallbacks matching hardware specifications
+  const [voltage, setVoltage] = useState<number>(Number(device?.voltage ?? 230.45));
+  const [current, setCurrent] = useState<number>(Number(device?.current ?? 0.4520));
+  const [power, setPower] = useState<number>(Number(device?.power ?? 98.50));
+  const [apparentPower, setApparentPower] = useState<number>(Number(device?.apparent_power ?? 104.16));
+  const [reactivePower, setReactivePower] = useState<number>(Number(device?.reactive_power ?? 33.86));
+  const [powerFactor, setPowerFactor] = useState<number>(Number(device?.power_factor ?? 0.946));
+  const [frequency, setFrequency] = useState<number>(Number(device?.frequency ?? 50.01));
+  const [energyKwh, setEnergyKwh] = useState<number>(Number(device?.energy_kwh ?? 1.4523));
+  const [energyWh, setEnergyWh] = useState<number>(Number(device?.energy_wh ?? 1452.30));
+  const [relayOn, setRelayOn] = useState<boolean>(Boolean(device?.relay ?? device?.switches?.['1'] ?? initialSwitches?.['1'] ?? true));
+  const [rssi, setRssi] = useState<number>(Number(device?.rssi ?? -58));
+  const [tripReason, setTripReason] = useState<string>(String(device?.trip_reason ?? ''));
+  const [alerts, setAlerts] = useState<{
+    message?: string;
+    over_current?: boolean;
+    under_voltage?: boolean;
+    over_voltage?: boolean;
+    low_pf?: boolean;
+    freq_error?: boolean;
+    reverse_power?: boolean;
+  }>(device?.alerts ?? {
+    message: '',
+    over_current: false,
+    under_voltage: false,
+    over_voltage: false,
+    low_pf: false,
+    freq_error: false,
+    reverse_power: false
+  });
+
+  const [isResetting, setIsResetting] = useState(false);
+  const [showResetModal, setShowResetModal] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [isControllingRelay, setIsControllingRelay] = useState(false);
+
+  // Sync state when device prop updates
+  useEffect(() => {
+    if (!device) return;
+    if (device.voltage !== undefined) setVoltage(Number(device.voltage));
+    if (device.current !== undefined) setCurrent(Number(device.current));
+    if (device.power !== undefined) setPower(Number(device.power));
+    if (device.apparent_power !== undefined) setApparentPower(Number(device.apparent_power));
+    if (device.reactive_power !== undefined) setReactivePower(Number(device.reactive_power));
+    if (device.power_factor !== undefined) setPowerFactor(Number(device.power_factor));
+    if (device.frequency !== undefined) setFrequency(Number(device.frequency));
+    if (device.energy_kwh !== undefined) setEnergyKwh(Number(device.energy_kwh));
+    if (device.energy_wh !== undefined) setEnergyWh(Number(device.energy_wh));
+    if (device.relay !== undefined) setRelayOn(Boolean(device.relay));
+    else if (device.switches?.['1'] !== undefined) setRelayOn(Boolean(device.switches['1']));
+    if (device.rssi !== undefined) setRssi(Number(device.rssi));
+    if (device.trip_reason !== undefined) setTripReason(String(device.trip_reason));
+    if (device.alerts) setAlerts(device.alerts);
+  }, [device]);
+
+  // Real-time WebSocket live updates from EMQX MQTT broker
+  useEffect(() => {
+    if (!deviceId) return;
+    const unsubscribe = realtimeSocket.subscribe((incomingDeviceId: string, incomingState: any) => {
+      if (incomingDeviceId === deviceId && incomingState) {
+        if (incomingState.voltage !== undefined) setVoltage(Number(incomingState.voltage));
+        if (incomingState.current !== undefined) setCurrent(Number(incomingState.current));
+        if (incomingState.power !== undefined) setPower(Number(incomingState.power));
+        if (incomingState.apparent_power !== undefined) setApparentPower(Number(incomingState.apparent_power));
+        if (incomingState.reactive_power !== undefined) setReactivePower(Number(incomingState.reactive_power));
+        if (incomingState.power_factor !== undefined) setPowerFactor(Number(incomingState.power_factor));
+        if (incomingState.frequency !== undefined) setFrequency(Number(incomingState.frequency));
+        if (incomingState.energy_kwh !== undefined) setEnergyKwh(Number(incomingState.energy_kwh));
+        if (incomingState.energy_wh !== undefined) setEnergyWh(Number(incomingState.energy_wh));
+        if (incomingState.relay !== undefined) setRelayOn(Boolean(incomingState.relay));
+        else if (incomingState.switches?.['1'] !== undefined) setRelayOn(Boolean(incomingState.switches['1']));
+        if (incomingState.rssi !== undefined) setRssi(Number(incomingState.rssi));
+        if (incomingState.trip_reason !== undefined) setTripReason(String(incomingState.trip_reason));
+        if (incomingState.alerts) setAlerts(incomingState.alerts);
+      }
+    });
+    return () => unsubscribe();
+  }, [deviceId]);
+
+  // Relay toggle handler (Capacitive single-switch provisional control)
+  const handleToggleRelay = async () => {
+    if (!deviceId || isControllingRelay) return;
+    const next = !relayOn;
+    setIsControllingRelay(true);
+    setRelayOn(next); // optimistic update
+
+    try {
+      await deviceApi.controlSwitch(deviceId, 1, next ? 'on' : 'off');
+    } catch (err) {
+      console.error('Failed to toggle relay switch:', err);
+      setRelayOn(!next); // revert
+      setToastMessage('Failed to switch relay state. Please check connection.');
+      setTimeout(() => setToastMessage(null), 3000);
+    } finally {
+      setIsControllingRelay(false);
+    }
+  };
+
+  // Dedicated Hardware Reset Command via MQTT topic devices/${deviceId}/reset_energy
+  const handleConfirmReset = async () => {
+    if (!deviceId || isResetting) return;
+    setIsResetting(true);
+    try {
+      await deviceApi.resetEnergy(deviceId);
+      setEnergyKwh(0.0000);
+      setEnergyWh(0.00);
+      setShowResetModal(false);
+      setToastMessage('Hardware reset command sent! Energy counter reset to 0.0000 kWh.');
+      setTimeout(() => setToastMessage(null), 3500);
+    } catch (err) {
+      console.error('Failed to reset energy:', err);
+      setToastMessage('Failed to send reset command to hardware.');
+      setTimeout(() => setToastMessage(null), 3000);
+    } finally {
+      setIsResetting(false);
+    }
+  };
+
+  const hasAnyAlert = Boolean(
+    tripReason ||
+    alerts.over_current ||
+    alerts.over_voltage ||
+    alerts.under_voltage ||
+    alerts.low_pf ||
+    alerts.freq_error ||
+    alerts.reverse_power ||
+    alerts.message
+  );
 
   return (
-    <div className="bg-gradient-to-b from-slate-900 to-slate-950 text-white rounded-3xl p-4 sm:p-5 border border-slate-800 shadow-xl select-none space-y-4">
-      {/* Top Header */}
-      <div className="flex items-center justify-between pb-3 border-b border-slate-800/80">
-        <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center border border-amber-500/30">
-            <Zap className="w-4 h-4" />
+    <div className="relative bg-gradient-to-b from-slate-900 via-slate-920 to-slate-950 text-white rounded-3xl p-4 sm:p-5 border border-slate-800 shadow-2xl select-none space-y-4">
+      {/* Toast Notification Banner */}
+      {toastMessage && (
+        <div className="absolute top-3 left-4 right-4 z-40 bg-sky-600/95 text-white text-xs font-semibold px-4 py-2.5 rounded-xl shadow-lg border border-sky-400/40 flex items-center justify-between backdrop-blur-md animate-fade-in">
+          <span>{toastMessage}</span>
+          <button type="button" onClick={() => setToastMessage(null)} className="ml-2 hover:opacity-80">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
+      {/* Top Header Card */}
+      <div className="flex items-center justify-between pb-3.5 border-b border-slate-800/80">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-amber-500/20 to-amber-600/10 text-amber-400 flex items-center justify-center border border-amber-500/30 shadow-inner">
+            <Zap className="w-5 h-5" />
           </div>
           <div>
-            <div className="text-xs font-bold uppercase tracking-wider text-amber-400 font-mono">
-              {modelCode} • {isThreePhase ? '3-Phase Smart Meter' : '1-Phase Smart Meter'}
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold uppercase tracking-wider text-amber-400 font-mono">
+                {modelCode}
+              </span>
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 border border-slate-700 font-mono text-slate-300">
+                {isThreePhase ? '3-Phase Smart Meter' : '1-Phase Single Switch Meter'}
+              </span>
             </div>
-            <div className="text-sm font-extrabold text-white">
-              Real-time Power Telemetry
+            <div className="text-base font-extrabold text-white mt-0.5">
+              {deviceName || (isThreePhase ? 'Three Phase Energy Meter' : 'Single Phase Energy Meter')}
             </div>
           </div>
         </div>
 
-        {hasSwitch && (
-          <button
-            type="button"
-            onClick={() => setRelayOn(!relayOn)}
-            className={`px-3 py-1.5 rounded-full text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm cursor-pointer ${
-              relayOn 
-                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-500/30' 
-                : 'bg-rose-500/20 text-rose-300 border border-rose-500/40 hover:bg-rose-500/30'
-            }`}
-          >
-            <Power className="w-3.5 h-3.5" />
-            <span>{relayOn ? 'Load Connected' : 'Disconnected'}</span>
-          </button>
-        )}
+        {/* Status Indicators: Online & RSSI */}
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-800/80 border border-slate-700/80 text-[11px] font-mono">
+            <span className={`w-2 h-2 rounded-full ${isOnline ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'}`} />
+            <span className={isOnline ? 'text-emerald-400' : 'text-rose-400'}>{isOnline ? 'LIVE' : 'OFFLINE'}</span>
+          </div>
+          <div className="hidden sm:flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-800/80 border border-slate-700/80 text-[11px] font-mono text-slate-300">
+            <Wifi className="w-3 h-3 text-sky-400" />
+            <span>{rssi} dBm</span>
+          </div>
+        </div>
       </div>
 
-      {/* 5 Core Required Metrics: Voltage, Current, Power, Power Factor, Energy */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
-        
-        {/* 1. Voltage (V) */}
-        <div className="bg-slate-800/70 rounded-2xl p-3 border border-slate-700/60 flex flex-col justify-between">
+      {/* Trip Reason / Alert Warning Banner */}
+      {hasAnyAlert && (
+        <div className="bg-amber-950/40 border border-amber-500/40 rounded-2xl p-3 flex items-start gap-2.5 text-amber-200">
+          <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
+          <div className="text-xs space-y-0.5">
+            <div className="font-bold text-amber-300">
+              {tripReason ? `Trip Warning: ${tripReason}` : 'Safety Alert Triggered'}
+            </div>
+            <div className="text-amber-200/80 text-[11px]">
+              {alerts.message || 'Hardware safety threshold detected. Review electrical parameters below.'}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Hero Card: Total Accumulated Energy (kWh / Wh) + Dedicated Reset Action */}
+      <div className="bg-gradient-to-br from-sky-950/70 via-slate-900 to-slate-950 rounded-2xl p-4 sm:p-5 border border-sky-500/30 shadow-lg space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-1.5 text-[11px] font-mono uppercase tracking-wider text-sky-300">
+              <Sparkles className="w-3.5 h-3.5 text-sky-400" />
+              <span>Total Accumulated Consumption</span>
+            </div>
+            <div className="mt-1 flex items-baseline gap-2">
+              <span className="text-3xl sm:text-4xl font-black font-mono tracking-tight text-white">
+                {energyKwh.toFixed(4)}
+              </span>
+              <span className="text-sm sm:text-base font-bold text-sky-400 font-mono">kWh (Units)</span>
+            </div>
+            <div className="text-xs text-slate-400 font-mono mt-0.5">
+              Accumulated: <strong className="text-slate-200">{energyWh.toFixed(2)} Wh</strong> • Non-volatile Flash Registers
+            </div>
+          </div>
+
+          {/* Dedicated Reset Option Command Button */}
+          <div className="flex sm:flex-col items-center sm:items-end justify-between gap-2 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-800">
+            <button
+              type="button"
+              onClick={() => setShowResetModal(true)}
+              disabled={isResetting}
+              className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold bg-sky-500/10 hover:bg-sky-500/20 text-sky-300 border border-sky-500/30 hover:border-sky-500/50 shadow-sm transition-all cursor-pointer group disabled:opacity-50"
+            >
+              <RotateCcw className={`w-3.5 h-3.5 text-sky-400 group-hover:rotate-[-45deg] transition-transform ${isResetting ? 'animate-spin' : ''}`} />
+              <span>Reset Energy (0.00)</span>
+            </button>
+            <span className="text-[10px] text-slate-500 font-mono">Topic: devices/{deviceId || 'EMS1'}/reset_energy</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Relay Switch Provisional Control Card (When hasSwitch is true, e.g. EMS1) */}
+      {hasSwitch && (
+        <div className="bg-slate-900/90 rounded-2xl p-4 border border-slate-800 shadow-md">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className={`w-10 h-10 rounded-2xl flex items-center justify-center transition-all ${
+                relayOn 
+                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 shadow-[0_0_15px_rgba(16,185,129,0.2)]' 
+                  : 'bg-slate-800 text-slate-400 border border-slate-700'
+              }`}>
+                <Power className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-extrabold text-white">Relay Switch Output (Switch 1)</span>
+                  <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full font-bold ${
+                    relayOn 
+                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' 
+                      : 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
+                  }`}>
+                    {relayOn ? 'ACTIVE LOAD' : 'CUT OFF'}
+                  </span>
+                </div>
+                <div className="text-[11px] text-slate-400 mt-0.5">
+                  Provisional capacitive load control with hardware protection
+                </div>
+              </div>
+            </div>
+
+            {/* Capacitive Switch Toggle Button */}
+            <button
+              type="button"
+              onClick={handleToggleRelay}
+              disabled={isControllingRelay}
+              className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer shadow-md disabled:opacity-50 ${
+                relayOn
+                  ? 'bg-emerald-500 text-white hover:bg-emerald-600 shadow-[0_0_15px_rgba(16,185,129,0.35)]'
+                  : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700'
+              }`}
+            >
+              <Power className="w-4 h-4" />
+              <span>{relayOn ? 'Turn Off' : 'Turn On'}</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 6 Core Required Electrical Metrics */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
+        {/* 1. Active Power (W) */}
+        <div className="bg-slate-800/80 rounded-2xl p-3 border border-slate-700/60 flex flex-col justify-between">
+          <span className="text-[10px] font-mono uppercase text-slate-400 flex items-center gap-1">
+            <Zap className="w-3 h-3 text-emerald-400" /> Active Power
+          </span>
+          <div className="mt-1">
+            <div className="text-xl font-black font-mono text-emerald-400 tracking-tight">
+              {power.toFixed(2)}
+            </div>
+            <div className="flex items-center justify-between text-[11px] text-emerald-400/80 font-bold">
+              <span>Watts (W)</span>
+              <span className="text-[10px] font-mono text-slate-400">{(power / 1000).toFixed(3)} kW</span>
+            </div>
+          </div>
+        </div>
+
+        {/* 2. RMS Voltage (V) */}
+        <div className="bg-slate-800/80 rounded-2xl p-3 border border-slate-700/60 flex flex-col justify-between">
           <span className="text-[10px] font-mono uppercase text-slate-400 flex items-center gap-1">
             <Gauge className="w-3 h-3 text-sky-400" /> Voltage
           </span>
           <div className="mt-1">
-            <div className="text-lg sm:text-xl font-extrabold font-mono text-white tracking-tight">
-              {isThreePhase ? '415.2' : '230.4'}
+            <div className="text-xl font-black font-mono text-white tracking-tight">
+              {voltage.toFixed(2)}
             </div>
             <span className="text-[11px] text-sky-400 font-bold">Volts (AC)</span>
           </div>
         </div>
 
-        {/* 2. Current (A) */}
-        <div className="bg-slate-800/70 rounded-2xl p-3 border border-slate-700/60 flex flex-col justify-between">
+        {/* 3. RMS Current (A) */}
+        <div className="bg-slate-800/80 rounded-2xl p-3 border border-slate-700/60 flex flex-col justify-between">
           <span className="text-[10px] font-mono uppercase text-slate-400 flex items-center gap-1">
             <Activity className="w-3 h-3 text-amber-400" /> Current
           </span>
           <div className="mt-1">
-            <div className="text-lg sm:text-xl font-extrabold font-mono text-white tracking-tight">
-              {isThreePhase ? '15.30' : '4.82'}
+            <div className="text-xl font-black font-mono text-white tracking-tight">
+              {current.toFixed(4)}
             </div>
             <span className="text-[11px] text-amber-400 font-bold">Amperes (A)</span>
           </div>
         </div>
 
-        {/* 3. Active Power (W / kW) */}
-        <div className="bg-slate-800/70 rounded-2xl p-3 border border-slate-700/60 flex flex-col justify-between">
-          <span className="text-[10px] font-mono uppercase text-slate-400 flex items-center gap-1">
-            <Zap className="w-3 h-3 text-emerald-400" /> Power
-          </span>
-          <div className="mt-1">
-            <div className="text-lg sm:text-xl font-extrabold font-mono text-emerald-400 tracking-tight">
-              {isThreePhase ? '3.45' : '1.11'}
-            </div>
-            <span className="text-[11px] text-emerald-400/80 font-bold">Kilowatts (kW)</span>
-          </div>
-        </div>
-
         {/* 4. Power Factor (PF) */}
-        <div className="bg-slate-800/70 rounded-2xl p-3 border border-slate-700/60 flex flex-col justify-between">
+        <div className="bg-slate-800/80 rounded-2xl p-3 border border-slate-700/60 flex flex-col justify-between">
           <span className="text-[10px] font-mono uppercase text-slate-400 flex items-center gap-1">
             <Sliders className="w-3 h-3 text-purple-400" /> Power Factor
           </span>
           <div className="mt-1">
-            <div className="text-lg sm:text-xl font-extrabold font-mono text-white tracking-tight">
-              0.98
+            <div className="text-xl font-black font-mono text-white tracking-tight">
+              {powerFactor.toFixed(3)}
             </div>
-            <span className="text-[11px] text-purple-400 font-bold">PF (Lead/Lag)</span>
+            <span className="text-[11px] text-purple-400 font-bold">
+              {powerFactor >= 0.9 ? 'High Efficiency' : 'Low PF'}
+            </span>
           </div>
         </div>
 
-        {/* 5. Total Accumulated Energy (kWh) */}
-        <div className="col-span-2 sm:col-span-1 bg-gradient-to-br from-sky-950/60 to-slate-800/80 rounded-2xl p-3 border border-sky-500/40 flex flex-col justify-between">
-          <span className="text-[10px] font-mono uppercase text-sky-300 flex items-center gap-1">
-            <Sparkles className="w-3 h-3 text-sky-400" /> Total Energy
+        {/* 5. Apparent Power (VA) */}
+        <div className="bg-slate-800/80 rounded-2xl p-3 border border-slate-700/60 flex flex-col justify-between">
+          <span className="text-[10px] font-mono uppercase text-slate-400 flex items-center gap-1">
+            <Activity className="w-3 h-3 text-indigo-400" /> Apparent Power
           </span>
           <div className="mt-1">
-            <div className="text-lg sm:text-xl font-extrabold font-mono text-sky-300 tracking-tight">
-              {isThreePhase ? '849.3' : '142.6'}
+            <div className="text-xl font-black font-mono text-white tracking-tight">
+              {apparentPower.toFixed(2)}
             </div>
-            <span className="text-[11px] text-sky-300 font-bold">kWh (Units)</span>
+            <span className="text-[11px] text-indigo-400 font-bold">Volt-Amps (VA)</span>
+          </div>
+        </div>
+
+        {/* 6. Reactive Power (VAR) */}
+        <div className="bg-slate-800/80 rounded-2xl p-3 border border-slate-700/60 flex flex-col justify-between">
+          <span className="text-[10px] font-mono uppercase text-slate-400 flex items-center gap-1">
+            <Waves className="w-3 h-3 text-rose-400" /> Reactive Power
+          </span>
+          <div className="mt-1">
+            <div className="text-xl font-black font-mono text-white tracking-tight">
+              {reactivePower.toFixed(2)}
+            </div>
+            <span className="text-[11px] text-rose-400 font-bold">VAr</span>
           </div>
         </div>
       </div>
@@ -1199,14 +1468,134 @@ export const EnergyMeterLayout = ({ isThreePhase = false, hasSwitch = false, mod
         </div>
       )}
 
-      {/* Frequency & Meter Health */}
-      <div className="flex items-center justify-between text-xs text-slate-400 pt-1 font-mono">
+      {/* Protection & Hardware Safety Matrix */}
+      <div className="bg-slate-900/70 rounded-2xl p-3 border border-slate-800 space-y-2">
+        <div className="flex items-center justify-between text-xs font-bold text-slate-400 uppercase tracking-wider font-mono">
+          <span className="flex items-center gap-1.5">
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+            Hardware Protection & Safety Matrix
+          </span>
+          <span className="text-[10px] text-slate-500 font-mono">Real-time Tripping Guard</span>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 text-[11px] font-mono">
+          <div className={`p-2 rounded-xl border flex items-center justify-between ${
+            alerts.over_current ? 'bg-rose-950/40 border-rose-500/50 text-rose-300' : 'bg-slate-800/40 border-slate-700/40 text-slate-300'
+          }`}>
+            <span>Over Current</span>
+            <span className={`font-bold ${alerts.over_current ? 'text-rose-400 animate-pulse' : 'text-emerald-400'}`}>
+              {alerts.over_current ? 'TRIP' : 'OK'}
+            </span>
+          </div>
+
+          <div className={`p-2 rounded-xl border flex items-center justify-between ${
+            alerts.over_voltage ? 'bg-amber-950/40 border-amber-500/50 text-amber-300' : 'bg-slate-800/40 border-slate-700/40 text-slate-300'
+          }`}>
+            <span>Over Voltage</span>
+            <span className={`font-bold ${alerts.over_voltage ? 'text-amber-400 animate-pulse' : 'text-emerald-400'}`}>
+              {alerts.over_voltage ? 'HIGH' : 'OK'}
+            </span>
+          </div>
+
+          <div className={`p-2 rounded-xl border flex items-center justify-between ${
+            alerts.under_voltage ? 'bg-amber-950/40 border-amber-500/50 text-amber-300' : 'bg-slate-800/40 border-slate-700/40 text-slate-300'
+          }`}>
+            <span>Under Voltage</span>
+            <span className={`font-bold ${alerts.under_voltage ? 'text-amber-400 animate-pulse' : 'text-emerald-400'}`}>
+              {alerts.under_voltage ? 'LOW' : 'OK'}
+            </span>
+          </div>
+
+          <div className={`p-2 rounded-xl border flex items-center justify-between ${
+            alerts.low_pf ? 'bg-purple-950/40 border-purple-500/50 text-purple-300' : 'bg-slate-800/40 border-slate-700/40 text-slate-300'
+          }`}>
+            <span>Low PF</span>
+            <span className={`font-bold ${alerts.low_pf ? 'text-purple-400' : 'text-emerald-400'}`}>
+              {alerts.low_pf ? 'WARN' : 'OK'}
+            </span>
+          </div>
+
+          <div className={`p-2 rounded-xl border flex items-center justify-between ${
+            alerts.freq_error ? 'bg-rose-950/40 border-rose-500/50 text-rose-300' : 'bg-slate-800/40 border-slate-700/40 text-slate-300'
+          }`}>
+            <span>Freq Error</span>
+            <span className={`font-bold ${alerts.freq_error ? 'text-rose-400' : 'text-emerald-400'}`}>
+              {alerts.freq_error ? 'ERROR' : 'OK'}
+            </span>
+          </div>
+
+          <div className={`p-2 rounded-xl border flex items-center justify-between ${
+            alerts.reverse_power ? 'bg-rose-950/40 border-rose-500/50 text-rose-300' : 'bg-slate-800/40 border-slate-700/40 text-slate-300'
+          }`}>
+            <span>Reverse Pwr</span>
+            <span className={`font-bold ${alerts.reverse_power ? 'text-rose-400' : 'text-emerald-400'}`}>
+              {alerts.reverse_power ? 'REV' : 'OK'}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* Grid Frequency & Health Footer */}
+      <div className="flex flex-col sm:flex-row items-center justify-between text-xs text-slate-400 pt-1 font-mono gap-1 border-t border-slate-800/80">
         <span className="flex items-center gap-1.5">
           <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-          Grid Frequency: <strong className="text-white">50.02 Hz</strong>
+          Grid Frequency: <strong className="text-white">{frequency.toFixed(2)} Hz</strong> (Nominal 50.00 Hz)
         </span>
-        <span>Accuracy Class 1.0 • Calibrated</span>
+        <span className="text-[11px] text-slate-500">
+          IEC 62053-21 Class 1.0 Metering Accuracy
+        </span>
       </div>
+
+      {/* Confirmation Dialog Modal for Hardware Energy Reset */}
+      {showResetModal && createPortal(
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in select-none">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-sm w-full shadow-2xl space-y-4">
+            <div className="w-12 h-12 rounded-2xl bg-sky-500/20 text-sky-400 flex items-center justify-center border border-sky-500/30 mx-auto">
+              <RotateCcw className="w-6 h-6" />
+            </div>
+
+            <div className="text-center space-y-1">
+              <h3 className="text-lg font-extrabold text-white">Reset Energy to 0?</h3>
+              <p className="text-xs text-slate-400">
+                This will dispatch a reset command to the hardware meter via MQTT topic:
+              </p>
+              <div className="p-2 rounded-xl bg-slate-950 border border-slate-800 font-mono text-[11px] text-sky-300 mt-2 break-all">
+                devices/{deviceId || 'EMS1'}/reset_energy
+              </div>
+              <p className="text-[11px] text-slate-400 mt-1">
+                Both the hardware non-volatile registers and database counters will restart from <strong>0.0000 kWh</strong>.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowResetModal(false)}
+                disabled={isResetting}
+                className="flex-1 py-2.5 rounded-xl border border-slate-700 text-slate-300 text-xs font-bold hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmReset}
+                disabled={isResetting}
+                className="flex-1 py-2.5 rounded-xl bg-sky-500 hover:bg-sky-600 text-white text-xs font-bold transition-all shadow-md cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50"
+              >
+                {isResetting ? (
+                  <>
+                    <RotateCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Resetting...</span>
+                  </>
+                ) : (
+                  <span>Confirm Reset</span>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 };
@@ -2166,6 +2555,7 @@ interface DynamicDeviceLayoutProps {
   initialSwitches?: Record<string, boolean>;
   switchConfigs?: Array<{ index: number; name: string; iconPath?: string }>;
   isOnline?: boolean;
+  device?: any;
 }
 
 export const DynamicDeviceLayout = ({ 
@@ -2174,7 +2564,8 @@ export const DynamicDeviceLayout = ({
   deviceId, 
   initialSwitches,
   switchConfigs,
-  isOnline = true
+  isOnline = true,
+  device
 }: DynamicDeviceLayoutProps) => {
   const registered = MODEL_REGISTRY[modelCode] || MODEL_REGISTRY['TP8'];
 
@@ -2207,6 +2598,11 @@ export const DynamicDeviceLayout = ({
           isThreePhase={registered.isThreePhase} 
           hasSwitch={registered.hasSwitch}
           modelCode={modelCode}
+          deviceName={deviceName}
+          deviceId={deviceId}
+          isOnline={isOnline}
+          device={device}
+          initialSwitches={initialSwitches}
         />
       );
     case 'water_tank':

@@ -1116,44 +1116,67 @@ export function App() {
       <div className="relative w-full py-3.5 sm:py-4 px-6 sm:px-8">
         {/* Plaque Background & Leaf Accents */}
         <svg 
-          viewBox="0 0 500 110" 
+          viewBox="0 0 520 115" 
           preserveAspectRatio="none" 
-          className="absolute inset-0 w-full h-full pointer-events-none drop-shadow-[0_6px_20px_rgba(0,0,0,0.06)]"
+          className="absolute inset-0 w-full h-full pointer-events-none drop-shadow-[0_4px_16px_rgba(140,110,70,0.14)]"
         >
           {/* Top-Left Peeking Leaves */}
-          <path 
-            d="M 60 14 C 55 4, 68 -2, 78 4 C 88 10, 80 18, 60 14 Z" 
-            fill="#526b35" 
-            opacity="0.85" 
-          />
-          <path 
-            d="M 72 12 C 72 0, 86 -4, 94 4 C 100 12, 90 18, 72 12 Z" 
-            fill="#415928" 
-            opacity="0.9" 
-          />
+          <g className="opacity-95">
+            {/* Leaf 1 (Left slant) */}
+            <path 
+              d="M 46 16 C 36 2, 54 -6, 68 2 C 78 8, 70 18, 46 16 Z" 
+              fill="#637c3a" 
+            />
+            <path 
+              d="M 48 15 Q 58 6 66 3" 
+              stroke="#475b27" 
+              strokeWidth="0.9" 
+              fill="none" 
+            />
+            {/* Leaf 2 (Upright slant) */}
+            <path 
+              d="M 64 14 C 64 -2, 82 -4, 90 6 C 96 14, 82 20, 64 14 Z" 
+              fill="#4e652c" 
+            />
+            <path 
+              d="M 66 13 Q 76 4 88 5" 
+              stroke="#36471e" 
+              strokeWidth="0.9" 
+              fill="none" 
+            />
+          </g>
 
           {/* Top-Right Peeking Leaf */}
-          <path 
-            d="M 436 8 C 448 0, 460 2, 464 12 C 466 22, 452 24, 436 8 Z" 
-            fill="#526b35" 
-            opacity="0.85" 
-          />
+          <g className="opacity-95">
+            <path 
+              d="M 454 13 C 468 0, 486 4, 488 16 C 490 26, 472 26, 454 13 Z" 
+              fill="#587134" 
+            />
+            <path 
+              d="M 457 14 Q 472 8 485 14" 
+              stroke="#3d5122" 
+              strokeWidth="0.9" 
+              fill="none" 
+            />
+          </g>
 
-          {/* Outer Plaque Contour Shape (Cambered/Barrel Plaque) with Pure White Inner Fill */}
+          {/* Outer Wooden Rim Silhouette with Pure White Fill */}
           <path 
-            d="M 28 14 Q 250 2 472 14 C 490 19, 498 35, 497 55 C 498 75, 490 91, 472 96 Q 250 108 28 96 C 10 91, 2 75, 3 55 C 2 35, 10 19, 28 14 Z" 
+            d="M 32 14 Q 260 5 488 14 C 508 18, 517 36, 516 57 C 517 78, 508 96, 488 100 Q 260 109 32 100 C 12 96, 3 78, 4 57 C 3 36, 12 18, 32 14 Z" 
             fill="#ffffff" 
-            stroke="#cfc2af" 
-            strokeWidth="2.2" 
+            stroke="#b38753" 
+            strokeWidth="2.8" 
+            strokeLinejoin="round"
           />
 
           {/* Secondary Engraved Inner Contour Line */}
           <path 
-            d="M 33 19 Q 250 7.5 467 19 C 483 23, 490 37, 489 55 C 490 73, 483 87, 467 91 Q 250 102.5 33 91 C 17 87, 10 73, 11 55 C 10 37, 17 23, 33 19 Z" 
+            d="M 37 19 Q 260 11 483 19 C 500 23, 508 38, 507 57 C 508 76, 500 91, 483 95 Q 260 103 37 95 C 20 91, 12 76, 13 57 C 12 38, 20 23, 37 19 Z" 
             fill="none" 
-            stroke="#d8cca8" 
-            strokeWidth="1.2" 
-            strokeOpacity="0.8" 
+            stroke="#d8c5a2" 
+            strokeWidth="1.4" 
+            strokeOpacity="0.85" 
+            strokeLinejoin="round"
           />
         </svg>
 
@@ -1161,8 +1184,8 @@ export function App() {
         <div className="relative z-10">
           {/* Top Row: YOUR SPACE CONNECTIVITY */}
           <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-[#526638] flex-shrink-0 shadow-2xs" />
-            <h2 className="text-[12px] sm:text-xs md:text-sm font-black tracking-wider uppercase text-[#332b21] font-sans">
+            <span className="w-2.5 h-2.5 rounded-full bg-[#5f7032] flex-shrink-0 shadow-2xs" />
+            <h2 className="text-[12px] sm:text-xs md:text-sm font-black tracking-wider uppercase text-[#3c3222] font-sans">
               YOUR SPACE CONNECTIVITY
             </h2>
           </div>
@@ -1171,7 +1194,7 @@ export function App() {
           <div className="h-px bg-[#d8cca8]/70 my-2 sm:my-2.5 w-full" />
 
           {/* Bottom Row: Total | Live | Inactive */}
-          <div className="flex items-center justify-between text-xs sm:text-sm px-1">
+          <div className="flex items-center justify-between text-xs sm:text-sm px-1 font-sans">
             <div className="flex items-center gap-1.5">
               <span className="text-[#4a3f31] font-bold text-[11px] sm:text-xs">Total:</span>
               <span className="font-extrabold text-[#221c15] text-xs sm:text-sm font-mono">{totalCount}</span>
@@ -1180,7 +1203,7 @@ export function App() {
             <div className="h-3.5 w-px bg-[#d8cca8]" />
 
             <div className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-[#526638] flex-shrink-0" />
+              <span className="w-2 h-2 rounded-full bg-[#5f7032] flex-shrink-0" />
               <span className="text-[#4a3f31] font-bold text-[11px] sm:text-xs">Live:</span>
               <span className="font-extrabold text-[#221c15] text-xs sm:text-sm font-mono">{liveCount}</span>
             </div>
@@ -2669,6 +2692,7 @@ export function App() {
                   initialSwitches={selectedDeviceForControl.switches}
                   switchConfigs={selectedDeviceForControl.switch_configs}
                   isOnline={selectedDeviceForControl.is_online !== false}
+                  device={selectedDeviceForControl}
                 />
               </div>
             </main>

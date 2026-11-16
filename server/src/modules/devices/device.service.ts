@@ -73,6 +73,21 @@ class DeviceService {
       ALTER TABLE devices ADD COLUMN IF NOT EXISTS switch_configs JSONB DEFAULT '[]';
       ALTER TABLE devices ADD COLUMN IF NOT EXISTS uptime_sec INT DEFAULT NULL;
 
+      -- Single Phase & Three Phase Energy Meter Telemetry Fields
+      ALTER TABLE devices ADD COLUMN IF NOT EXISTS voltage NUMERIC(8,2) DEFAULT NULL;
+      ALTER TABLE devices ADD COLUMN IF NOT EXISTS current NUMERIC(8,4) DEFAULT NULL;
+      ALTER TABLE devices ADD COLUMN IF NOT EXISTS power NUMERIC(10,2) DEFAULT NULL;
+      ALTER TABLE devices ADD COLUMN IF NOT EXISTS apparent_power NUMERIC(10,2) DEFAULT NULL;
+      ALTER TABLE devices ADD COLUMN IF NOT EXISTS reactive_power NUMERIC(10,2) DEFAULT NULL;
+      ALTER TABLE devices ADD COLUMN IF NOT EXISTS power_factor NUMERIC(6,3) DEFAULT NULL;
+      ALTER TABLE devices ADD COLUMN IF NOT EXISTS frequency NUMERIC(6,2) DEFAULT NULL;
+      ALTER TABLE devices ADD COLUMN IF NOT EXISTS energy_kwh NUMERIC(12,4) DEFAULT NULL;
+      ALTER TABLE devices ADD COLUMN IF NOT EXISTS energy_wh NUMERIC(12,2) DEFAULT NULL;
+      ALTER TABLE devices ADD COLUMN IF NOT EXISTS relay BOOLEAN DEFAULT NULL;
+      ALTER TABLE devices ADD COLUMN IF NOT EXISTS trip_reason VARCHAR(255) DEFAULT '';
+      ALTER TABLE devices ADD COLUMN IF NOT EXISTS alerts JSONB DEFAULT '{}';
+      ALTER TABLE devices ADD COLUMN IF NOT EXISTS energy_data JSONB DEFAULT '{}';
+
       CREATE TABLE IF NOT EXISTS device_endpoints (
           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
           device_id VARCHAR(64) NOT NULL REFERENCES devices(device_id) ON DELETE CASCADE,
@@ -503,6 +518,18 @@ class DeviceService {
     online?: boolean;
     rssi?: number;
     type?: string;
+    voltage?: number;
+    current?: number;
+    power?: number;
+    apparent_power?: number;
+    reactive_power?: number;
+    power_factor?: number;
+    frequency?: number;
+    energy_kwh?: number;
+    energy_wh?: number;
+    relay?: boolean;
+    trip_reason?: string;
+    alerts?: Record<string, any>;
   }): Promise<void> {
     try {
       const isOnline = data.online !== undefined ? data.online : true;
@@ -521,16 +548,71 @@ class DeviceService {
         }
       }
 
-      // 1. Update devices table in PostgreSQL
+      // Energy meter specific telemetry parsing
+      const voltage = typeof data.voltage === 'number' ? data.voltage : null;
+      const current = typeof data.current === 'number' ? data.current : null;
+      const power = typeof data.power === 'number' ? data.power : null;
+      const apparentPower = typeof data.apparent_power === 'number' ? data.apparent_power : null;
+      const reactivePower = typeof data.reactive_power === 'number' ? data.reactive_power : null;
+      const powerFactor = typeof data.power_factor === 'number' ? data.power_factor : null;
+      const frequency = typeof data.frequency === 'number' ? data.frequency : null;
+      const energyKwh = typeof data.energy_kwh === 'number' ? data.energy_kwh : null;
+      const energyWh = typeof data.energy_wh === 'number' ? data.energy_wh : null;
+      
+      let relayVal: boolean | null = null;
+      if (data.relay !== undefined) {
+        relayVal = Boolean(data.relay);
+        if (switches['1'] === undefined) {
+          switches['1'] = relayVal;
+        }
+      } else if (switches['1'] !== undefined) {
+        relayVal = Boolean(switches['1']);
+      }
+
+      const tripReason = typeof data.trip_reason === 'string' ? data.trip_reason : null;
+      const alerts = (typeof data.alerts === 'object' && data.alerts !== null) ? data.alerts : null;
+
+      // 1. Update devices table in PostgreSQL with switch state & full energy meter metrics
       await db.query(
         `UPDATE devices 
          SET switches = COALESCE(switches, '{}'::jsonb) || $1::jsonb,
              is_online = $2,
              rssi = COALESCE($3, rssi),
+             voltage = COALESCE($4, voltage),
+             current = COALESCE($5, current),
+             power = COALESCE($6, power),
+             apparent_power = COALESCE($7, apparent_power),
+             reactive_power = COALESCE($8, reactive_power),
+             power_factor = COALESCE($9, power_factor),
+             frequency = COALESCE($10, frequency),
+             energy_kwh = COALESCE($11, energy_kwh),
+             energy_wh = COALESCE($12, energy_wh),
+             relay = COALESCE($13, relay),
+             trip_reason = COALESCE($14, trip_reason),
+             alerts = CASE WHEN $15::jsonb IS NOT NULL THEN $15::jsonb ELSE alerts END,
+             energy_data = COALESCE(energy_data, '{}'::jsonb) || $16::jsonb,
              last_seen_at = CURRENT_TIMESTAMP,
              updated_at = CURRENT_TIMESTAMP
-         WHERE device_id = $4`,
-        [JSON.stringify(switches), isOnline, rssi, deviceId]
+         WHERE device_id = $17`,
+        [
+          JSON.stringify(switches),
+          isOnline,
+          rssi,
+          voltage,
+          current,
+          power,
+          apparentPower,
+          reactivePower,
+          powerFactor,
+          frequency,
+          energyKwh,
+          energyWh,
+          relayVal,
+          tripReason,
+          alerts ? JSON.stringify(alerts) : null,
+          JSON.stringify(data),
+          deviceId,
+        ]
       );
 
       // 2. Update device_endpoints table for each switch channel
@@ -551,16 +633,66 @@ class DeviceService {
       }
 
       // 3. Broadcast to all connected WebSocket clients in real time
-      socketManager.broadcastDeviceUpdate(deviceId, {
+      const wsBroadcastPayload = {
         deviceId,
         switches,
         is_online: isOnline,
         rssi,
         last_seen_at: new Date().toISOString(),
-      });
-      console.log(`✅ [DB & WS UPDATED] Hardware Telemetry for ${deviceId}:`, switches);
+        ...(voltage !== null ? { voltage } : {}),
+        ...(current !== null ? { current } : {}),
+        ...(power !== null ? { power } : {}),
+        ...(apparentPower !== null ? { apparent_power: apparentPower } : {}),
+        ...(reactivePower !== null ? { reactive_power: reactivePower } : {}),
+        ...(powerFactor !== null ? { power_factor: powerFactor } : {}),
+        ...(frequency !== null ? { frequency } : {}),
+        ...(energyKwh !== null ? { energy_kwh: energyKwh } : {}),
+        ...(energyWh !== null ? { energy_wh: energyWh } : {}),
+        ...(relayVal !== null ? { relay: relayVal } : {}),
+        ...(tripReason !== null ? { trip_reason: tripReason } : {}),
+        ...(alerts !== null ? { alerts } : {}),
+      };
+
+      socketManager.broadcastDeviceUpdate(deviceId, wsBroadcastPayload);
+      console.log(`✅ [DB & WS UPDATED] Hardware Telemetry for ${deviceId}:`, wsBroadcastPayload);
     } catch (err) {
       console.error(`❌ Failed to process telemetry update for ${deviceId}:`, err);
+    }
+  }
+
+  /**
+   * Dedicated Energy Reset: Sends MQTT command to `devices/${deviceId}/reset_energy`
+   * and resets energy totalizers in PostgreSQL and WebSocket state to 0
+   */
+  public async resetEnergy(deviceId: string): Promise<void> {
+    try {
+      // 1. Send dedicated MQTT command to hardware on devices/${deviceId}/reset_energy
+      await emqxService.sendEnergyResetCommand(deviceId).catch((err) => {
+        console.warn(`⚠️ [EMQX] Could not deliver energy reset packet:`, err.message);
+      });
+
+      // 2. Reset energy totalizers to 0 in PostgreSQL database
+      await db.query(
+        `UPDATE devices 
+         SET energy_kwh = 0, 
+             energy_wh = 0, 
+             updated_at = CURRENT_TIMESTAMP 
+         WHERE device_id = $1`,
+        [deviceId]
+      );
+
+      // 3. Broadcast real-time 0 update to all active web & mobile clients
+      socketManager.broadcastDeviceUpdate(deviceId, {
+        deviceId,
+        energy_kwh: 0,
+        energy_wh: 0,
+        last_seen_at: new Date().toISOString(),
+      });
+
+      console.log(`⚡ [ENERGY RESET SUCCESS] Energy counter reset to 0 for ${deviceId}`);
+    } catch (err) {
+      console.error(`❌ Failed to reset energy for ${deviceId}:`, err);
+      throw err;
     }
   }
 

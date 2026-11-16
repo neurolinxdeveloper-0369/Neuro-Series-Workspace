@@ -1514,6 +1514,7 @@ export const AddDeviceScreen = ({
                 <div className="flex flex-wrap gap-1.5">
                   {[
                     { ssid: 'NEURO-TP8-BC88', label: 'TP8 (8 Switches)' },
+                    { ssid: 'NEURO-EMS1-A1B2', label: 'EMS1 (1ph Meter + Switch)' },
                     { ssid: 'NEURO-EM1-4A12', label: 'EM1 (1ph Meter)' },
                     { ssid: 'NEURO-TNK-55BB', label: 'TNK (Water Tank)' },
                     { ssid: 'NEURO-IR1-8899', label: 'IR1 (Smart IR)' },

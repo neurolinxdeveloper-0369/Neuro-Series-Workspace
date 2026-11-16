@@ -136,3 +136,18 @@ deviceRouter.put('/:id/switches/config', handleSwitchConfigsUpdate);
 deviceRouter.post('/:id/switches/config', handleSwitchConfigsUpdate);
 deviceRouter.put('/:id/switch-configs', handleSwitchConfigsUpdate);
 deviceRouter.post('/:id/switch-configs', handleSwitchConfigsUpdate);
+
+// POST /api/devices/:id/reset-energy - Reset energy counter on hardware and database
+deviceRouter.post(['/:id/reset-energy', '/:id/reset_energy'], async (req, res) => {
+  try {
+    const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    await deviceService.resetEnergy(id);
+    return res.json({
+      success: true,
+      message: `Energy reset command sent to hardware (${id}). Energy counter started from 0.`,
+    });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Failed to reset energy counter';
+    return res.status(500).json({ success: false, error: message });
+  }
+});

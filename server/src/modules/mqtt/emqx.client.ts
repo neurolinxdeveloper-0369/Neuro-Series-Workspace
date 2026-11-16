@@ -153,6 +153,41 @@ class EmqxService {
     });
   }
 
+  // Publish dedicated energy reset command envelope to hardware on devices/{deviceId}/reset_energy
+  public sendEnergyResetCommand(deviceId: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      if (!this.client || !this.client.connected) {
+        return reject(new Error('MQTT Client not connected to EMQX broker'));
+      }
+
+      const topic = MQTT_TOPICS.getEnergyResetTopic(deviceId);
+      const envelope = {
+        v: 1,
+        ts: new Date().toISOString(),
+        msgId: `rst_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+        action: 'RESET_ENERGY',
+        command: 'reset',
+        deviceId,
+        reset_energy: true,
+      };
+
+      const payloadStr = JSON.stringify(envelope);
+
+      // Dual-publish to both official hardware topic and legacy topic
+      const legacyTopic = MQTT_TOPICS.getLegacyEnergyResetTopic(deviceId);
+      this.client.publish(legacyTopic, payloadStr, { qos: 1 }, () => {});
+
+      this.client.publish(topic, payloadStr, { qos: 1 }, (err) => {
+        if (err) {
+          console.error(`❌ Failed to publish energy reset command to ${topic}:`, err);
+          return reject(err);
+        }
+        console.log(`📤 [EMQX ENERGY RESET COMMAND] Sent to ${topic}:`, payloadStr);
+        resolve();
+      });
+    });
+  }
+
   // Generic publish command to EMQX
   public publishCommand(deviceId: string, command: Record<string, unknown>): Promise<void> {
     return new Promise((resolve, reject) => {
