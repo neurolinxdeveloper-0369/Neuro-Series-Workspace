@@ -1109,43 +1109,90 @@ export function App() {
     );
   };
 
-  // Render Your Space Connectivity Card (Capsule White Background Style matching Reference)
+  // Render Your Space Connectivity Card (Arched Plaque Outer Silhouette with Inner White Fill & Engraved Contour)
   const renderConnectivityCard = (totalCount: number, liveCount: number, inactiveCount: number) => (
-    <div 
-      className="w-full rounded-[24px] sm:rounded-3xl p-3.5 sm:p-4 select-none relative bg-white border border-slate-200/90 shadow-[0_4px_20px_-2px_rgba(0,0,0,0.06),0_1px_3px_rgba(0,0,0,0.04)] transition-all"
-    >
-      {/* Top Row: YOUR SPACE CONNECTIVITY */}
-      <div className="flex items-center gap-2">
-        <span className="w-2.5 h-2.5 rounded-full bg-[#526638] flex-shrink-0 shadow-2xs" />
-        <h2 className="text-[12px] sm:text-xs md:text-sm font-black tracking-wider uppercase text-slate-800 font-sans">
-          YOUR SPACE CONNECTIVITY
-        </h2>
-      </div>
+    <div className="relative w-full select-none pt-1 pb-1 transition-all">
+      {/* Organic Plaque SVG Container with Inset Engraved Contour and Leaf Accents */}
+      <div className="relative w-full py-3.5 sm:py-4 px-6 sm:px-8">
+        {/* Plaque Background & Leaf Accents */}
+        <svg 
+          viewBox="0 0 500 110" 
+          preserveAspectRatio="none" 
+          className="absolute inset-0 w-full h-full pointer-events-none drop-shadow-[0_6px_20px_rgba(0,0,0,0.06)]"
+        >
+          {/* Top-Left Peeking Leaves */}
+          <path 
+            d="M 60 14 C 55 4, 68 -2, 78 4 C 88 10, 80 18, 60 14 Z" 
+            fill="#526b35" 
+            opacity="0.85" 
+          />
+          <path 
+            d="M 72 12 C 72 0, 86 -4, 94 4 C 100 12, 90 18, 72 12 Z" 
+            fill="#415928" 
+            opacity="0.9" 
+          />
 
-      {/* Horizontal Divider Line */}
-      <div className="h-px bg-slate-200/90 my-2 sm:my-2.5 w-full" />
+          {/* Top-Right Peeking Leaf */}
+          <path 
+            d="M 436 8 C 448 0, 460 2, 464 12 C 466 22, 452 24, 436 8 Z" 
+            fill="#526b35" 
+            opacity="0.85" 
+          />
 
-      {/* Bottom Row: Total | Live | Inactive */}
-      <div className="flex items-center justify-between text-xs sm:text-sm px-1">
-        <div className="flex items-center gap-1.5">
-          <span className="text-slate-700 font-semibold text-[11px] sm:text-xs">Total:</span>
-          <span className="font-extrabold text-slate-900 text-xs sm:text-sm font-mono">{totalCount}</span>
-        </div>
+          {/* Outer Plaque Contour Shape (Cambered/Barrel Plaque) with Pure White Inner Fill */}
+          <path 
+            d="M 28 14 Q 250 2 472 14 C 490 19, 498 35, 497 55 C 498 75, 490 91, 472 96 Q 250 108 28 96 C 10 91, 2 75, 3 55 C 2 35, 10 19, 28 14 Z" 
+            fill="#ffffff" 
+            stroke="#cfc2af" 
+            strokeWidth="2.2" 
+          />
 
-        <div className="h-3.5 w-px bg-slate-200" />
+          {/* Secondary Engraved Inner Contour Line */}
+          <path 
+            d="M 33 19 Q 250 7.5 467 19 C 483 23, 490 37, 489 55 C 490 73, 483 87, 467 91 Q 250 102.5 33 91 C 17 87, 10 73, 11 55 C 10 37, 17 23, 33 19 Z" 
+            fill="none" 
+            stroke="#d8cca8" 
+            strokeWidth="1.2" 
+            strokeOpacity="0.8" 
+          />
+        </svg>
 
-        <div className="flex items-center gap-1.5">
-          <span className="w-2 h-2 rounded-full bg-[#526638] flex-shrink-0" />
-          <span className="text-slate-700 font-semibold text-[11px] sm:text-xs">Live:</span>
-          <span className="font-extrabold text-slate-900 text-xs sm:text-sm font-mono">{liveCount}</span>
-        </div>
+        {/* Card Content Layer */}
+        <div className="relative z-10">
+          {/* Top Row: YOUR SPACE CONNECTIVITY */}
+          <div className="flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-[#526638] flex-shrink-0 shadow-2xs" />
+            <h2 className="text-[12px] sm:text-xs md:text-sm font-black tracking-wider uppercase text-[#332b21] font-sans">
+              YOUR SPACE CONNECTIVITY
+            </h2>
+          </div>
 
-        <div className="h-3.5 w-px bg-slate-200" />
+          {/* Horizontal Divider Line */}
+          <div className="h-px bg-[#d8cca8]/70 my-2 sm:my-2.5 w-full" />
 
-        <div className="flex items-center gap-1.5">
-          <span className="w-2 h-2 rounded-full bg-[#8c8275] flex-shrink-0" />
-          <span className="text-slate-700 font-semibold text-[11px] sm:text-xs">Inactive:</span>
-          <span className="font-extrabold text-slate-900 text-xs sm:text-sm font-mono">{inactiveCount}</span>
+          {/* Bottom Row: Total | Live | Inactive */}
+          <div className="flex items-center justify-between text-xs sm:text-sm px-1">
+            <div className="flex items-center gap-1.5">
+              <span className="text-[#4a3f31] font-bold text-[11px] sm:text-xs">Total:</span>
+              <span className="font-extrabold text-[#221c15] text-xs sm:text-sm font-mono">{totalCount}</span>
+            </div>
+
+            <div className="h-3.5 w-px bg-[#d8cca8]" />
+
+            <div className="flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-[#526638] flex-shrink-0" />
+              <span className="text-[#4a3f31] font-bold text-[11px] sm:text-xs">Live:</span>
+              <span className="font-extrabold text-[#221c15] text-xs sm:text-sm font-mono">{liveCount}</span>
+            </div>
+
+            <div className="h-3.5 w-px bg-[#d8cca8]" />
+
+            <div className="flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-[#8c8275] flex-shrink-0" />
+              <span className="text-[#4a3f31] font-bold text-[11px] sm:text-xs">Inactive:</span>
+              <span className="font-extrabold text-[#221c15] text-xs sm:text-sm font-mono">{inactiveCount}</span>
+            </div>
+          </div>
         </div>
       </div>
     </div>
