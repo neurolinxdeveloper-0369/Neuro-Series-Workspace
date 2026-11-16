@@ -7,17 +7,20 @@ import {
   Mic, 
   MicOff, 
   CheckCircle2, 
-  ArrowRight
+  ArrowRight,
+  Cpu
 } from 'lucide-react';
 import { getAssetUrl } from '../utils/assets';
+import { aiApi } from '../services/ai';
 
 export interface ChatMessage {
   id: string;
   sender: 'user' | 'assistant';
   text: string;
   timestamp: string;
+  provider?: string;
   actionTaken?: {
-    type: 'toggle' | 'scene' | 'schedule' | 'nav';
+    type: 'control' | 'scene' | 'nav';
     label: string;
   };
 }
@@ -36,10 +39,10 @@ interface AiAssistantModalProps {
 const DEFAULT_GREETING = "Hello! I'm your Neuro AI Assistant ⚡. I can control your capacitive touch switches, trigger room scenes, run schedulers, check device statuses, or answer any questions about your smart home. What would you like to do?";
 
 const QUICK_PROMPTS = [
+  { label: 'Total Devices', query: 'Total devices in my home' },
+  { label: 'Device Info', query: 'Show live device info and signal' },
   { label: 'Turn on lights', query: 'Turn on the lights' },
   { label: 'Run Good Morning', query: 'Run Good Morning scene' },
-  { label: 'Device Status', query: 'What devices are online?' },
-  { label: 'Show Routines', query: 'Show active scenes and schedules' },
   { label: 'Turn off all', query: 'Turn off all switches' },
 ];
 
@@ -64,8 +67,26 @@ export const AiAssistantModal = ({
   const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [isListening, setIsListening] = useState(false);
+  const [ollamaStatus, setOllamaStatus] = useState<{ available: boolean; model: string }>({
+    available: false,
+    model: 'llama3.2',
+  });
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
+
+  // Check Ollama status on open
+  useEffect(() => {
+    if (isOpen) {
+      aiApi.getStatus().then((res) => {
+        if (res?.ollama?.available) {
+          setOllamaStatus({
+            available: true,
+            model: res.ollama.models[0] || 'llama3.2',
+          });
+        }
+      }).catch(() => {});
+    }
+  }, [isOpen]);
 
   // Auto-scroll to bottom of messages
   useEffect(() => {
@@ -83,26 +104,63 @@ export const AiAssistantModal = ({
 
   if (!isOpen) return null;
 
-  // Smart Home AI Response Generator
-  const generateAiResponse = async (userInput: string): Promise<{ text: string; action?: { type: 'toggle' | 'scene' | 'schedule' | 'nav'; label: string } }> => {
+  // Smart Home AI Grounded Response Generator (Real-time device & room telemetry)
+  const generateAiResponse = async (userInput: string): Promise<{ text: string; action?: ChatMessage['actionTaken'] }> => {
     const q = userInput.toLowerCase().trim();
 
-    // 1. Greetings
-    if (q === 'hi' || q === 'hello' || q === 'hey' || q.startsWith('good morning') || q.startsWith('good evening')) {
+    // 1. Total devices inquiry (exact requested phrase)
+    if (q.includes('total device') || q.includes('how many device') || q.includes('devices count') || q.includes('all device') || q === 'devices') {
+      const onlineDevs = devices.filter((d) => d.is_online !== false && d.status?.online !== false).length;
+      const offlineDevs = devices.length - onlineDevs;
       return {
-        text: `Hello! I'm ready to assist you in **${currentHomeName}**. You can ask me to toggle switches, run scenes, or check routine schedules.`,
+        text: `📊 **Real-time Device Summary for ${currentHomeName}:**\n\n` +
+          `• **Total Devices:** ${devices.length} registered\n` +
+          `• **Online Active:** ${onlineDevs} device(s)\n` +
+          `• **Offline:** ${offlineDevs} device(s)\n\n` +
+          (devices.length > 0 
+            ? `**Hardware in Home:**\n` + devices.map((d: any) => `• **${d.custom_name || d.name || 'Touch Panel'}** (${d.model_code || 'TP8'}) in *${d.room_name || 'Living room'}* — ${d.is_online !== false && d.status?.online !== false ? '🟢 Online' : '🔴 Offline'}`).join('\n')
+            : 'No smart devices registered yet. Tap **+** to add one.'),
       };
     }
 
-    // 2. Turn ON light / lights
+    // 2. Device info / diagnostics / IP / Signal / RSSI (exact requested phrase)
+    if (q.includes('device info') || q.includes('device status') || q.includes('diagnostics') || q.includes('signal') || q.includes('ip') || q.includes('rssi')) {
+      if (devices.length === 0) {
+        return {
+          text: `ℹ️ No devices are currently associated with **${currentHomeName}**. You can add an 8-gang or other touch panel from the top right **+** menu.`,
+        };
+      }
+      return {
+        text: `📡 **Live Hardware Telemetry & Diagnostics:**\n\n` +
+          devices.map((d: any) => {
+            const isOnline = d.is_online !== false && d.status?.online !== false;
+            const swList = d.switches ? Object.entries(d.switches) : [];
+            const onSwitches = swList.filter(([_, v]) => Boolean(v)).length;
+            return `**${d.custom_name || d.name || 'Touch Panel'}** (${d.model_code || 'TP8'}):\n` +
+              `• **Status:** ${isOnline ? '🟢 Online (EMQX MQTT Real-time)' : '🔴 Offline'}\n` +
+              `• **Device ID:** \`${d.device_id || d.id}\`\n` +
+              (d.ip_address ? `• **IP Address:** \`${d.ip_address}\`\n` : '') +
+              (typeof d.rssi === 'number' ? `• **Wi-Fi Signal:** \`${d.rssi} dBm\`\n` : '') +
+              `• **Switches:** ${onSwitches} of ${swList.length || 8} ON`;
+          }).join('\n\n'),
+      };
+    }
+
+    // 3. Greetings
+    if (q === 'hi' || q === 'hello' || q === 'hey' || q.startsWith('good morning') || q.startsWith('good evening')) {
+      return {
+        text: `Hello! I'm your Neuro AI Assistant connected live to **${currentHomeName}** (${devices.length} devices). You can ask me for total devices, device info, or command me to control switches and scenes!`,
+      };
+    }
+
+    // 4. Turn ON light / lights
     if (q.includes('turn on light') || q.includes('switch on light') || q.includes('lights on') || q.includes('turn on switch 1')) {
-      // Find first available device with switches
       const dev = devices.find((d) => (d.switches || d.status?.switches || []).length > 0) || devices[0];
       if (dev && onToggleSwitch) {
         onToggleSwitch(dev.device_id || dev.id, 0, true);
         return {
           text: `💡 **Done!** I have switched **ON** the light for you on **${dev.custom_name || dev.name || 'Touch Panel'}**.`,
-          action: { type: 'toggle', label: 'Light Turned ON' },
+          action: { type: 'control', label: 'Light Turned ON' },
         };
       }
       return {
@@ -110,7 +168,7 @@ export const AiAssistantModal = ({
       };
     }
 
-    // 3. Turn OFF all switches
+    // 5. Turn OFF all switches
     if (q.includes('turn off all') || q.includes('all off') || q.includes('switch off all') || q.includes('lights off')) {
       let toggledCount = 0;
       devices.forEach((dev) => {
@@ -125,11 +183,11 @@ export const AiAssistantModal = ({
       });
       return {
         text: `🌙 **All Off executed!** Turned off switches across your active rooms.`,
-        action: { type: 'toggle', label: 'All Switches OFF' },
+        action: { type: 'control', label: 'All Switches OFF' },
       };
     }
 
-    // 4. Run Good Morning or Scene
+    // 6. Run Good Morning or Scene
     if (q.includes('good morning') || (q.includes('run') && q.includes('scene'))) {
       const scene = routines.find((r) => r.type === 'scene' || (r.name && r.name.toLowerCase().includes('morning'))) || routines[0];
       if (scene && onRunRoutine) {
@@ -144,16 +202,7 @@ export const AiAssistantModal = ({
       };
     }
 
-    // 5. Device Status / Online check
-    if (q.includes('online') || q.includes('device') || q.includes('status') || q.includes('how many')) {
-      const totalDevs = devices.length;
-      const onlineDevs = devices.filter((d) => d.status?.online !== false).length;
-      return {
-        text: `📊 **Smart Home Status for ${currentHomeName}:**\n\n• **Connected Devices:** ${totalDevs} device(s) (${onlineDevs} online)\n• **Active Routines:** ${routines.length} configured\n• **Gateway:** Connected via EMQX MQTT & WebSocket real-time sync.`,
-      };
-    }
-
-    // 6. Routine / Schedule check
+    // 7. Routine / Schedule check
     if (q.includes('schedule') || q.includes('routine') || q.includes('scenes')) {
       const scenesCount = routines.filter((r) => r.type === 'scene').length;
       const schedulesCount = routines.filter((r) => r.type === 'schedule').length;
@@ -162,14 +211,14 @@ export const AiAssistantModal = ({
       };
     }
 
-    // 7. Help / Instructions
+    // 8. Help / Instructions
     if (q.includes('help') || q.includes('how to add') || q.includes('how do i')) {
       return {
         text: `ℹ️ **Here is how to get the most out of Neuro Series:**\n\n1. **Add Device:** Tap the **+** button in the top right and select *Add Device*.\n2. **Long-press Switch:** Long-press any capacitive switch to customize its appliance name and white icon.\n3. **Create Schedules:** Tap the **+** button on the Routines tab to create IST-precise automated schedules.\n4. **Voice & AI:** You can ask me here anytime to toggle switches or run scenes!`,
       };
     }
 
-    // 8. Navigation commands
+    // 9. Navigation commands
     if (q.includes('routines') || q.includes('go to routines') || q.includes('open routines')) {
       if (onNavigateTab) onNavigateTab('routines');
       return {
@@ -194,7 +243,7 @@ export const AiAssistantModal = ({
 
     // Default Fallback
     return {
-      text: `I understand you're asking about "${userInput}". I can help you operate your capacitive touch switches, trigger scenes like "Good Morning", or check status in **${currentHomeName}**. Feel free to try the quick buttons below!`,
+      text: `I understand you're asking about "${userInput}". I can help you operate your capacitive touch switches, report real-time device info or total devices, or trigger scenes in **${currentHomeName}**. Feel free to try the quick buttons below!`,
     };
   };
 
@@ -214,16 +263,54 @@ export const AiAssistantModal = ({
     setIsTyping(true);
 
     try {
-      // Simulate quick natural AI latency (300-600ms)
-      await new Promise((r) => setTimeout(r, 450));
-      const response = await generateAiResponse(query);
+      let aiText = '';
+      let actionObj: ChatMessage['actionTaken'] | undefined;
+      let providerName = ollamaStatus.available ? `Ollama (${ollamaStatus.model})` : 'Neuro Engine (Real-Time Grounded)';
+
+      // 1. Try hitting the Ollama backend API (grounded in live PostgreSQL + EMQX state)
+      try {
+        const historyPayload = messages.slice(-5).map((m) => ({
+          role: (m.sender === 'user' ? 'user' : 'assistant') as 'user' | 'assistant',
+          content: m.text,
+        }));
+
+        const res = await aiApi.chat(query, historyPayload);
+        if (res && res.reply) {
+          aiText = res.reply;
+          providerName = res.provider === 'ollama' ? `Ollama (${res.model || 'llama3.2'})` : 'Neuro Engine (Real-Time Grounded)';
+          if (res.action) {
+            actionObj = {
+              type: res.action.type,
+              label: res.action.label,
+            };
+            if (res.action.type === 'control' && onToggleSwitch && res.action.deviceId && typeof res.action.channel === 'number') {
+              onToggleSwitch(res.action.deviceId, res.action.channel - 1, res.action.targetState === 'on');
+            } else if (res.action.type === 'scene' && onRunRoutine && res.action.routineId) {
+              const matched = routines.find((r) => r.id === res.action?.routineId);
+              if (matched) onRunRoutine(matched);
+            }
+          }
+        }
+      } catch (err) {
+        // Fall back to client grounded generator
+        console.warn('Backend AI chat fallback to local telemetry:', err);
+      }
+
+      // If backend didn't reply (e.g. offline or guest), use the client grounded engine
+      if (!aiText) {
+        const localRes = await generateAiResponse(query);
+        aiText = localRes.text;
+        actionObj = localRes.action;
+        providerName = 'Neuro AI (Real-time Grounded)';
+      }
 
       const aiMsg: ChatMessage = {
         id: `msg_ai_${Date.now()}`,
         sender: 'assistant',
-        text: response.text,
+        text: aiText,
         timestamp: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true }),
-        actionTaken: response.action,
+        provider: providerName,
+        actionTaken: actionObj,
       };
 
       setMessages((prev) => [...prev, aiMsg]);
@@ -324,9 +411,13 @@ export const AiAssistantModal = ({
                 <h2 className="text-sm sm:text-base font-extrabold text-slate-900 tracking-tight">
                   Neuro AI Assistant
                 </h2>
-                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-sky-100 text-[#0284c7] text-[10px] font-bold">
-                  <Sparkles className="w-2.5 h-2.5" />
-                  Smart
+                <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
+                  ollamaStatus.available
+                    ? 'bg-purple-100 text-purple-800 border border-purple-200'
+                    : 'bg-sky-100 text-[#0284c7]'
+                }`}>
+                  {ollamaStatus.available ? <Cpu className="w-2.5 h-2.5" /> : <Sparkles className="w-2.5 h-2.5" />}
+                  {ollamaStatus.available ? `Ollama ${ollamaStatus.model}` : 'Real-time Grounded'}
                 </span>
               </div>
               <p className="text-[11px] text-slate-500 font-medium">
@@ -395,9 +486,16 @@ export const AiAssistantModal = ({
                 </div>
               </div>
 
-              <span className="text-[10px] text-slate-400 mt-1 px-1 font-mono">
-                {msg.timestamp}
-              </span>
+              <div className="flex items-center gap-2 mt-1 px-1">
+                <span className="text-[10px] text-slate-400 font-mono">
+                  {msg.timestamp}
+                </span>
+                {msg.provider && (
+                  <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-500 font-mono">
+                    {msg.provider}
+                  </span>
+                )}
+              </div>
             </div>
           ))}
 

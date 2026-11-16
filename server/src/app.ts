@@ -5,6 +5,7 @@ import { authRouter } from './modules/auth/auth.controller.js';
 import { deviceRouter } from './modules/devices/device.controller.js';
 import { homeRouter } from './modules/homes/home.controller.js';
 import { routineRouter } from './modules/routines/routine.controller.js';
+import { aiRouter } from './modules/ai/ai.controller.js';
 import { authService } from './modules/auth/auth.service.js';
 import { homeService } from './modules/homes/home.service.js';
 import { deviceService } from './modules/devices/device.service.js';
@@ -59,6 +60,7 @@ app.use(['/neuro-series/api/auth', '/api/auth', '/auth'], authRouter);
 app.use(['/neuro-series/api/devices', '/api/devices', '/devices'], deviceRouter);
 app.use(['/neuro-series/api/homes', '/api/homes', '/homes'], homeRouter);
 app.use(['/neuro-series/api/routines', '/api/routines', '/routines'], routineRouter);
+app.use(['/neuro-series/api/ai', '/api/ai', '/ai'], aiRouter);
 
 // 404 Handler
 app.use((_req, res) => {
