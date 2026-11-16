@@ -40,6 +40,7 @@ import { LocationQrModal } from './components/LocationQrModal';
 import { InviteMemberModal } from './components/InviteMemberModal';
 import { AddDeviceScreen, getRoomEmoji } from './components/AddDeviceScreen';
 import { NeuroLoader } from './components/NeuroLoader';
+import { AiAssistantModal } from './components/AiAssistantModal';
 import { getAssetUrl } from './utils/assets';
 import { authStorage, authApi, type UserProfile } from './services/auth';
 import { homeApi, homeStorage, type Home as UserHome, type Room } from './services/home';
@@ -75,6 +76,7 @@ export function App() {
   const [isQrModalOpen, setIsQrModalOpen] = useState(false);
   const [isInviteMemberOpen, setIsInviteMemberOpen] = useState(false);
   const [isAddDeviceOpen, setIsAddDeviceOpen] = useState(false);
+  const [isAiAssistantOpen, setIsAiAssistantOpen] = useState(false);
 
   // Dropdown menus state (Reference 2 Header)
   const [isHomeDropdownOpen, setIsHomeDropdownOpen] = useState(false);
@@ -816,6 +818,31 @@ export function App() {
     </div>
   );
 
+  // Neuro AI Assistant Header Circular Button with Logo
+  const renderAiAssistantButton = () => (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        setIsAiAssistantOpen(true);
+        setIsPlusMenuOpen(false);
+        setIsDotsMenuOpen(false);
+        setIsHomeDropdownOpen(false);
+      }}
+      className="group relative w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-white/90 hover:bg-white border border-white/80 shadow-sm flex items-center justify-center transition-all duration-200 hover:scale-105 active:scale-95 cursor-pointer overflow-hidden flex-shrink-0"
+      title="Neuro AI Assistant"
+      aria-label="Open Neuro AI Assistant"
+    >
+      <div className="absolute inset-0 bg-radial from-sky-400/25 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+      <img 
+        src={getAssetUrl('logo.png')} 
+        alt="Neuro AI" 
+        className="w-5 h-5 sm:w-6 sm:h-6 object-contain transition-transform duration-200 group-hover:scale-110 drop-shadow-2xs" 
+      />
+      <span className="absolute bottom-1 right-1 w-2 h-2 bg-emerald-500 rounded-full border border-white shadow-2xs" />
+    </button>
+  );
+
   // Contextual Plus Button & Dropdown for Top-Right Header across all screens
   const renderContextualPlusDropdown = () => (
     <div className="relative" data-dropdown>
@@ -1284,6 +1311,7 @@ export function App() {
 
           {/* Top-Right: Plus and Three-Dots Action Capsules */}
           <div className="flex items-center pointer-events-auto select-none gap-2">
+            {renderAiAssistantButton()}
             {renderContextualPlusDropdown()}
 
             {/* Three Dots Button */}
@@ -1347,7 +1375,8 @@ export function App() {
           <div className="flex items-center pointer-events-auto select-none">
             {renderHomeSelectorDropdown()}
           </div>
-          <div className="flex items-center pointer-events-auto select-none">
+          <div className="flex items-center pointer-events-auto select-none gap-2">
+            {renderAiAssistantButton()}
             {renderContextualPlusDropdown()}
           </div>
         </header>
@@ -1360,7 +1389,8 @@ export function App() {
             </span>
           </div>
 
-          <div className="flex items-center justify-end pointer-events-auto flex-shrink-0">
+          <div className="flex items-center justify-end pointer-events-auto flex-shrink-0 gap-2">
+            {renderAiAssistantButton()}
             <button
               onClick={() => setIsSignInOpen(true)}
               data-bg-light="true"
@@ -2598,6 +2628,26 @@ export function App() {
         );
       })()}
 
+
+      {/* 17. Neuro AI Assistant Conversational Modal / Smart Home Voice & Chat Control */}
+      <AiAssistantModal
+        isOpen={isAiAssistantOpen}
+        onClose={() => setIsAiAssistantOpen(false)}
+        devices={devices}
+        routines={routines}
+        currentHomeName={activeHome?.name || 'Neurolinx'}
+        onToggleSwitch={(deviceId, switchIndex, targetState) => {
+          const channel = switchIndex + 1;
+          const target = targetState ? 'on' : 'off';
+          deviceApi.controlSwitch(deviceId, channel, target).catch(() => {});
+        }}
+        onRunRoutine={(routine) => {
+          handleRunRoutine(routine);
+        }}
+        onNavigateTab={(tabId) => {
+          setActiveTab(tabId);
+        }}
+      />
 
       {/* 8. Light Blue Energy Symbol Cursor (Red replaced with Light Blue #38bdf8 / #7dd3fc) */}
       {isHovered && (
