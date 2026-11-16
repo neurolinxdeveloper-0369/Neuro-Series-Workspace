@@ -1109,62 +1109,43 @@ export function App() {
     );
   };
 
-  // Render Your Space Connectivity Transparent Card (Ultra-Transparent Glassmorphism)
+  // Render Your Space Connectivity Card (Capsule White Background Style matching Reference)
   const renderConnectivityCard = (totalCount: number, liveCount: number, inactiveCount: number) => (
     <div 
-      className="w-full rounded-2xl sm:rounded-3xl p-3 sm:p-4 select-none relative overflow-hidden transition-all"
-      style={{
-        background: 'rgba(255, 255, 255, 0.22)',
-        backdropFilter: 'blur(28px) saturate(170%)',
-        WebkitBackdropFilter: 'blur(28px) saturate(170%)',
-        border: '1px solid rgba(255, 255, 255, 0.60)',
-        boxShadow: '0 8px 32px 0 rgba(2, 132, 199, 0.05), inset 0 1.5px 2px 0 rgba(255, 255, 255, 0.70)',
-      }}
+      className="w-full rounded-[24px] sm:rounded-3xl p-3.5 sm:p-4 select-none relative bg-white border border-slate-200/90 shadow-[0_4px_20px_-2px_rgba(0,0,0,0.06),0_1px_3px_rgba(0,0,0,0.04)] transition-all"
     >
-      {/* Specular Glare Curve Overlay */}
-      <div 
-        className="absolute inset-0 rounded-2xl sm:rounded-3xl pointer-events-none"
-        style={{
-          background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.45) 0%, rgba(255, 255, 255, 0.05) 50%, transparent 100%)'
-        }}
-      />
-
       {/* Top Row: YOUR SPACE CONNECTIVITY */}
-      <div className="relative z-10 flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2 min-w-0">
-          <span className="w-2 h-2 rounded-full bg-[#0284c7] shadow-[0_0_8px_#38bdf8] flex-shrink-0" />
-          <h2 className="text-[11px] sm:text-xs md:text-sm font-extrabold tracking-wider uppercase text-slate-900 font-mono truncate">
-            Your Space Connectivity
-          </h2>
-        </div>
+      <div className="flex items-center gap-2">
+        <span className="w-2.5 h-2.5 rounded-full bg-[#526638] flex-shrink-0 shadow-2xs" />
+        <h2 className="text-[12px] sm:text-xs md:text-sm font-black tracking-wider uppercase text-slate-800 font-sans">
+          YOUR SPACE CONNECTIVITY
+        </h2>
       </div>
 
-      {/* Divider */}
-      <div className="relative z-10 h-px bg-white/40 my-2 sm:my-2.5" />
+      {/* Horizontal Divider Line */}
+      <div className="h-px bg-slate-200/90 my-2 sm:my-2.5 w-full" />
 
-      {/* Bottom Row: Total, Live, Inactive */}
-      <div className="relative z-10 flex items-center justify-between text-xs sm:text-sm px-1">
+      {/* Bottom Row: Total | Live | Inactive */}
+      <div className="flex items-center justify-between text-xs sm:text-sm px-1">
         <div className="flex items-center gap-1.5">
-          <span className="text-slate-600 font-medium text-[11px] sm:text-xs">Total:</span>
-          <span className="font-bold text-slate-900 font-mono text-xs sm:text-sm">{totalCount}</span>
+          <span className="text-slate-700 font-semibold text-[11px] sm:text-xs">Total:</span>
+          <span className="font-extrabold text-slate-900 text-xs sm:text-sm font-mono">{totalCount}</span>
         </div>
 
-        <div className="h-3 w-px bg-white/60" />
+        <div className="h-3.5 w-px bg-slate-200" />
 
         <div className="flex items-center gap-1.5">
-          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse flex-shrink-0" />
-          <span className="text-slate-600 font-medium text-[11px] sm:text-xs">Live:</span>
-          <span className="font-bold text-emerald-600 font-mono text-xs sm:text-sm">{liveCount}</span>
+          <span className="w-2 h-2 rounded-full bg-[#526638] flex-shrink-0" />
+          <span className="text-slate-700 font-semibold text-[11px] sm:text-xs">Live:</span>
+          <span className="font-extrabold text-slate-900 text-xs sm:text-sm font-mono">{liveCount}</span>
         </div>
 
-        <div className="h-3 w-px bg-white/60" />
+        <div className="h-3.5 w-px bg-slate-200" />
 
         <div className="flex items-center gap-1.5">
-          <span className="w-2 h-2 rounded-full bg-slate-400 flex-shrink-0" />
-          <span className="text-slate-600 font-medium text-[11px] sm:text-xs">Inactive:</span>
-          <span className={`font-bold font-mono text-xs sm:text-sm ${inactiveCount > 0 ? 'text-rose-500' : 'text-slate-700'}`}>
-            {inactiveCount}
-          </span>
+          <span className="w-2 h-2 rounded-full bg-[#8c8275] flex-shrink-0" />
+          <span className="text-slate-700 font-semibold text-[11px] sm:text-xs">Inactive:</span>
+          <span className="font-extrabold text-slate-900 text-xs sm:text-sm font-mono">{inactiveCount}</span>
         </div>
       </div>
     </div>
