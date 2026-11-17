@@ -153,7 +153,7 @@ export class OpenWAService {
 
     if (!response.ok) {
       const errDetail = resJson.message || resJson.error || `HTTP ${response.status}`;
-      console.error("WhatsApp gateway rejected the message.");
+      console.error(`WhatsApp gateway rejected the message (HTTP ${response.status}).`);
       throw new Error(`WhatsApp delivery failed: ${errDetail}`);
     }
 
