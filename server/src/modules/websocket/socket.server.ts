@@ -8,7 +8,15 @@ class SocketManager {
   private sessions = new Map<WebSocket, ReturnType<typeof verifySessionToken>>();
 
   public init(server: Server) {
-    const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 8192 });
+    const wss = new WebSocketServer({ noServer: true, maxPayload: 8192 });
+    server.on('upgrade', (request, socket, head) => {
+      const path = request.url?.split('?')[0];
+      if (path !== '/ws' && path !== '/neuro-series/ws') {
+        socket.end('HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n');
+        return;
+      }
+      wss.handleUpgrade(request, socket, head, client => wss.emit('connection', client, request));
+    });
     wss.on('connection', ws => {
       const authTimeout = setTimeout(() => ws.close(1008, 'Authentication required'), 5000);
       ws.once('message', message => {
