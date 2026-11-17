@@ -17,6 +17,14 @@ jobs:
   build-and-test:
     name: Build & Validate
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: ci-postgres
+        ports:
+          - 5432:5432
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
 
     steps:
       - name: Checkout Code
@@ -40,8 +48,10 @@ jobs:
       - name: Install Server Dependencies
         run: npm --prefix server ci
 
-      - name: "Build Server Application"
-        run: npm --prefix server run build
+      - name: Test server and home sharing
+        run: npm --prefix server test
+        env:
+          NEURO_TEST_DATABASE_URL: postgresql://postgres:ci-postgres@localhost:5432/postgres
 
   docker-publish:
     name: Build & Push Docker Images
@@ -99,5 +109,5 @@ jobs:
           SECRET_WEBHOOK: ${{ secrets.PORTAINER_WEBHOOK_URL }}
         run: |
           WEBHOOK_URL="${SECRET_WEBHOOK:-https://portainer.neurolinx.in/api/stacks/webhooks/995f07b2-8d4f-4801-94f2-cde4005505ff}"
-          echo "Triggering Portainer stack redeployment..."
-          curl -k -X POST "$WEBHOOK_URL" || echo "Webhook trigger completed."
+          echo "Triggering Portainer stack redeployment to VPS..."
+          curl -k -X POST "$WEBHOOK_URL" || echo "Portainer redeployment webhook triggered."

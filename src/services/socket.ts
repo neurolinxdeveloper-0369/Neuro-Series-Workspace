@@ -1,3 +1,4 @@
+import { authStorage } from './auth';
 import { Capacitor } from '@capacitor/core';
 
 type DeviceUpdateHandler = (deviceId: string, state: any) => void;
@@ -6,7 +7,6 @@ class RealtimeSocketClient {
   private ws: WebSocket | null = null;
   private listeners: Set<DeviceUpdateHandler> = new Set();
   private reconnectTimer: any = null;
-  private isIntentionalClose = false;
 
   private getSocketUrl(): string {
     const isNative = Capacitor.isNativePlatform() || 
@@ -29,6 +29,8 @@ class RealtimeSocketClient {
   }
 
   public connect() {
+    const token = authStorage.getToken();
+    if (!token || !this.listeners.size) return;
     if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
       return;
     }
@@ -38,9 +40,8 @@ class RealtimeSocketClient {
       console.log(`🔌 Connecting to Real-Time WebSocket at ${url}...`);
       this.ws = new WebSocket(url);
 
-      this.ws.onopen = () => {
-        console.log('✅ Real-Time WebSocket connected successfully!');
-      };
+      const socket = this.ws;
+      socket.onopen = () => socket.send(JSON.stringify({ type: 'AUTH', token }));
 
       this.ws.onmessage = (event) => {
         try {
@@ -63,8 +64,10 @@ class RealtimeSocketClient {
         console.warn('Real-Time WebSocket notice:', err);
       };
 
-      this.ws.onclose = () => {
-        if (!this.isIntentionalClose) {
+      socket.onclose = event => {
+        if (this.ws !== socket) return;
+        this.ws = null;
+        if (this.listeners.size && event.code !== 1008) {
           clearTimeout(this.reconnectTimer);
           this.reconnectTimer = setTimeout(() => {
             this.connect();
@@ -81,6 +84,11 @@ class RealtimeSocketClient {
     this.connect();
     return () => {
       this.listeners.delete(handler);
+      if (!this.listeners.size) {
+        clearTimeout(this.reconnectTimer);
+        this.ws?.close();
+        this.ws = null;
+      }
     };
   }
 }

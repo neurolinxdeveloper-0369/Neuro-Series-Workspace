@@ -1,7 +1,6 @@
 import mqtt, { type MqttClient } from 'mqtt';
 import { ENV } from '../../config/env.js';
 import { MQTT_TOPICS } from './emqx.topics.js';
-import { socketManager } from '../websocket/socket.server.js';
 
 class EmqxService {
   private client: MqttClient | null = null;
@@ -55,22 +54,20 @@ class EmqxService {
     this.client.on('message', async (topic: string, message: Buffer) => {
       try {
         const payload = JSON.parse(message.toString());
-        console.log(`📥 [EMQX INCOMING] Topic: ${topic} =>`, payload);
+        if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return;
 
-        // Case 1: Hardware Telemetry (nt/v1/{deviceId}/stat/telemetry or devices/{deviceId}/telemetry / state)
-        const isHardwareTelemetry = (topic.startsWith('nt/') && topic.endsWith('/stat/telemetry')) ||
-          (topic.startsWith('devices/') && (topic.endsWith('/telemetry') || topic.endsWith('/state') || topic.endsWith('/stat'))) ||
-          (topic.startsWith('neurolinx/devices/') && (topic.endsWith('/telemetry') || topic.endsWith('/state')));
+        const parts = topic.split('/');
+        const prefix = ENV.MQTT_TOPIC_PREFIX.split('/');
+        const legacy = parts.length === prefix.length + 2 && prefix.every((segment, index) => segment === parts[index]);
+        const officialTelemetry = parts.length === 5 && parts[0] === 'nt' && parts[1] === 'v1' && parts[3] === 'stat' && parts[4] === 'telemetry';
+        const deviceTopic = parts.length === 3 && parts[0] === 'devices';
+        const stateTopic = legacy || deviceTopic;
+        const suffix = parts.at(-1);
+        const telemetryId = officialTelemetry ? parts[2] :
+          stateTopic && (suffix === 'telemetry' || suffix === 'state' || suffix === 'stat') ? parts.at(-2) : null;
 
-        if (isHardwareTelemetry) {
-          const parts = topic.split('/');
-          let deviceId = payload.deviceId;
-          if (!deviceId) {
-            if (parts[0] === 'devices') deviceId = parts[1];
-            else if (parts[0] === 'nt') deviceId = parts[2];
-            else if (parts[0] === 'neurolinx') deviceId = parts[2];
-          }
-
+        if (telemetryId) {
+          const deviceId = telemetryId;
           if (deviceId) {
             for (const handler of this.telemetryHandlers) {
               try {
@@ -84,9 +81,8 @@ class EmqxService {
         }
 
         // Case 2: Hardware Heartbeat (e.g. devices/{deviceId}/heartbeat)
-        if (topic.startsWith('devices/') && topic.endsWith('/heartbeat')) {
-          const parts = topic.split('/');
-          const deviceId = payload.deviceId || parts[1];
+        if ((deviceTopic && suffix === 'heartbeat') || (legacy && suffix === 'status')) {
+          const deviceId = parts.at(-2);
           if (deviceId) {
             for (const handler of this.heartbeatHandlers) {
               try {
@@ -99,12 +95,6 @@ class EmqxService {
           return;
         }
 
-        // Case 3: Legacy State topic (neurolinx/devices/{deviceId}/state)
-        const parts = topic.split('/');
-        const legacyDeviceId = parts[2];
-        if (legacyDeviceId && topic.endsWith('/state')) {
-          socketManager.broadcastDeviceUpdate(legacyDeviceId, payload);
-        }
       } catch {
         console.warn(`⚠️ Could not parse message on topic ${topic}:`, message.toString());
       }
@@ -126,7 +116,7 @@ class EmqxService {
         return reject(new Error('MQTT Client not connected to EMQX broker'));
       }
 
-      const topic = MQTT_TOPICS.getCommandTopic(deviceId);
+      const topic = ENV.MQTT_USE_LEGACY_COMMAND_TOPICS ? MQTT_TOPICS.getLegacyCommandTopic(deviceId) : MQTT_TOPICS.getCommandTopic(deviceId);
       const envelope = {
         v: 1,
         ts: new Date().toISOString(),
@@ -138,10 +128,6 @@ class EmqxService {
 
       const payloadStr = JSON.stringify(envelope);
       
-      // Dual-publish to both standard and legacy topics
-      const legacyTopic = MQTT_TOPICS.getLegacyCommandTopic(deviceId);
-      this.client.publish(legacyTopic, payloadStr, { qos: 1 }, () => {});
-
       this.client.publish(topic, payloadStr, { qos: 1 }, (err) => {
         if (err) {
           console.error(`❌ Failed to publish switch command to ${topic}:`, err);
@@ -160,7 +146,7 @@ class EmqxService {
         return reject(new Error('MQTT Client not connected to EMQX broker'));
       }
 
-      const topic = MQTT_TOPICS.getEnergyResetTopic(deviceId);
+      const topic = ENV.MQTT_USE_LEGACY_COMMAND_TOPICS ? MQTT_TOPICS.getLegacyEnergyResetTopic(deviceId) : MQTT_TOPICS.getEnergyResetTopic(deviceId);
       const envelope = {
         v: 1,
         ts: new Date().toISOString(),
@@ -172,10 +158,6 @@ class EmqxService {
       };
 
       const payloadStr = JSON.stringify(envelope);
-
-      // Dual-publish to both official hardware topic and legacy topic
-      const legacyTopic = MQTT_TOPICS.getLegacyEnergyResetTopic(deviceId);
-      this.client.publish(legacyTopic, payloadStr, { qos: 1 }, () => {});
 
       this.client.publish(topic, payloadStr, { qos: 1 }, (err) => {
         if (err) {

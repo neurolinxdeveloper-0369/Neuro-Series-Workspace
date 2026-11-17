@@ -38,8 +38,14 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3056
-      - DATABASE_URL=postgresql://neurolinx_admin:${POSTGRES_PASSWORD:-NeuroSeriesSecure2026!}@smart-workspace-db:5432/neurolinx_smart_workspace
-      - JWT_SECRET=${JWT_SECRET}
+      - DATABASE_URL=postgresql://neurolinx_admin:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@smart-workspace-db:5432/neurolinx_smart_workspace
+      - MQTT_USERNAME=${MQTT_USERNAME:-}
+      - MQTT_PASSWORD=${MQTT_PASSWORD:-}
+      - MQTT_DEVICE_USERNAME=${MQTT_DEVICE_USERNAME:-}
+      - MQTT_USE_LEGACY_COMMAND_TOPICS=${MQTT_USE_LEGACY_COMMAND_TOPICS:-false}
+      - MQTT_DEVICE_PASSWORD=${MQTT_DEVICE_PASSWORD:-}
+      - OPENWA_API_KEY=${OPENWA_API_KEY:-}
+      - JWT_SECRET=${JWT_SECRET:?Set JWT_SECRET}
       - GOOGLE_WEB_CLIENT_ID=${GOOGLE_WEB_CLIENT_ID}
       - GOOGLE_ANDROID_CLIENT_ID=${GOOGLE_ANDROID_CLIENT_ID}
       - GOOGLE_IOS_CLIENT_ID=${GOOGLE_IOS_CLIENT_ID}
@@ -47,7 +53,7 @@ services:
       - SMTP_HOST=${SMTP_HOST:-smtp.gmail.com}
       - SMTP_PORT=${SMTP_PORT:-587}
       - SMTP_USER=${SMTP_USER:-neurolinxdeveloper@gmail.com}
-      - SMTP_PASS=${SMTP_PASS:-kneqkybqykdazikj}
+      - SMTP_PASS=${SMTP_PASS:-}
       - SMTP_FROM=${SMTP_FROM:-Neuro Series <neurolinxdeveloper@gmail.com>}
     logging:
       driver: "json-file"
@@ -64,7 +70,7 @@ services:
     environment:
       POSTGRES_DB: neurolinx_smart_workspace
       POSTGRES_USER: neurolinx_admin
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-NeuroSeriesSecure2026!}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql:ro

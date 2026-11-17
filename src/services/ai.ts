@@ -42,7 +42,8 @@ export const aiApi = {
    */
   chat: async (
     message: string,
-    history?: Array<{ role: 'user' | 'assistant'; content: string }>
+    history?: Array<{ role: 'user' | 'assistant'; content: string }>,
+    homeId?: string
   ): Promise<AiChatResponse> => {
     const token = authStorage.getToken();
     if (!token) {
@@ -52,6 +53,7 @@ export const aiApi = {
     return api.post<AiChatResponse>('/ai/chat', {
       message,
       history,
+      homeId,
     });
   },
 

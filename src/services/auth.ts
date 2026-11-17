@@ -67,8 +67,8 @@ export const authApi = {
   },
 
   // Request 6-digit verification code to email
-  sendEmailOtp: async (email: string): Promise<{ success: boolean; message: string; debugOtp?: string }> => {
-    return api.post<{ success: boolean; message: string; debugOtp?: string }>('/auth/send-otp', { email });
+  sendEmailOtp: async (email: string): Promise<{ success: boolean; message: string }> => {
+    return api.post<{ success: boolean; message: string }>('/auth/send-otp', { email });
   },
 
   // Verify email OTP and authenticate
@@ -94,15 +94,6 @@ export const authApi = {
     return response;
   },
 
-  // Phone number login / registration
-  loginWithPhone: async (phoneNumber: string, fullName?: string): Promise<AuthResponse> => {
-    const response = await api.post<AuthResponse>('/auth/phone', { phoneNumber, fullName });
-    if (response.success && response.token && response.user) {
-      authStorage.setSession(response.token, response.user);
-    }
-    return response;
-  },
-
   // Get current user profile with JWT token
   getProfile: async (): Promise<UserProfile | null> => {
     try {
@@ -114,7 +105,8 @@ export const authApi = {
         return response.user;
       }
       return null;
-    } catch {
+    } catch (error) {
+      if (error instanceof Error && /^API Error \[40[13]\]/.test(error.message)) authStorage.clearSession();
       return null;
     }
   },

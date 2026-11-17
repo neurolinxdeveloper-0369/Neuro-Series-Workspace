@@ -1,3 +1,4 @@
+import { findOwnedDevice } from '../homes/home.access.js';
 import { homeService } from '../homes/home.service.js';
 import { deviceService } from '../devices/device.service.js';
 import { routineService } from '../routines/routine.service.js';
@@ -95,10 +96,10 @@ export class AiService {
   /**
    * Fetch live, grounded telemetry from PostgreSQL & EMQX state
    */
-  public async getRealtimeContext(userId: string): Promise<RealtimeTelemetryContext> {
+  public async getRealtimeContext(userId: string, requestedHomeId?: string): Promise<RealtimeTelemetryContext> {
     try {
       const homes = await homeService.getHomesByOwner(userId);
-      const primaryHome = homes[0] || null;
+      const primaryHome = requestedHomeId ? homes.find(home => home.id === requestedHomeId) : homes[0];
       const homeId = primaryHome?.id;
       const homeName = primaryHome?.name || 'Neurolinx';
 
@@ -251,7 +252,8 @@ export class AiService {
   public async chat(
     userId: string,
     message: string,
-    history?: Array<{ role: 'user' | 'assistant'; content: string }>
+    history?: Array<{ role: 'user' | 'assistant'; content: string }>,
+    requestedHomeId?: string
   ): Promise<{
     reply: string;
     action?: AiChatAction;
@@ -264,7 +266,7 @@ export class AiService {
     provider: 'ollama' | 'grounded-engine';
     model: string;
   }> {
-    const telemetry = await this.getRealtimeContext(userId);
+    const telemetry = await this.getRealtimeContext(userId, requestedHomeId);
     const ollamaCheck = await this.isOllamaAvailable();
 
     // If Ollama is available locally, run grounded prompt through Ollama
@@ -375,7 +377,11 @@ When the user asks how many switches are turned ON or what switches are in a roo
           if (jsonMatch && jsonMatch[1]) {
             try {
               const parsed = JSON.parse(jsonMatch[1]);
-              if (parsed.action === 'control' && parsed.deviceId && parsed.channel) {
+              if (parsed.action === 'control' && typeof parsed.deviceId === 'string' && Number.isInteger(parsed.channel) &&
+                  (parsed.targetState === 'on' || parsed.targetState === 'off')) {
+                const device = await findOwnedDevice(userId, parsed.deviceId);
+                if (!device || !telemetry.devices.some(item => item.deviceId === device.device_id)) throw new Error('Device not found in the active location');
+                await deviceService.controlSwitch(device.device_id, parsed.channel, parsed.targetState);
                 action = {
                   type: 'control',
                   deviceId: parsed.deviceId,
@@ -383,14 +389,15 @@ When the user asks how many switches are turned ON or what switches are in a roo
                   targetState: parsed.targetState === 'on' ? 'on' : 'off',
                   label: `${parsed.targetState === 'on' ? 'Turned ON' : 'Turned OFF'} Channel ${parsed.channel}`,
                 };
-                deviceService.controlSwitch(action.deviceId!, action.channel!, action.targetState!).catch(() => {});
-              } else if (parsed.action === 'scene' && parsed.routineId) {
+              } else if (parsed.action === 'scene' && typeof parsed.routineId === 'string') {
+                if (!telemetry.routines.some(routine => routine.id === parsed.routineId)) throw new Error('Routine not found in the active location');
+                const outcome = await routineService.executeRoutine(parsed.routineId, userId);
+                if (!outcome.success) throw new Error('Some or all routine commands could not be sent');
                 action = {
                   type: 'scene',
                   routineId: parsed.routineId,
                   label: `Executed Scene`,
                 };
-                routineService.executeRoutine(parsed.routineId).catch(() => {});
               } else if (parsed.action === 'whatsapp_support') {
                 action = {
                   type: 'whatsapp_support',
@@ -423,7 +430,7 @@ When the user asks how many switches are turned ON or what switches are in a roo
     }
 
     // Grounded Real-Time Engine (Fall-through when Ollama is offline or spinning up)
-    return this.generateGroundedResponse(message, telemetry);
+    return this.generateGroundedResponse(message, telemetry, userId);
   }
 
   /**
@@ -431,7 +438,8 @@ When the user asks how many switches are turned ON or what switches are in a roo
    */
   private async generateGroundedResponse(
     message: string,
-    telemetry: RealtimeTelemetryContext
+    telemetry: RealtimeTelemetryContext,
+    userId: string
   ): Promise<{
     reply: string;
     action?: AiChatAction;
@@ -661,7 +669,7 @@ When the user asks how many switches are turned ON or what switches are in a roo
           routineId: routine.id,
           label: `Ran ${routine.name}`,
         };
-        routineService.executeRoutine(routine.id).catch(() => {});
+        routineService.executeRoutine(routine.id, userId).catch(() => {});
         reply = `🌅 **Scene Activated!** Executed **${routine.name}** with ${routine.actionCount} automated actions across your home.`;
       } else {
         reply = `🌅 Good morning! Your home is online and responsive. You have not configured a specific "Good Morning" scene yet—tap the **+** button in Routines to create one.`;

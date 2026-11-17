@@ -41,10 +41,9 @@ import { Capacitor } from '@capacitor/core';
 import jsQR from 'jsqr';
 import { deviceApi, type Device } from '../services/device';
 import { homeApi, type Home, type Room } from '../services/home';
-import { resolveDeviceFromSsid } from './DynamicDeviceLayout';
+import { resolveDeviceFromSsid, MODEL_REGISTRY } from './DynamicDeviceLayout';
 import { HARDWARE_ICONS } from '../utils/icons';
 import { getAssetUrl } from '../utils/assets';
-import { getNowIstIso } from '../utils/time';
 
 export interface DeviceModelItem {
   id: string;
@@ -162,6 +161,7 @@ export const DEVICE_CATALOG: DeviceModelItem[] = [
 
 interface AddDeviceScreenProps {
   isOpen: boolean;
+  catalogOnly?: boolean;
   onClose: () => void;
   homeId: string | null;
   activeHome?: Home | null;
@@ -175,6 +175,7 @@ type ScreenView = 'main' | 'catalog' | 'qr_scanner' | 'scan_nearby' | 'provision
 
 export const AddDeviceScreen = ({
   isOpen,
+  catalogOnly = false,
   onClose,
   homeId,
   activeHome,
@@ -183,7 +184,8 @@ export const AddDeviceScreen = ({
   onDeviceAdded,
   onRoomAdded,
 }: AddDeviceScreenProps) => {
-  const [currentView, setCurrentView] = useState<ScreenView>('main');
+  const [currentView, setCurrentView] = useState<ScreenView>(catalogOnly ? 'catalog' : 'main');
+  const view = catalogOnly ? 'catalog' : currentView;
   const [selectedCategory, setSelectedCategory] = useState<CategoryType>('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchActive, setIsSearchActive] = useState(false);
@@ -292,6 +294,7 @@ export const AddDeviceScreen = ({
 
   // Provisioning In-Progress & Hardware Response State
   const [isProvisioning, setIsProvisioning] = useState(false);
+  const confirmedPairing = useRef<{ key: string; ipAddress: string; mqttHost: string; mqttPort: number } | null>(null);
   const [provisionError, setProvisionError] = useState<string | null>(null);
   const [hardwareResponse, setHardwareResponse] = useState<{
     status: string;
@@ -302,7 +305,6 @@ export const AddDeviceScreen = ({
     mqttPort?: number;
     ipAddress?: string;
   } | null>(null);
-  const [newlyProvisionedRecord, setNewlyProvisionedRecord] = useState<{ roomName: string; device: Device } | null>(null);
 
   // Helper to send Device ID, Wi-Fi credentials & MQTT details to hardware at 192.168.4.1/api/wifi/configure
   // and verify connection status via GET 192.168.4.1/api/provision/status
@@ -339,7 +341,6 @@ export const AddDeviceScreen = ({
       mqtt_pass: payload.mqttPassword,
     };
 
-    console.log('Sending firmware provisioning payload to http://192.168.4.1/api/wifi/configure:', fullPayload);
 
     let configureAccepted = false;
     let configureResponse: any = null;
@@ -411,9 +412,10 @@ export const AddDeviceScreen = ({
     }
 
     // 2. Real-time verification: Poll GET http://192.168.4.1/api/provision/status
-    let verifiedIp = '';
-    const maxPollAttempts = 2;
-    for (let attempt = 1; attempt <= maxPollAttempts; attempt++) {
+    let confirmed = configureResponse?.status === 'connected' || configureResponse?.connected === true;
+    let verifiedIp = confirmed ? (configureResponse.ip || configureResponse.ipAddress || '') : '';
+    const maxPollAttempts = 6;
+    for (let attempt = 1; attempt <= maxPollAttempts && !confirmed; attempt++) {
       try {
         await new Promise(r => setTimeout(r, 800));
         let statusData: any = null;
@@ -445,6 +447,7 @@ export const AddDeviceScreen = ({
         if (statusData) {
           console.log(`Provisioning status check (${attempt}/${maxPollAttempts}):`, statusData);
           if (statusData.status === 'connected' || statusData.connected === true) {
+            confirmed = true;
             verifiedIp = statusData.ip || statusData.ipAddress || '';
             console.log('✅ Device confirmed connected to home Wi-Fi! Assigned IP:', verifiedIp);
             break;
@@ -457,15 +460,16 @@ export const AddDeviceScreen = ({
         if (pollErr.message && pollErr.message.includes('Device Wi-Fi connection failed')) {
           throw pollErr;
         }
-        // Device turned off SoftAP to connect to home Wi-Fi; immediately proceed to next step
-        console.log(`Status poll note (device closed SoftAP):`, pollErr.message);
-        break;
+        // A missing status response is not a connection confirmation.
       }
     }
 
+    if (!confirmed || !verifiedIp || verifiedIp === '192.168.4.1') {
+      throw new Error('Setup was sent, but the device did not confirm joining your home Wi-Fi. Check the device and reconnect to its hotspot to retry.');
+    }
     return {
       success: true,
-      ipAddress: verifiedIp || configureResponse?.ip || '192.168.4.1',
+      ipAddress: verifiedIp,
     };
   };
 
@@ -1021,38 +1025,41 @@ export const AddDeviceScreen = ({
       if (isCreatingNewRoom && newRoomName.trim()) {
         finalRoomName = newRoomName.trim();
         if (homeId) {
-          try {
-            const created = await homeApi.createRoom(homeId, finalRoomName);
-            finalRoomId = created.id;
-            onRoomAdded(created);
-          } catch {
-            finalRoomId = `rm_${Date.now()}`;
-            onRoomAdded({ id: finalRoomId, home_id: homeId, name: finalRoomName });
-          }
+          const created = await homeApi.createRoom(homeId, finalRoomName);
+          finalRoomId = created.id;
+          setSelectedRoomName(finalRoomName);
+          setSelectedRoomId(finalRoomId);
+          setIsCreatingNewRoom(false);
+          onRoomAdded(created);
         }
       }
 
       setProvisionError(null);
+      if (!homeId) throw new Error('Select a location before pairing a device.');
 
       // Step 1: Send configuration payload to hardware at 192.168.4.1/api/wifi/configure
       // and verify connection status via GET /api/provision/status
-      const mqttHost = 'api.neurolinx.in';
-      const mqttPort = 1887;
-      const mqttUsername = 'neuro_device_user';
-      const mqttPassword = 'NeuroSeriesEmqx2026!';
       const assignedDeviceId = generatedDeviceId;
 
-      const hardwareRes = await sendConfigToHardware({
-        deviceId: assignedDeviceId,
-        ssid: wifiSsid.trim(),
-        password: wifiPassword,
-        mqttHost,
-        mqttPort,
-        mqttUsername,
-        mqttPassword,
-      });
-
-      const actualIp = hardwareRes.ipAddress || '192.168.4.1';
+      const pairingKey = JSON.stringify([homeId, assignedDeviceId, wifiSsid.trim()]);
+      let pairing = confirmedPairing.current;
+      if (pairing?.key !== pairingKey) {
+        const config = await deviceApi.getPairingConfig(homeId);
+        const hardware = await sendConfigToHardware({
+          ...config,
+          deviceId: assignedDeviceId,
+          ssid: wifiSsid.trim(),
+          password: wifiPassword,
+        });
+        pairing = {
+          key: pairingKey,
+          ipAddress: hardware.ipAddress,
+          mqttHost: config.mqttHost,
+          mqttPort: config.mqttPort,
+        };
+        confirmedPairing.current = pairing;
+      }
+      const { ipAddress: actualIp, mqttHost, mqttPort } = pairing;
 
       // Restore normal internet routing if process was bound to device Wi-Fi
       const androidBridge = typeof window !== 'undefined' ? (window as any).AndroidWifiBridge : null;
@@ -1080,14 +1087,14 @@ export const AddDeviceScreen = ({
           }
           provisionResult = await deviceApi.provisionDevice({
             deviceId: assignedDeviceId,
-            homeId: homeId || '00000000-0000-0000-0000-000000000000',
+            homeId,
             roomId: finalRoomId || null,
             modelCode: activeModel.modelCode,
             mac4: mac4,
             customName: customDeviceName.trim() || activeModel.name,
             icon: selectedDeviceIcon || undefined,
             wifiSsid: wifiSsid.trim(),
-            wifiPassword: wifiPassword,
+
             firmwareVersion: 'v1.2.4-neuro',
             ipAddress: actualIp,
           });
@@ -1102,13 +1109,13 @@ export const AddDeviceScreen = ({
       }
 
       if (!provisionResult) {
-        console.warn('Backend provisioning could not complete after retries:', backendErrorDetail);
+        throw new Error('The device joined Wi-Fi, but could not be registered. ' + (backendErrorDetail || 'Restore internet access and try again.'));
       }
 
       // Step 3: Hardware confirmation verified
       const confirmation = {
         status: 'SUCCESS',
-        deviceId: `246F281A${mac4}`,
+        deviceId: provisionResult.deviceId,
         firmwareVersion: 'v1.2.4-neuro',
         endpoints: provisionResult?.endpoints || [],
         mqttHost,
@@ -1116,41 +1123,14 @@ export const AddDeviceScreen = ({
         ipAddress: actualIp,
       };
 
-      const matchGangs = activeModel.modelCode.match(/TP(\d+)/i);
-      const gangCount = matchGangs ? parseInt(matchGangs[1], 10) : (activeModel.modelCode === 'SN' || activeModel.modelCode === 'IRP' ? 2 : 1);
-
-      const fallbackEndpoints = Array.from({ length: gangCount }, (_, i) => ({
-        id: `ep_${assignedDeviceId}_${i + 1}`,
-        device_id: assignedDeviceId,
-        endpoint_index: i + 1,
-        name: `Switch ${i + 1}`,
-        endpoint_type: 'RELAY' as const,
-        state: { status: 'OFF' },
-        is_favorite: false,
-      }));
-
-      const newlyCreatedDevice: Device = {
-        id: provisionResult?.device?.id || provisionResult?.deviceId || assignedDeviceId,
-        home_id: provisionResult?.device?.home_id || homeId || '',
-        room_id: provisionResult?.device?.room_id || finalRoomId || null,
-        model_code: activeModel.modelCode,
-        mac_4: mac4,
-        custom_name: customDeviceName.trim() || activeModel.name,
-        icon: selectedDeviceIcon || undefined,
-        device_id: provisionResult?.device?.device_id || assignedDeviceId,
-        ip_address: actualIp,
-        firmware_version: 'v1.2.4-neuro',
-        is_online: true,
-        endpoints: (provisionResult?.endpoints && provisionResult.endpoints.length > 0)
-          ? provisionResult.endpoints
-          : fallbackEndpoints,
-        created_at: getNowIstIso(),
-        updated_at: getNowIstIso(),
-      };
+      const newlyCreatedDevice = {
+        ...provisionResult.device,
+        endpoints: provisionResult.endpoints,
+      } as Device;
 
       setHardwareResponse(confirmation);
-      setNewlyProvisionedRecord({ roomName: finalRoomName, device: newlyCreatedDevice });
       onDeviceAdded(finalRoomName, newlyCreatedDevice);
+      confirmedPairing.current = null;
       setCurrentView('provision_success');
 
     } catch (err: unknown) {
@@ -1158,6 +1138,7 @@ export const AddDeviceScreen = ({
       const msg = err instanceof Error ? err.message : 'Device provisioning failed. Please check your Wi-Fi credentials.';
       setProvisionError(msg);
     } finally {
+      try { (window as any).AndroidWifiBridge?.unbindProcessFromNetwork?.(); } catch {}
       setIsProvisioning(false);
     }
   };
@@ -1177,7 +1158,7 @@ export const AddDeviceScreen = ({
     >
       
       {/* ------------------- VIEW 1: MAIN ADD DEVICE SCREEN ------------------- */}
-      {currentView === 'main' && (
+      {view === 'main' && (
         <div className="w-full max-w-md mx-auto min-h-screen flex flex-col justify-between p-5 sm:p-6 pb-8">
           <div>
             {/* Header */}
@@ -1233,14 +1214,14 @@ export const AddDeviceScreen = ({
                   onClick={() => setCurrentView('catalog')}
                   className="px-6 py-2 rounded-full bg-[#0284c7] hover:bg-[#0369a1] text-white font-bold text-sm shadow-md shadow-sky-500/20 active:scale-95 transition-all cursor-pointer"
                 >
-                  Add
+                  Browse models
                 </button>
               </div>
             </div>
           </div>
 
           {/* Bottom Action Buttons */}
-          <div className="space-y-3 pt-6 mt-auto">
+          <div className="space-y-3 pt-6 mt-auto pb-[calc(1rem+var(--nav-inset-bottom))]">
             <button
               onClick={() => {
                 setActiveModel(DEVICE_CATALOG[0]);
@@ -1261,20 +1242,20 @@ export const AddDeviceScreen = ({
               className="w-full py-4 rounded-full bg-slate-200/90 hover:bg-slate-300 text-slate-900 font-bold text-sm sm:text-base transition-all active:scale-[0.99] cursor-pointer flex items-center justify-center gap-2"
             >
               <Radar className="w-4 h-4 text-slate-800" />
-              <span>Scan nearby</span>
+              <span>Find nearby device</span>
             </button>
           </div>
         </div>
       )}
 
       {/* ------------------- VIEW 2: "What kind of device?" (Catalog) ------------------- */}
-      {currentView === 'catalog' && (
+      {view === 'catalog' && (
         <div className="w-full max-w-md mx-auto min-h-screen flex flex-col justify-between p-4 sm:p-6 pb-8">
           <div>
             {/* Header */}
             <div className="relative flex items-center justify-between mb-4 pt-2">
               <button
-                onClick={() => setCurrentView('main')}
+                onClick={() => catalogOnly ? onClose() : setCurrentView('main')}
                 className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-slate-800 shadow-sm hover:bg-slate-100 transition-colors cursor-pointer"
                 aria-label="Back"
               >
@@ -1315,7 +1296,7 @@ export const AddDeviceScreen = ({
             )}
 
             {/* Category Tabs */}
-            <div className="flex items-center gap-3 overflow-x-auto no-scrollbar pb-3 mb-3 select-none">
+            <div className="flex items-center gap-2 overflow-x-auto pb-3 mb-3 select-none" aria-label="Device categories">
               {CATEGORIES.map((cat) => {
                 const isSelected = selectedCategory === cat;
                 return (
@@ -1341,15 +1322,17 @@ export const AddDeviceScreen = ({
             <div className="bg-white rounded-[28px] shadow-sm border border-slate-100/90 divide-y divide-slate-100 overflow-hidden mb-6">
               {DEVICE_CATALOG.filter(d => (selectedCategory === 'All' || d.category === selectedCategory) && (!searchQuery || d.name.toLowerCase().includes(searchQuery.toLowerCase()))).map((item) => {
                 const Icon = item.icon;
+                const Entry = catalogOnly ? 'div' : 'button';
+                const controlAvailable = ['touch_panel', 'energy_meter', 'gate_controller'].includes(MODEL_REGISTRY[item.modelCode]?.layoutType ?? '');
                 return (
-                  <div
+                  <Entry
                     key={item.id}
-                    onClick={() => {
+                    onClick={catalogOnly ? undefined : () => {
                       setActiveModel(item);
                       // Tapping on device opens live camera QR code scanner
                       setCurrentView('qr_scanner');
                     }}
-                    className="group flex items-center justify-between p-4 sm:p-4.5 hover:bg-slate-50/80 transition-colors cursor-pointer"
+                    className="group flex w-full items-center justify-between gap-2 p-4 text-left sm:p-5 hover:bg-slate-50/80"
                   >
                     <div className="flex items-center gap-4">
                       <div className="w-10 h-10 rounded-xl bg-slate-100/90 flex items-center justify-center text-slate-700 flex-shrink-0 group-hover:scale-105 transition-transform">
@@ -1359,26 +1342,28 @@ export const AddDeviceScreen = ({
                         <div className="font-semibold text-slate-900 text-sm sm:text-base">
                           {item.name}
                         </div>
-                        <div className="text-xs text-slate-400 font-mono mt-0.5">
+                        <div className="text-xs text-slate-600 font-mono mt-0.5">
                           {item.ssidFormat}
                         </div>
                       </div>
                     </div>
-                    <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-slate-600 transition-colors" strokeWidth={2.2} />
-                  </div>
+                    {catalogOnly
+                      ? <span className="shrink-0 rounded-full bg-slate-100 px-2 py-1 text-xs text-slate-700">{controlAvailable ? 'Model controls' : 'Firmware-dependent'}</span>
+                      : <ChevronRight className="w-4 h-4 shrink-0 text-slate-500" strokeWidth={2.2} />}
+                  </Entry>
                 );
               })}
             </div>
 
             {/* Footer link */}
-            <div className="text-center pb-6">
+            {!catalogOnly && <div className="text-center pb-6">
               <button
                 onClick={() => initiateDeviceSetup(DEVICE_CATALOG[0])}
                 className="text-sm font-bold text-[#0284c7] hover:underline cursor-pointer"
               >
-                Can't find your device?
+                Enter a setup code manually
               </button>
-            </div>
+            </div>}
           </div>
         </div>
       )}
@@ -2385,7 +2370,7 @@ export const AddDeviceScreen = ({
               Device Added Successfully!
             </h1>
             <p className="text-xs sm:text-sm text-slate-500 max-w-xs leading-relaxed mb-6">
-              Hardware accepted credentials (200 OK), completed reset, and successfully connected to Wi-Fi and MQTT broker.
+              The device confirmed its Wi-Fi connection and was added to this location. Live controls become available after it sends its first update.
             </p>
 
             {/* Hardware Confirmation Card */}
@@ -2461,9 +2446,6 @@ export const AddDeviceScreen = ({
           <div className="pt-4 mt-auto">
             <button
               onClick={() => {
-                if (newlyProvisionedRecord) {
-                  onDeviceAdded(newlyProvisionedRecord.roomName, newlyProvisionedRecord.device);
-                }
                 setCurrentView('main');
                 onClose();
               }}

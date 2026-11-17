@@ -99,15 +99,6 @@ export const homeApi = {
     return res.success;
   },
 
-  // Get signed QR share payload
-  getQrPayload: async (homeId: string): Promise<{ shareToken: string; qrData: string }> => {
-    const res = await api.get<{ success: boolean; shareToken: string; qrData: string }>(`/homes/${homeId}/qr`);
-    return {
-      shareToken: res.shareToken,
-      qrData: res.qrData,
-    };
-  },
-
   // Get saved home Wi-Fi credentials for hardware provisioning
   getHomeWifiCredentials: async (homeId: string): Promise<{ ssid: string; password: string }> => {
     try {
@@ -139,21 +130,23 @@ export const homeApi = {
     return res.success;
   },
 
-  // Send an invitation email
-  sendInvitation: async (homeId: string, email: string, accessLevel: string = 'Full access'): Promise<HomeInvitation> => {
-    const res = await api.post<{ success: boolean; invitation: HomeInvitation }>(`/homes/${homeId}/invitations`, {
-      email,
-      accessLevel,
-    });
-    if (!res.success || !res.invitation) {
-      throw new Error('Failed to send invitation');
-    }
-    return res.invitation;
-  },
+  // Create a shareable invitation, optionally restricted by recipient email
+  createInvitation: async (homeId: string, email?: string) =>
+    api.post<{ success: boolean; code: string; id: string; expiresAt: string }>(`/homes/${homeId}/invitations`, { email }),
 
-  // Get list of invitations
-  getInvitations: async (homeId: string): Promise<HomeInvitation[]> => {
-    const res = await api.get<{ success: boolean; invitations: HomeInvitation[] }>(`/homes/${homeId}/invitations`);
-    return res.success && Array.isArray(res.invitations) ? res.invitations : [];
-  },
+  getInvitations: async (homeId: string) =>
+    (await api.get<{ invitations: HomeInvitation[] }>(`/homes/${homeId}/invitations`)).invitations,
+
+  revokeInvitation: async (homeId: string, inviteId: string) =>
+    api.del(`/homes/${homeId}/invitations/${inviteId}`),
+
+  getMembers: async (homeId: string) =>
+    (await api.get<{ members: { id: string; full_name: string | null }[] }>(`/homes/${homeId}/members`)).members,
+
+  removeMember: async (homeId: string, userId: string) =>
+    api.del(`/homes/${homeId}/members/${userId}`),
+
+  joinLocation: async (code: string) =>
+    (await api.post<{ success: boolean; homeId: string }>('/homes/join', { code })).homeId,
+
 };

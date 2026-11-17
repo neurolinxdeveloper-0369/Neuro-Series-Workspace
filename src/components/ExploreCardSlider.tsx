@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, type TouchEvent } from 'react';
+import { useState, useRef, type TouchEvent } from 'react';
 import { X } from 'lucide-react';
 
 interface ExploreCardItem {
@@ -15,17 +15,17 @@ const exploreCards: ExploreCardItem[] = [
   {
     id: 1,
     heading: 'Explore devices',
-    text: 'Effortlessly orchestrate Neuro Series touch panels, tailored mood lighting, and all IR-controlled appliances with a single tap or automated routine.',
+    text: 'Browse Neuro Series touch panels and switches for room-by-room control.',
   },
   {
     id: 2,
     heading: 'Explore devices',
-    text: 'Keep your home comfortable and resources balanced. Regulate room temperatures, monitor tank levels, and automate water distribution.',
+    text: 'Organize paired devices by room and check which are online.',
   },
   {
     id: 3,
     heading: 'Explore devices',
-    text: 'Stay ahead of your monthly power bills. Access detailed device-level logs, peak usage graphs, and real-time energy telemetry right at your fingertips.',
+    text: 'View power and accumulated energy when a supported meter reports a reading.',
   },
 ];
 
@@ -33,15 +33,6 @@ export const ExploreCardSlider = ({ onDismiss }: ExploreCardSliderProps = {}) =>
   const [activeIndex, setActiveIndex] = useState(0);
   const touchStartX = useRef<number>(0);
   const touchEndX = useRef<number>(0);
-
-  // Auto-slide every 3 seconds as requested
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setActiveIndex((prev) => (prev + 1) % exploreCards.length);
-    }, 3000);
-
-    return () => clearInterval(interval);
-  }, []);
 
   const handleNext = () => {
     setActiveIndex((prev) => (prev + 1) % exploreCards.length);

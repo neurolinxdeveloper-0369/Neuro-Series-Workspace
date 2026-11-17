@@ -1,22 +1,71 @@
-import { Router } from 'express';
+import { db } from '../../config/database.js';
+import { ENV } from '../../config/env.js';
+import { authenticateToken, type AuthenticatedRequest } from '../auth/auth.middleware.js';
+import { canAccessHome, findOwnedDevice, ownsHome, requireHomeOwner } from '../homes/home.access.js';
+import { homeService } from '../homes/home.service.js';
+import { Router, type Response, type NextFunction } from 'express';
 import { deviceService } from './device.service.js';
 
 export const deviceRouter = Router();
 
-// GET /api/devices - List all devices
-deviceRouter.get('/', (_req, res) => {
-  const devices = deviceService.getDevices();
-  return res.json({ success: true, devices });
+deviceRouter.use(authenticateToken);
+deviceRouter.param('homeId', async (req: AuthenticatedRequest, res, next, homeId) => {
+  if (!/^\/home\/[^/]+\/?$/.test(req.path)) return requireHomeOwner(req, res, next, homeId);
+  try {
+    if (!req.user || !await canAccessHome(req.user.id, homeId)) {
+      return res.status(404).json({ success: false, error: 'Location not found' });
+    }
+    next();
+  } catch (error) {
+    next(error);
+  }
+});
+deviceRouter.param('id', async (req: AuthenticatedRequest, res: Response, next: NextFunction, id: string) => {
+  try {
+    const includeMembers = req.method === 'GET' || (req.method === 'POST' && req.path.replace(/\/$/, '').endsWith('/action'));
+    const device = req.user && await findOwnedDevice(req.user.id, id, includeMembers);
+    if (!device) return res.status(404).json({ success: false, error: 'Device not found' });
+    req.params.id = device.device_id;
+    next();
+  } catch (error) {
+    next(error);
+  }
+});
+
+deviceRouter.get('/', async (req: AuthenticatedRequest, res, next) => {
+  try {
+    const homes = await homeService.getAccessibleHomes(req.user!.id);
+    const devices = (await Promise.all(homes.map(home => deviceService.getDevicesByHome(home.id)))).flat();
+    return res.json({ success: true, devices });
+  } catch (error) {
+    next(error);
+  }
+});
+
+deviceRouter.get('/home/:homeId/pairing-config', (_req, res) => {
+  if (!ENV.MQTT_DEVICE_USERNAME || !ENV.MQTT_DEVICE_PASSWORD) {
+    return res.status(503).json({ success: false, error: 'Device pairing is temporarily unavailable' });
+  }
+  res.setHeader('Cache-Control', 'no-store');
+  return res.json({
+    mqttHost: ENV.MQTT_PUBLIC_HOST,
+    mqttPort: ENV.MQTT_PUBLIC_PORT,
+    mqttUsername: ENV.MQTT_DEVICE_USERNAME,
+    mqttPassword: ENV.MQTT_DEVICE_PASSWORD,
+  });
 });
 
 // POST /api/devices/provision - Provision physical device with parent and child endpoints
-deviceRouter.post('/provision', async (req, res) => {
+deviceRouter.post('/provision', async (req: AuthenticatedRequest, res) => {
   try {
     const { deviceId, homeId, roomId, modelCode, mac4, customName, icon, wifiSsid, wifiPassword, firmwareVersion, ipAddress } = req.body;
     if (!homeId || !modelCode || !customName || !wifiSsid) {
       return res.status(400).json({ success: false, error: 'homeId, modelCode, customName and wifiSsid are required' });
     }
 
+    if (!await ownsHome(req.user!.id, homeId)) {
+      return res.status(404).json({ success: false, error: 'Location not found' });
+    }
     const result = await deviceService.provisionDevice({
       deviceId: deviceId ? String(deviceId).trim() : undefined,
       homeId,
@@ -53,28 +102,47 @@ deviceRouter.get('/home/:homeId', async (req, res) => {
   }
 });
 
-// POST /api/devices - Add a new device
-deviceRouter.post('/', (req, res) => {
+deviceRouter.patch('/:id', async (req, res, next) => {
+  const { name, roomId } = req.body ?? {};
+  if (typeof name !== 'string' || !name.trim() || name.trim().length > 80 ||
+      (roomId !== null && typeof roomId !== 'string')) {
+    return res.status(400).json({ success: false, error: 'Enter a name of up to 80 characters and choose a room.' });
+  }
   try {
-    const { name, room, type, homeId } = req.body;
-    if (!name) {
-      return res.status(400).json({ success: false, error: 'Device name is required' });
-    }
-    const device = deviceService.addDevice({ name, room, type, homeId });
-    return res.status(201).json({ success: true, device });
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Failed to add device';
-    return res.status(500).json({ success: false, error: message });
+    const result = await db.query(
+      `UPDATE devices d SET custom_name = $2, room_id = r.id, updated_at = NOW()
+       FROM (SELECT (SELECT id FROM rooms WHERE id::text = $3) AS id) r
+       WHERE d.device_id = $1
+         AND ($3::text IS NULL OR EXISTS (SELECT 1 FROM rooms WHERE id = r.id AND home_id = d.home_id))
+       RETURNING d.custom_name, d.room_id`,
+      [req.params.id, name.trim(), roomId]
+    );
+    if (!result.rowCount) return res.status(400).json({ success: false, error: 'Room does not belong to this location.' });
+    return res.json({ success: true, device: result.rows[0] });
+  } catch (error) {
+    next(error);
+  }
+});
+
+deviceRouter.delete('/:id', async (req, res, next) => {
+  try {
+    const result = await db.query('DELETE FROM devices WHERE device_id = $1', [req.params.id]);
+    if (!result.rowCount) return res.status(404).json({ success: false, error: 'Device not found' });
+    return res.json({ success: true });
+  } catch (error) {
+    next(error);
   }
 });
 
 // GET /api/devices/:id - Get single device
-deviceRouter.get('/:id', (req, res) => {
-  const device = deviceService.getDeviceById(req.params.id);
-  if (!device) {
-    return res.status(404).json({ success: false, error: 'Device not found' });
+deviceRouter.get('/:id', async (req, res, next) => {
+  try {
+    const result = await db.query('SELECT * FROM devices WHERE device_id = $1', [req.params.id]);
+    if (!result.rowCount) return res.status(404).json({ success: false, error: 'Device not found' });
+    return res.json({ success: true, device: result.rows[0] });
+  } catch (error) {
+    next(error);
   }
-  return res.json({ success: true, device });
 });
 
 // POST /api/devices/:id/action - Control hardware switch channel (e.g. {"action":"on","channel":3})
@@ -86,32 +154,14 @@ deviceRouter.post('/:id/action', async (req, res) => {
       return res.status(400).json({ success: false, error: 'Channel is required (1-8)' });
     }
     const chNum = parseInt(String(channel), 10);
-    const act = (action === 'on' || action === 'off' || action === 'toggle') ? action : 'toggle';
+    if (action !== 'on' && action !== 'off' && action !== 'toggle') {
+      return res.status(400).json({ success: false, error: 'Invalid switch action' });
+    }
 
-    const result = await deviceService.controlSwitch(id, chNum, act);
+    const result = await deviceService.controlSwitch(id, chNum, action);
     return res.json({ success: true, ...result });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Switch control failed';
-    return res.status(400).json({ success: false, error: message });
-  }
-});
-
-// PATCH /api/devices/:id/state - Update device state & publish to EMQX
-deviceRouter.patch('/:id/state', async (req, res) => {
-  try {
-    const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-    // Check if channel action was passed in body
-    if (req.body.channel !== undefined) {
-      const chNum = parseInt(String(req.body.channel), 10);
-      const action = req.body.action || (req.body.state === true ? 'on' : req.body.state === false ? 'off' : 'toggle');
-      const result = await deviceService.controlSwitch(id, chNum, action);
-      return res.json({ success: true, ...result });
-    }
-
-    const updated = await deviceService.updateDeviceState(id, req.body);
-    return res.json({ success: true, device: updated });
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Failed to update device';
     return res.status(400).json({ success: false, error: message });
   }
 });

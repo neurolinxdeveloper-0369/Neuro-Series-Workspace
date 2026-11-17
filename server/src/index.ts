@@ -1,10 +1,11 @@
 import http from 'http';
-import { app } from './app.js';
+import { app, initializeDatabase } from './app.js';
 import { ENV } from './config/env.js';
 import { socketManager } from './modules/websocket/socket.server.js';
 import { emqxService } from './modules/mqtt/emqx.client.js';
 import { db } from './config/database.js';
 
+await initializeDatabase();
 const server = http.createServer(app);
 
 // 1. Initialize WebSocket Gateway on same HTTP server

@@ -1,3 +1,4 @@
+import type { HelpTopic } from './HelpCenter';
 import { useState, useEffect, useRef } from 'react';
 import { ArrowLeft, X, Loader2, AlertCircle, Mail, RotateCw, CheckCircle2 } from 'lucide-react';
 import { getAssetUrl } from '../utils/assets';
@@ -48,10 +49,11 @@ declare global {
 interface SignInScreenProps {
   isOpen: boolean;
   onClose: () => void;
+  onHelp: (topic: HelpTopic) => void;
   onSignInSuccess?: (user: UserProfile) => void;
 }
 
-export const SignInScreen = ({ isOpen, onClose, onSignInSuccess }: SignInScreenProps) => {
+export const SignInScreen = ({ isOpen, onClose, onSignInSuccess, onHelp }: SignInScreenProps) => {
   const [step, setStep] = useState<'identifier' | 'otp'>('identifier');
   const [authMethod, setAuthMethod] = useState<'whatsapp' | 'email'>('whatsapp');
   const [identifier, setIdentifier] = useState('');
@@ -155,13 +157,8 @@ export const SignInScreen = ({ isOpen, onClose, onSignInSuccess }: SignInScreenP
         const res = await authApi.sendEmailOtp(cleanId.toLowerCase());
         if (res.success) {
           setStep('otp');
-          if (res.debugOtp) {
-            setOtp(res.debugOtp.split(''));
-            setSuccessMessage(`Verification code: ${res.debugOtp} (Server SMTP credentials not yet set)`);
-          } else {
-            setOtp(['', '', '', '', '', '']);
-            setSuccessMessage(`A 6-digit verification code has been sent to ${cleanId}`);
-          }
+          setOtp(['', '', '', '', '', '']);
+          setSuccessMessage(`A 6-digit verification code has been sent to ${cleanId}`);
           setResendCooldown(60);
         } else {
           setErrorMessage(res.message || 'Failed to send OTP code');
@@ -271,12 +268,7 @@ export const SignInScreen = ({ isOpen, onClose, onSignInSuccess }: SignInScreenP
         const res = await authApi.sendEmailOtp(identifier.trim().toLowerCase());
         if (res.success) {
           setResendCooldown(60);
-          if (res.debugOtp) {
-            setOtp(res.debugOtp.split(''));
-            setSuccessMessage(`Verification code: ${res.debugOtp} (Server SMTP credentials not yet set)`);
-          } else {
-            setSuccessMessage('A new verification code has been sent to your email!');
-          }
+          setSuccessMessage('A new verification code has been sent to your email!');
         } else {
           setErrorMessage(res.message || 'Failed to resend OTP');
         }
@@ -629,12 +621,14 @@ export const SignInScreen = ({ isOpen, onClose, onSignInSuccess }: SignInScreenP
                     }}
                     type="text"
                     inputMode="numeric"
+                    aria-label={`Verification code digit ${idx + 1}`}
+                    autoComplete={idx === 0 ? 'one-time-code' : 'off'}
                     maxLength={1}
                     value={digit}
                     onChange={(e) => handleOtpChange(idx, e.target.value)}
                     onKeyDown={(e) => handleOtpKeyDown(idx, e)}
                     disabled={isLoading}
-                    className={`w-12 h-14 sm:w-13 sm:h-16 text-center text-xl sm:text-2xl font-bold text-slate-900 bg-white border-2 rounded-2xl outline-none shadow-xs transition-all disabled:opacity-60 ${
+                    className={`w-full min-w-0 max-w-12 h-12 sm:max-w-13 sm:h-16 text-center text-xl sm:text-2xl font-bold text-slate-900 bg-white border-2 rounded-2xl outline-none shadow-xs transition-all disabled:opacity-60 ${
                       authMethod === 'whatsapp'
                         ? 'border-slate-300 focus:border-[#25D366] focus:ring-4 focus:ring-emerald-100'
                         : 'border-slate-300 focus:border-[#0284c7] focus:ring-4 focus:ring-sky-100'
@@ -698,17 +692,9 @@ export const SignInScreen = ({ isOpen, onClose, onSignInSuccess }: SignInScreenP
       {/* Footer */}
       <footer className="w-full py-6 px-4 text-center mt-auto">
         <div className="flex flex-wrap items-center justify-center gap-x-4 sm:gap-x-6 gap-y-2 text-xs text-slate-500 font-sans max-w-2xl mx-auto">
-          <a href="#terms" onClick={(e) => e.preventDefault()} className="hover:text-slate-900 transition-colors">
-            Terms and Conditions
-          </a>
-          <span className="text-slate-300 hidden sm:inline">•</span>
-          <a href="#privacy" onClick={(e) => e.preventDefault()} className="hover:text-slate-900 transition-colors">
-            Neuro Series Account Privacy Notice
-          </a>
-          <span className="text-slate-300 hidden sm:inline">•</span>
-          <a href="#contact" onClick={(e) => e.preventDefault()} className="hover:text-slate-900 transition-colors">
-            Contact us
-          </a>
+          <button type="button" className="min-h-10 hover:text-slate-900" onClick={() => onHelp('account')}>Sign-in help</button>
+          <button type="button" className="min-h-10 hover:text-slate-900" onClick={() => onHelp('privacy')}>Account and device data</button>
+          <button type="button" className="min-h-10 hover:text-slate-900" onClick={() => onHelp('contact')}>Contact support</button>
         </div>
       </footer>
     </div>

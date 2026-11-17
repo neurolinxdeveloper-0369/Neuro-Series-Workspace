@@ -69,7 +69,7 @@ authRouter.post(['/whatsapp/send-otp', '/send-whatsapp-otp', '/whatsapp-otp'], a
 });
 
 // POST /api/auth/whatsapp/verify-otp and /api/auth/verify-whatsapp-otp
-authRouter.post(['/whatsapp/verify-otp', '/verify-whatsapp-otp'], async (req, res) => {
+authRouter.post(['/whatsapp/verify-otp', '/verify-whatsapp-otp', '/phone'], async (req, res) => {
   try {
     const phoneNumber = req.body.phoneNumber || req.body.phone;
     const { otp, fullName } = req.body;
@@ -81,28 +81,6 @@ authRouter.post(['/whatsapp/verify-otp', '/verify-whatsapp-otp'], async (req, re
     return res.json({ success: true, ...result });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'WhatsApp OTP verification failed';
-    return res.status(400).json({ success: false, error: message });
-  }
-});
-
-// POST /api/auth/phone (Supports both direct login and OTP-based verification)
-authRouter.post('/phone', async (req, res) => {
-  try {
-    const { phoneNumber, fullName, otp } = req.body;
-    if (!phoneNumber) {
-      return res.status(400).json({ success: false, error: 'phoneNumber is required' });
-    }
-
-    // If OTP is provided, verify it first
-    if (otp) {
-      const result = await authService.verifyWhatsAppOtp(phoneNumber, otp, fullName);
-      return res.json({ success: true, ...result });
-    }
-
-    const result = await authService.handlePhoneAuth(phoneNumber, fullName);
-    return res.json({ success: true, ...result });
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Phone authentication failed';
     return res.status(400).json({ success: false, error: message });
   }
 });

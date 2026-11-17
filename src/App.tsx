@@ -1,9 +1,16 @@
-import { useState, useEffect, useRef } from 'react';
-import { 
+import { HelpCenter, type HelpTopic } from './components/HelpCenter';
+import { NotificationCenter } from './components/NotificationCenter';
+import { LockedScreen } from './components/LockedScreen';
+import { useNotifications } from './hooks/useNotifications';
+import { useBiometricLock } from './hooks/useBiometricLock';
+import { DeviceManagement } from './components/DeviceManagement';
+import { Capacitor } from '@capacitor/core';
+import { useState, useEffect } from 'react';
+import {
   Home,
-  LayoutPanelTop, 
-  BookText, 
-  CirclePlay, 
+  LayoutPanelTop,
+  BookText,
+  CirclePlay,
   Menu,
   Search,
   X,
@@ -36,7 +43,7 @@ import { MenuTabContent } from './components/MenuTabContent';
 import { SignInScreen } from './components/SignInScreen';
 import { SettingsScreen } from './components/SettingsScreen';
 import { SetupHomeScreen } from './components/SetupHomeScreen';
-import { LocationQrModal } from './components/LocationQrModal';
+import { JoinHomeDialog } from './components/JoinHomeDialog';
 import { InviteMemberModal } from './components/InviteMemberModal';
 import { AddDeviceScreen, getRoomEmoji } from './components/AddDeviceScreen';
 import { NeuroLoader } from './components/NeuroLoader';
@@ -44,11 +51,11 @@ import { AiAssistantModal } from './components/AiAssistantModal';
 import { getAssetUrl } from './utils/assets';
 import { authStorage, authApi, type UserProfile } from './services/auth';
 import { homeApi, homeStorage, type Home as UserHome, type Room } from './services/home';
-import { deviceApi } from './services/device';
+import { deviceApi, type DeviceReading, type DeviceEndpoint } from './services/device';
 import { DynamicDeviceLayout } from './components/DynamicDeviceLayout';
 import { realtimeSocket } from './services/socket';
-import { routineApi, routineStorage, formatScheduleTimeToIst, type SmartRoutine, type RoutineAction } from './services/routine';
-import { formatIstTime, formatIstDate, isScheduleTimeMatch, isScheduleDayMatch, getCurrentIstMinutes } from './utils/time';
+import { routineApi, formatScheduleTimeToIst, type SmartRoutine, type RoutineAction } from './services/routine';
+import { formatIstTime, formatIstDate } from './utils/time';
 import { SplashScreen } from '@capacitor/splash-screen';
 import { StatusBar, Style } from '@capacitor/status-bar';
 
@@ -60,22 +67,30 @@ export function App() {
   const [isClicking, setIsClicking] = useState(false);
   const [isHoveringElement, setIsHoveringElement] = useState(false);
   const [isHoveringLight, setIsHoveringLight] = useState(false);
-  
+
   // Sign In & User Authentication State
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(() => authStorage.getUser());
   const [isSignedIn, setIsSignedIn] = useState<boolean>(() => authStorage.isAuthenticated());
   const [isSignInOpen, setIsSignInOpen] = useState(false);
+  const accountId = isSignedIn ? currentUser?.id : undefined;
+  const biometricLock = useBiometricLock(accountId);
+  const notifications = useNotifications(biometricLock.locked ? undefined : accountId);
+  const [helpTopic, setHelpTopic] = useState<HelpTopic>();
+  const [showNotifications, setShowNotifications] = useState(false);
   const [isInitializing, setIsInitializing] = useState<boolean>(() => authStorage.isAuthenticated());
 
   // Home Properties State & Onboarding
   const [homes, setHomes] = useState<UserHome[]>([]);
   const [activeHome, setActiveHome] = useState<UserHome | null>(null);
+  const canManageLocation = !!activeHome && activeHome.owner_id === currentUser?.id;
   const [rooms, setRooms] = useState<Room[]>([]);
   const [isSetupHomeOpen, setIsSetupHomeOpen] = useState(false);
   const [allowSetupHomeClose, setAllowSetupHomeClose] = useState(false);
-  const [isQrModalOpen, setIsQrModalOpen] = useState(false);
+  const [inviteCode, setInviteCode] = useState(() => new URLSearchParams(window.location.hash.slice(1)).get('invite') ?? '');
+  const [isJoinOpen, setIsJoinOpen] = useState(Boolean(inviteCode));
   const [isInviteMemberOpen, setIsInviteMemberOpen] = useState(false);
   const [isAddDeviceOpen, setIsAddDeviceOpen] = useState(false);
+  const [isCatalogOpen, setIsCatalogOpen] = useState(false);
   const [isAiAssistantOpen, setIsAiAssistantOpen] = useState(false);
 
   // Dropdown menus state (Reference 2 Header)
@@ -95,7 +110,7 @@ export function App() {
   const [isCreatingRoom, setIsCreatingRoom] = useState(false);
 
   // Smart Routines & Automations State (Saves scenes / group control & time schedules)
-  const [routines, setRoutines] = useState<SmartRoutine[]>(() => routineStorage.getRoutines());
+  const [routines, setRoutines] = useState<SmartRoutine[]>([]);
   const [routineRoomFilter, setRoutineRoomFilter] = useState<string>('all');
   const [isRoutineModalOpen, setIsRoutineModalOpen] = useState(false);
   const [editingRoutine, setEditingRoutine] = useState<SmartRoutine | null>(null);
@@ -174,13 +189,21 @@ export function App() {
     }
   }, [activeHome?.id]);
 
-  // Real-time WebSocket listener for physical hardware switch telemetry & heartbeats
+  // Subscribe only while a signed-in session is active.
   useEffect(() => {
+    if (!isSignedIn) return;
     const unsubscribe = realtimeSocket.subscribe((deviceId, incomingState) => {
-      const nowIso = new Date().toISOString();
+      const nowIso = incomingState.last_seen_at || new Date().toISOString();
+      const mergeReadings = (endpoints?: DeviceEndpoint[]) => !incomingState.readings?.length ? endpoints :
+        endpoints?.map(endpoint => {
+          const reading = (incomingState.readings as DeviceReading[]).find(item => item.channel === endpoint.endpoint_index);
+          return reading && endpoint.endpoint_type !== 'RELAY'
+            ? { ...endpoint, state: { ...endpoint.state, reading: { ...reading, reportedAt: nowIso } } }
+            : endpoint;
+        });
       // Hardware telemetry with RSSI or heartbeat signifies device is online
-      const isOnline = incomingState.is_online !== undefined 
-        ? Boolean(incomingState.is_online) 
+      const isOnline = incomingState.is_online !== undefined
+        ? Boolean(incomingState.is_online)
         : true;
 
       setDevices(prev => prev.map(dev => {
@@ -192,6 +215,7 @@ export function App() {
             last_seen_at: incomingState.last_seen_at || nowIso,
             switches: incomingState.switches ? { ...dev.switches, ...incomingState.switches } : dev.switches,
             switch_configs: incomingState.switchConfigs || dev.switch_configs,
+            endpoints: mergeReadings(dev.endpoints),
           };
         }
         return dev;
@@ -206,6 +230,7 @@ export function App() {
             last_seen_at: incomingState.last_seen_at || nowIso,
             switches: incomingState.switches ? { ...prev.switches, ...incomingState.switches } : prev.switches,
             switch_configs: incomingState.switchConfigs || prev.switch_configs,
+            endpoints: mergeReadings(prev.endpoints),
           };
         }
         return prev;
@@ -213,7 +238,7 @@ export function App() {
     });
 
     return unsubscribe;
-  }, []);
+  }, [isSignedIn]);
 
   // 12-second watchdog timer: If hardware hasn't sent RSSI/telemetry within 12 seconds, flip status to offline
   useEffect(() => {
@@ -281,6 +306,7 @@ export function App() {
 
   // Sync profile & homes on mount if authenticated with 1s interval
   useEffect(() => {
+    if (inviteCode && !authStorage.isAuthenticated()) setIsSignInOpen(true);
     if (authStorage.isAuthenticated()) {
       setIsInitializing(true);
       Promise.all([
@@ -289,6 +315,13 @@ export function App() {
         new Promise((resolve) => setTimeout(resolve, 1000)),
       ])
         .then(([profile, userHomes]) => {
+          if (!profile && !authStorage.isAuthenticated()) {
+            setCurrentUser(null);
+            setIsSignedIn(false);
+            homeStorage.clearActiveHomeId();
+            if (inviteCode) setIsSignInOpen(true);
+            return;
+          }
           if (profile) {
             setCurrentUser(profile);
             setIsSignedIn(true);
@@ -381,8 +414,10 @@ export function App() {
 
     updateNavInsets();
     try {
-      StatusBar.setStyle({ style: Style.Light }); // Dark/black system status bar icons for light background
-      StatusBar.setBackgroundColor({ color: '#d4edf4' });
+      if (Capacitor.isNativePlatform()) {
+        void StatusBar.setStyle({ style: Style.Light }).catch(() => {});
+        void StatusBar.setBackgroundColor({ color: '#d4edf4' }).catch(() => {});
+      }
       const bridge = (window as any).AndroidWifiBridge;
       if (bridge && typeof bridge.setSystemIconsBlack === 'function') {
         bridge.setSystemIconsBlack();
@@ -396,7 +431,7 @@ export function App() {
 
   // Settings Screen State
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  
+
   // Total 5 navigation items as requested
   const [activeTab, setActiveTab] = useState<'home' | 'devices' | 'explore' | 'routines' | 'menu'>('home');
 
@@ -510,8 +545,12 @@ export function App() {
     }
   };
 
+  const [routineEditError, setRoutineEditError] = useState('');
+  const [isSavingRoutine, setIsSavingRoutine] = useState(false);
+
   const handleOpenCreateRoutine = (initialType: 'scene' | 'schedule' = 'scene') => {
     setEditingRoutine(null);
+    setRoutineEditError('');
     setRoutineDraftName('');
     setRoutineDraftType(initialType);
     setRoutineDraftIcon(initialType === 'scene' ? 'sun' : 'clock');
@@ -525,6 +564,7 @@ export function App() {
 
   const handleOpenEditRoutine = (routine: SmartRoutine) => {
     const isSchedule = routine.type === 'schedule' && routine.icon === 'clock';
+    setRoutineEditError('');
     setEditingRoutine(routine);
     setRoutineDraftName(routine.name);
     setRoutineDraftType(isSchedule ? 'schedule' : 'scene');
@@ -538,6 +578,13 @@ export function App() {
   };
 
   const handleSaveRoutine = async () => {
+    if (isSavingRoutine) return;
+    setRoutineEditError('');
+    if (!routineDraftActions.length) {
+      setRoutineEditError('Choose at least one device action.');
+      return;
+    }
+    setIsSavingRoutine(true);
     const isSchedule = routineDraftType === 'schedule';
     const finalName = routineDraftName.trim() || (isSchedule ? 'Timed Schedule' : 'Custom Scene');
     const finalIcon = routineDraftIcon || (isSchedule ? 'clock' : 'sun');
@@ -546,7 +593,7 @@ export function App() {
 
     try {
       if (editingRoutine) {
-        await routineApi.updateRoutine(editingRoutine.id, {
+        const saved = await routineApi.updateRoutine(editingRoutine.id, {
           name: finalName,
           type: routineDraftType,
           icon: finalIcon,
@@ -556,8 +603,9 @@ export function App() {
           repeatDays: isSchedule ? routineDraftRepeatDays : [],
           actions: routineDraftActions,
         });
+        setRoutines(previous => previous.map(item => item.id === saved.id ? saved : item));
       } else {
-        await routineApi.createRoutine({
+        const saved = await routineApi.createRoutine({
           name: finalName,
           type: routineDraftType,
           icon: finalIcon,
@@ -568,112 +616,53 @@ export function App() {
           actions: routineDraftActions,
           isActive: true,
         }, activeHome?.id || undefined);
+        setRoutines(previous => [saved, ...previous]);
       }
-      const updated = await routineApi.getRoutines(activeHome?.id || undefined);
-      setRoutines(updated);
-    } catch (err) {
-      console.error('Failed to save routine:', err);
-    } finally {
       setIsRoutineModalOpen(false);
+    } catch {
+      setRoutineEditError('Could not save this routine. Check your connection and try again.');
+    } finally {
+      setIsSavingRoutine(false);
     }
   };
 
   const handleDeleteRoutine = async (id: string) => {
     try {
-      await routineApi.deleteRoutine(id);
-      const updated = await routineApi.getRoutines(activeHome?.id || undefined);
-      setRoutines(updated);
-    } catch (err) {
-      console.error('Failed to delete routine:', err);
-    } finally {
+      if (!await routineApi.deleteRoutine(id)) throw new Error('Could not delete this routine');
+      setRoutines(previous => previous.filter(item => item.id !== id));
       setIsRoutineModalOpen(false);
+    } catch {
+      setRoutineEditError('Could not delete this routine. Check your connection and try again.');
     }
   };
 
   const handleToggleRoutineActive = async (routine: SmartRoutine) => {
     const nextActive = routine.isActive === false ? true : false;
-    setRoutines(prev => prev.map(r => r.id === routine.id ? { ...r, isActive: nextActive } : r));
+    setRoutineRunError('');
     try {
-      await routineApi.updateRoutine(routine.id, { isActive: nextActive });
-    } catch (err) {
-      console.error('Failed to toggle routine active:', err);
+      const updated = await routineApi.updateRoutine(routine.id, { isActive: nextActive });
+      setRoutines(previous => previous.map(item => item.id === updated.id ? updated : item));
+    } catch {
+      setRoutineRunError('Could not update this routine. Check your connection and try again.');
     }
   };
 
+  const [routineRunError, setRoutineRunError] = useState('');
   const handleRunRoutine = async (routine: SmartRoutine) => {
+    setRoutineRunError('');
     setRunningRoutineId(routine.id);
-    const isSchedule = routine.type === 'schedule' || routine.icon === 'clock';
     try {
-      if (routine.actions && routine.actions.length > 0) {
-        for (const action of routine.actions) {
-          const target = isSchedule ? 'on' : (action.targetState ? 'on' : 'off');
-          deviceApi.controlSwitch(action.deviceId, action.channel, target).catch(() => {});
-        }
+      if (!await routineApi.runRoutine(routine.id)) {
+        setRoutineRunError('Some or all device commands could not be sent. Check your device connections and try again.');
       }
-      await routineApi.runRoutine(routine.id).catch(() => {});
     } finally {
-      setTimeout(() => setRunningRoutineId(null), 1200);
+      setRunningRoutineId(null);
     }
   };
-
-  // Automated Time Scheduler Engine (Checks active schedules every 10s in Indian Standard Time)
-  const lastFiredScheduleRef = useRef<Set<string>>(new Set());
-
-  useEffect(() => {
-    const checkSchedules = () => {
-      const now = new Date();
-      const currentIstMins = getCurrentIstMinutes(now);
-      const currentMinuteKey = `${now.toISOString().slice(0, 10)}_${currentIstMins}`;
-
-      const activeSchedules = routines.filter(r => r.isActive !== false && (r.type === 'schedule' || r.icon === 'clock'));
-
-      for (const schedule of activeSchedules) {
-        if (!isScheduleDayMatch(schedule.repeatDays, now)) continue;
-
-        // Check Turn ON Time (IST)
-        if (schedule.scheduleTime && isScheduleTimeMatch(schedule.scheduleTime, now)) {
-          const fireKey = `${schedule.id}_on_${currentMinuteKey}`;
-          if (!lastFiredScheduleRef.current.has(fireKey)) {
-            lastFiredScheduleRef.current.add(fireKey);
-            console.log(`⏰ [CLIENT SCHEDULER] Triggering ON: "${schedule.name}" at IST minute ${currentIstMins}`);
-            if (schedule.actions && schedule.actions.length > 0) {
-              for (const act of schedule.actions) {
-                deviceApi.controlSwitch(act.deviceId, act.channel, 'on').catch(() => {});
-              }
-            }
-            routineApi.runRoutine(schedule.id).catch(() => {});
-          }
-        }
-
-        // Check Turn OFF Time (IST)
-        if (schedule.scheduleOffTime && isScheduleTimeMatch(schedule.scheduleOffTime, now)) {
-          const fireKey = `${schedule.id}_off_${currentMinuteKey}`;
-          if (!lastFiredScheduleRef.current.has(fireKey)) {
-            lastFiredScheduleRef.current.add(fireKey);
-            console.log(`⏰ [CLIENT SCHEDULER] Triggering OFF: "${schedule.name}" at IST minute ${currentIstMins}`);
-            if (schedule.actions && schedule.actions.length > 0) {
-              for (const act of schedule.actions) {
-                deviceApi.controlSwitch(act.deviceId, act.channel, 'off').catch(() => {});
-              }
-            }
-            routineApi.runRoutine(schedule.id).catch(() => {});
-          }
-        }
-      }
-
-      if (lastFiredScheduleRef.current.size > 200) {
-        lastFiredScheduleRef.current.clear();
-      }
-    };
-
-    const timer = setInterval(checkSchedules, 10000);
-    checkSchedules();
-    return () => clearInterval(timer);
-  }, [routines]);
 
   // Real-time Clock View with Date, Time, Day & Right-side User Details (Desktop & Laptops only)
   const renderRealTimeHeader = () => (
-    <div 
+    <div
       className="hidden lg:block w-full max-w-5xl rounded-3xl p-5 shadow-xl select-none pointer-events-auto transition-all"
       style={{
         background: 'rgba(255, 255, 255, 0.88)',
@@ -708,9 +697,9 @@ export function App() {
         <div className="flex items-center gap-3 px-3.5 py-2 rounded-2xl bg-slate-100/80 border border-slate-200/90 justify-start">
           <div className="flex items-center gap-3">
             {currentUser?.avatar_url ? (
-              <img 
-                src={currentUser.avatar_url} 
-                alt="User Avatar" 
+              <img
+                src={currentUser.avatar_url}
+                alt="User Avatar"
                 className="w-10 h-10 rounded-full object-cover border-2 border-[#0284c7]/40 shadow-xs flex-shrink-0"
               />
             ) : (
@@ -725,7 +714,7 @@ export function App() {
                 </h3>
                 {isSignedIn && (
                   <span className="px-1.5 py-0.5 rounded-md bg-sky-100 text-[#0284c7] text-[10px] font-bold">
-                    Owner
+                    {activeHome?.owner_id === currentUser?.id ? 'Owner' : 'Member'}
                   </span>
                 )}
               </div>
@@ -769,7 +758,7 @@ export function App() {
 
       {/* Locations Dropdown Menu */}
       {isHomeDropdownOpen && (
-        <div 
+        <div
           onClick={(e) => e.stopPropagation()}
           className="absolute left-0 mt-2 w-64 rounded-3xl bg-white shadow-xl border border-slate-100 p-2.5 z-50 animate-in fade-in zoom-in-95 duration-150"
           style={{
@@ -803,7 +792,7 @@ export function App() {
               );
             })}
           </div>
-          
+
           <div className="h-px bg-slate-100 my-1.5" />
 
           <button
@@ -824,10 +813,11 @@ export function App() {
 
   // Floating Neuro AI Assistant Circular Button (Routines tab only, shifted to bottom-right, elevated above nav bar with transparent background)
   const renderFloatingAiAssistantButton = () => {
+    if (!canManageLocation) return null;
     if (activeTab !== 'routines') return null;
 
     return (
-      <div 
+      <div
         className="fixed z-40 select-none pointer-events-auto transition-all duration-300 right-4 sm:right-6 md:right-8"
         style={{
           bottom: 'calc(6.25rem + max(var(--android-nav-bottom, 0px), env(safe-area-inset-bottom, 0px)))',
@@ -848,14 +838,14 @@ export function App() {
         >
           {/* Luminous aura */}
           <div className="absolute inset-0 rounded-full bg-radial from-sky-400/20 via-transparent to-transparent opacity-70 group-hover:opacity-100 transition-opacity animate-pulse pointer-events-none" />
-          
+
           {/* Brand Logo with transparent background */}
-          <img 
-            src={getAssetUrl('logo.png')} 
-            alt="Neuro AI" 
-            className="w-9 h-9 sm:w-10 sm:h-10 object-contain transition-transform duration-200 group-hover:scale-110 filter drop-shadow-[0_4px_12px_rgba(2,132,199,0.35)]" 
+          <img
+            src={getAssetUrl('logo.png')}
+            alt="Neuro AI"
+            className="w-9 h-9 sm:w-10 sm:h-10 object-contain transition-transform duration-200 group-hover:scale-110 filter drop-shadow-[0_4px_12px_rgba(2,132,199,0.35)]"
           />
-          
+
           {/* Active Online Status Badge */}
           <span className="absolute bottom-1 right-1 w-2.5 h-2.5 bg-emerald-500 rounded-full border border-white shadow-xs" />
         </button>
@@ -874,13 +864,13 @@ export function App() {
           setIsHomeDropdownOpen(false);
         }}
         className="w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-white/90 hover:bg-white text-slate-800 flex items-center justify-center transition-all duration-200 hover:scale-105 active:scale-95 shadow-sm border border-white/80 cursor-pointer"
-        title="Add actions"
+        aria-label="Add actions"
       >
         <Plus className="w-5 h-5 text-slate-800" strokeWidth={2.4} />
       </button>
 
       {isPlusMenuOpen && (
-        <div 
+        <div
           onClick={(e) => e.stopPropagation()}
           className="absolute right-0 top-12 w-56 rounded-3xl bg-white shadow-2xl border border-slate-100/90 p-2 z-50 animate-in fade-in zoom-in-95 duration-150"
           style={{
@@ -913,7 +903,7 @@ export function App() {
             </>
           )}
 
-          {activeTab === 'routines' && (
+        {activeTab === 'routines' && (
             <>
               <button
                 onClick={() => {
@@ -1064,7 +1054,7 @@ export function App() {
         ) : (
           <div className="w-full flex items-center gap-2.5 sm:gap-3 overflow-x-auto no-scrollbar py-0.5">
             {/* Search Toggle Button */}
-            <button 
+            <button
               type="button"
               onClick={() => setIsSearchOpen(true)}
               className="w-8 h-8 rounded-full bg-white/90 hover:bg-white text-slate-700 hover:text-[#0284c7] shadow-xs border border-white/80 flex items-center justify-center transition-all cursor-pointer flex-shrink-0 active:scale-95"
@@ -1080,8 +1070,8 @@ export function App() {
                 type="button"
                 onClick={() => setActiveRoomTab('all')}
                 className={`transition-all cursor-pointer pb-0.5 relative ${
-                  activeRoomTab === 'all' 
-                    ? 'text-slate-900 font-extrabold after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-slate-900 after:rounded-full' 
+                  activeRoomTab === 'all'
+                    ? 'text-slate-900 font-extrabold after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-slate-900 after:rounded-full'
                     : 'text-slate-500 hover:text-slate-700 font-medium'
                 }`}
               >
@@ -1094,8 +1084,8 @@ export function App() {
                   type="button"
                   onClick={() => setActiveRoomTab(room.name)}
                   className={`transition-all cursor-pointer pb-0.5 relative ${
-                    activeRoomTab === room.name 
-                      ? 'text-slate-900 font-extrabold after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-slate-900 after:rounded-full' 
+                    activeRoomTab === room.name
+                      ? 'text-slate-900 font-extrabold after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-slate-900 after:rounded-full'
                       : 'text-slate-500 hover:text-slate-700 font-medium'
                   }`}
                 >
@@ -1115,15 +1105,15 @@ export function App() {
       {/* Plaque Container with Increased Height and Clean Pure White Silhouette */}
       <div className="relative w-full py-5 sm:py-6 px-6 sm:px-8">
         {/* Plaque Background (Pure White Silhouette, No Trees, No Border Line) */}
-        <svg 
-          viewBox="0 0 520 130" 
-          preserveAspectRatio="none" 
+        <svg
+          viewBox="0 0 520 130"
+          preserveAspectRatio="none"
           className="absolute inset-0 w-full h-full pointer-events-none drop-shadow-[0_4px_20px_rgba(0,0,0,0.06)]"
         >
           {/* Outer Plaque Contour Shape with Pure White Fill and No Border Line */}
-          <path 
-            d="M 30 10 Q 260 2 490 10 C 510 14, 518 36, 517 65 C 518 94, 510 116, 490 120 Q 260 128 30 120 C 10 116, 2 94, 3 65 C 2 36, 10 14, 30 10 Z" 
-            fill="#ffffff" 
+          <path
+            d="M 30 10 Q 260 2 490 10 C 510 14, 518 36, 517 65 C 518 94, 510 116, 490 120 Q 260 128 30 120 C 10 116, 2 94, 3 65 C 2 36, 10 14, 30 10 Z"
+            fill="#ffffff"
           />
         </svg>
 
@@ -1255,9 +1245,22 @@ export function App() {
     </div>
   );
 
+  if (biometricLock.locked) return <LockedScreen lock={biometricLock} onSignOut={() => {
+    biometricLock.resetUnlock();
+    authApi.logout();
+    homeStorage.clearActiveHomeId();
+    setCurrentUser(null);
+    setIsSignedIn(false);
+    setSelectedDeviceForControl(null);
+    setActiveHome(null);
+    setHomes([]);
+    setActiveTab('home');
+    setIsSignInOpen(true);
+  }} />;
+
   return (
     <div className="bg-app-container fixed inset-0 w-screen h-screen overflow-hidden select-none cursor-none font-sans">
-      
+
       {/* 1. Mobile & Tabs (<1200px or portrait or touch): Light Blue #d4edf4 with top-left & bottom-right white gradients */}
       <div className="bg-mobile-tab" />
 
@@ -1269,7 +1272,7 @@ export function App() {
           className="absolute inset-0 w-full h-full object-cover object-center scale-105"
         />
         {/* Frosted Blur & Refraction Layer */}
-        <div 
+        <div
           className="absolute inset-0"
           style={{
             backdropFilter: 'blur(20px) saturate(150%)',
@@ -1277,28 +1280,28 @@ export function App() {
           }}
         />
         {/* Dark Obsidian Glass Tint */}
-        <div 
+        <div
           className="absolute inset-0"
           style={{
             background: 'linear-gradient(180deg, rgba(3, 5, 10, 0.45) 0%, rgba(5, 7, 14, 0.65) 100%)',
           }}
         />
         {/* Diagonal Glossy Specular Glass Sheen */}
-        <div 
+        <div
           className="absolute inset-0"
           style={{
             background: 'linear-gradient(125deg, rgba(255, 255, 255, 0.09) 0%, rgba(255, 255, 255, 0.015) 35%, transparent 65%)'
           }}
         />
         {/* Top Specular Edge Glare */}
-        <div 
+        <div
           className="absolute top-0 inset-x-0 h-44"
           style={{
             background: 'linear-gradient(180deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.02) 40%, transparent 100%)'
           }}
         />
         {/* Subtle Edge Vignette (desktop only, never on mobile/tabs) */}
-        <div 
+        <div
           className="absolute inset-0"
           style={{
             background: 'radial-gradient(ellipse at center, transparent 40%, rgba(0, 0, 0, 0.5) 85%, rgba(0, 0, 0, 0.85) 100%)'
@@ -1315,13 +1318,13 @@ export function App() {
             {/* Top-Left: QR Code Button + Home Selector Dropdown */}
             <div className="flex items-center gap-2 sm:gap-3 pointer-events-auto select-none">
             {/* QR Code Icon Button */}
-            <button
-              onClick={() => setIsQrModalOpen(true)}
+            {canManageLocation && <button
+              onClick={() => setIsInviteMemberOpen(true)}
               className="w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-white/90 hover:bg-white text-slate-800 flex items-center justify-center transition-all duration-200 hover:scale-105 active:scale-95 shadow-sm border border-white/80 cursor-pointer"
-              title="Location QR code"
+              aria-label="Invite to location"
             >
               <QrCode className="w-5 h-5 text-slate-800" strokeWidth={2.3} />
-            </button>
+            </button>}
 
             {/* Home Selector Dropdown Capsule */}
             {renderHomeSelectorDropdown()}
@@ -1348,7 +1351,7 @@ export function App() {
 
               {/* Three Dots Context Dropdown Menu */}
               {isDotsMenuOpen && (
-                <div 
+                <div
                   onClick={(e) => e.stopPropagation()}
                   className="absolute right-0 top-12 w-48 rounded-3xl bg-white shadow-xl border border-slate-100 p-2 z-50 animate-in fade-in zoom-in-95 duration-150"
                   style={{
@@ -1366,15 +1369,7 @@ export function App() {
                     <span>Location Settings</span>
                   </button>
 
-                  <button
-                    onClick={() => {
-                      setIsDotsMenuOpen(false);
-                    }}
-                    className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-2xl hover:bg-slate-50 text-slate-800 text-xs sm:text-sm font-semibold transition-colors cursor-pointer"
-                  >
-                    <Layers className="w-4 h-4 text-slate-600" strokeWidth={2.2} />
-                    <span>Edit Home Tab</span>
-                  </button>
+
                 </div>
               )}
             </div>
@@ -1432,30 +1427,30 @@ export function App() {
 
             {/* "Explore" cards slider: ONLY when NO devices exist in home */}
             {devices.length === 0 && !isExploreDismissed && (
-              <ExploreCardSlider 
+              <ExploreCardSlider
                 onDismiss={() => {
                   setIsExploreDismissed(true);
                   if (typeof window !== 'undefined') {
                     sessionStorage.setItem('neuro_explore_dismissed', 'true');
                   }
-                }} 
+                }}
               />
             )}
 
             {/* When NO devices exist in home, show the Quick Devices onboarding card */}
             {devices.length === 0 ? (
-              <QuickDevicesCard 
+              <QuickDevicesCard
                 isLoggedIn={isSignedIn}
-                onAddDevice={() => handleProtectedAction(() => setIsAddDeviceOpen(true))} 
-                onExplore={() => handleProtectedAction(() => setActiveTab('explore'))} 
+                onAddDevice={() => handleProtectedAction(() => setIsAddDeviceOpen(true))}
+                onExplore={() => setIsCatalogOpen(true)}
               />
             ) : (
               /* Connected Devices View: No Explore banner or Quick card once devices exist */
               (() => {
                 const filtered = devices
                   .filter(d => activeRoomTab === 'all' || (rooms.find(r => r.name === activeRoomTab)?.id === d.room_id))
-                  .filter(d => !searchQuery.trim() || 
-                    d.custom_name.toLowerCase().includes(searchQuery.trim().toLowerCase()) || 
+                  .filter(d => !searchQuery.trim() ||
+                    d.custom_name.toLowerCase().includes(searchQuery.trim().toLowerCase()) ||
                     d.model_code.toLowerCase().includes(searchQuery.trim().toLowerCase()) ||
                     (d.device_id && d.device_id.toLowerCase().includes(searchQuery.trim().toLowerCase())) ||
                     (rooms.find(r => r.id === d.room_id)?.name.toLowerCase().includes(searchQuery.trim().toLowerCase()))
@@ -1501,7 +1496,7 @@ export function App() {
                       <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2.5 sm:gap-3.5">
                         {filtered.map((dev) => {
                           const devRoom = rooms.find(r => r.id === dev.room_id);
-                          const roomLabel = devRoom ? devRoom.name : 'Living room';
+                          const roomLabel = devRoom?.name ?? 'Unassigned';
                           return renderCompactDeviceCard(dev, roomLabel);
                         })}
                       </div>
@@ -1538,17 +1533,17 @@ export function App() {
             </div>
 
             {devices.length === 0 ? (
-              <QuickDevicesCard 
+              <QuickDevicesCard
                 isLoggedIn={isSignedIn}
-                onAddDevice={() => handleProtectedAction(() => setIsAddDeviceOpen(true))} 
-                onExplore={() => handleProtectedAction(() => setActiveTab('explore'))} 
+                onAddDevice={() => handleProtectedAction(() => setIsAddDeviceOpen(true))}
+                onExplore={() => handleProtectedAction(() => setActiveTab('explore'))}
               />
             ) : (
               (() => {
                 const filtered = devices
                   .filter(d => activeRoomTab === 'all' || (rooms.find(r => r.name === activeRoomTab)?.id === d.room_id))
-                  .filter(d => !searchQuery.trim() || 
-                    d.custom_name.toLowerCase().includes(searchQuery.trim().toLowerCase()) || 
+                  .filter(d => !searchQuery.trim() ||
+                    d.custom_name.toLowerCase().includes(searchQuery.trim().toLowerCase()) ||
                     d.model_code.toLowerCase().includes(searchQuery.trim().toLowerCase()) ||
                     (d.device_id && d.device_id.toLowerCase().includes(searchQuery.trim().toLowerCase())) ||
                     (rooms.find(r => r.id === d.room_id)?.name.toLowerCase().includes(searchQuery.trim().toLowerCase()))
@@ -1607,19 +1602,25 @@ export function App() {
         )}
 
         {activeTab === 'explore' && (
-          <>
-            {devices.length === 0 ? (
-              <QuickDevicesCard 
-                isLoggedIn={isSignedIn}
-                onAddDevice={() => handleProtectedAction(() => setIsAddDeviceOpen(true))} 
-                onExplore={() => handleProtectedAction(() => setActiveTab('explore'))} 
-              />
-            ) : (
-              <ExploreCardSlider />
-            )}
-          </>
+          <section className="w-full max-w-lg rounded-3xl bg-white p-5 text-slate-900 shadow-sm pointer-events-auto sm:p-7">
+            <h2 className="text-lg font-bold">Explore Neuro Series devices</h2>
+            <p className="mt-2 text-sm leading-relaxed text-slate-600">
+              Browse device models, check which controls are available, or set up a device you already own.
+            </p>
+            <div className="mt-4 flex flex-wrap gap-3">
+              <button type="button" onClick={() => setIsCatalogOpen(true)} className="min-h-11 rounded-xl bg-sky-700 px-4 text-sm font-semibold text-white">
+                Browse device models
+              </button>
+              <button type="button" onClick={() => handleProtectedAction(() => setIsAddDeviceOpen(true))} className="min-h-11 rounded-xl bg-slate-100 px-4 text-sm font-semibold">
+                Add a device
+              </button>
+            </div>
+          </section>
         )}
 
+        {activeTab === 'routines' && routineRunError && (
+          <p role="alert" className="w-full max-w-lg rounded-xl bg-rose-50 p-3 text-sm text-rose-800">{routineRunError}</p>
+        )}
         {activeTab === 'routines' && (
           <>
             <div className="w-full max-w-sm sm:max-w-md md:max-w-2xl lg:max-w-5xl space-y-3 pointer-events-auto pt-2">
@@ -1675,7 +1676,7 @@ export function App() {
 
               {/* Routines 2x2 Grid (Side-by-side on mobile screens) or Real-Time Space Overview */}
               {(() => {
-                const filteredRoutines = routines.filter(r => 
+                const filteredRoutines = routines.filter(r =>
                   routineRoomFilter === 'all' || r.roomId === 'all' || r.roomId === routineRoomFilter
                 );
 
@@ -1773,7 +1774,7 @@ export function App() {
                               <div className="flex items-center gap-1">
                                 <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-50 text-[#0284c7] border border-sky-100 font-mono">
                                   {routine.type === 'schedule' && routine.icon === 'clock' && routine.scheduleTime
-                                    ? `ON ${formatScheduleTimeToIst(routine.scheduleTime)}` 
+                                    ? `ON ${formatScheduleTimeToIst(routine.scheduleTime)}`
                                     : 'Scene'}
                                 </span>
 
@@ -1796,8 +1797,8 @@ export function App() {
                             <p className="text-[10px] sm:text-[11px] text-slate-400 line-clamp-1 mt-0.5">
                               {routine.type === 'schedule' && routine.icon === 'clock' && routine.scheduleOffTime
                                 ? `ON ${formatScheduleTimeToIst(routine.scheduleTime)} • OFF ${formatScheduleTimeToIst(routine.scheduleOffTime)}`
-                                : routine.actions && routine.actions.length > 0 
-                                  ? `${targetLabel} • ${routine.actions.length} action(s)` 
+                                : routine.actions && routine.actions.length > 0
+                                  ? `${targetLabel} • ${routine.actions.length} action(s)`
                                   : (routine.description || `${targetLabel} • Instant`)}
                             </p>
                           </div>
@@ -1864,9 +1865,20 @@ export function App() {
         )}
 
         {activeTab === 'menu' && (
-          <MenuTabContent 
+          <MenuTabContent
             isSignedIn={isSignedIn}
+            onBrowse={() => setIsCatalogOpen(true)}
+            onAssistant={isSignedIn && canManageLocation ? () => setIsAiAssistantOpen(true) : undefined}
+            onJoin={() => {
+              setIsJoinOpen(true);
+              if (!isSignedIn) setIsSignInOpen(true);
+            }}
+            onSettings={() => setIsSettingsOpen(true)}
+            onHelp={() => setHelpTopic('index')}
+            onNotifications={isSignedIn ? () => setShowNotifications(true) : undefined}
+            unread={notifications.unread}
             onSignOut={() => {
+              biometricLock.resetUnlock();
               authApi.logout();
               setCurrentUser(null);
               setIsSignedIn(false);
@@ -1882,7 +1894,7 @@ export function App() {
       {renderFloatingAiAssistantButton()}
 
       {/* 7. Responsive Navigation Bar: Horizontal on Mobile (< 640px), Vertical on Tabs & Desktop (>= 640px) */}
-      <nav 
+      <nav
         className="nav-bar-responsive fixed z-40 transition-all duration-300 rounded-full flex flex-row sm:flex-col items-center justify-between sm:justify-center"
         style={{
           background: 'linear-gradient(135deg, rgba(142, 197, 252, 0.78) 0%, rgba(120, 182, 252, 0.58) 100%)',
@@ -1898,7 +1910,7 @@ export function App() {
         }}
       >
         {/* Specular glare curve on the blue glass pill */}
-        <div 
+        <div
           className="absolute inset-0 rounded-full pointer-events-none"
           style={{
             background: 'linear-gradient(180deg, rgba(255, 255, 255, 0.40) 0%, rgba(255, 255, 255, 0.05) 50%, transparent 100%)'
@@ -1913,12 +1925,15 @@ export function App() {
             <div key={item.id} className="relative flex items-center justify-center group flex-shrink-0">
               <button
                 onClick={() => {
-                  if (!isSignedIn && (item.id === 'explore' || item.id === 'routines')) {
+                  if (!isSignedIn && item.id === 'routines') {
                     setIsSignInOpen(true);
                   } else {
                     setActiveTab(item.id);
                   }
                 }}
+                type="button"
+                aria-label={item.label}
+                aria-current={isActive ? 'page' : undefined}
                 data-bg-light="true"
                 className={`
                   nav-item-btn relative z-10 flex flex-col items-center justify-center transition-all duration-200 active:scale-95
@@ -1938,22 +1953,22 @@ export function App() {
                 }
               >
                 {/* Icon */}
-                <Icon 
+                <Icon
                   className={`w-5 h-5 transition-transform duration-200 ${
-                    isActive 
-                      ? 'text-[#0284c7]' 
+                    isActive
+                      ? 'text-[#0284c7]'
                       : 'text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.18)]'
                   }`}
                   strokeWidth={2.2}
                 />
-                
+
                 {/* Text Label: ONLY visible on mobile screens (< 640px) */}
-                <span 
+                <span
                   className={`
                     text-[11px] font-bold tracking-tight mt-0.5 leading-tight
                     block sm:hidden
-                    ${isActive 
-                      ? 'text-[#0284c7]' 
+                    ${isActive
+                      ? 'text-[#0284c7]'
                       : 'text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.18)]'
                     }
                   `}
@@ -1963,10 +1978,10 @@ export function App() {
               </button>
 
               {/* Right-Side Tooltip: Visible only on landscape when hovering */}
-              <div 
+              <div
                 className="hidden [media(orientation:landscape)]:block absolute left-[calc(100%+14px)] top-1/2 -translate-y-1/2 pointer-events-none opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-200 z-50 whitespace-nowrap"
               >
-                <div 
+                <div
                   className="px-3 py-1.5 rounded-xl font-sans text-xs font-semibold text-white tracking-wide flex items-center shadow-lg"
                   style={{
                     background: 'rgba(2, 132, 199, 0.90)',
@@ -1976,7 +1991,7 @@ export function App() {
                     boxShadow: '0 8px 20px -2px rgba(56, 189, 248, 0.4), inset 0 1px 1px rgba(255, 255, 255, 0.5)',
                   }}
                 >
-                  <div 
+                  <div
                     className="absolute -left-1 top-1/2 -translate-y-1/2 w-2 h-2 rotate-45"
                     style={{ background: 'rgba(2, 132, 199, 0.90)' }}
                   />
@@ -1992,23 +2007,28 @@ export function App() {
       {isInitializing && <NeuroLoader message="Syncing Smart Workspace..." />}
 
       {/* 8. Full-Screen Neuro Series Account Authentication */}
-      <SignInScreen 
-        isOpen={isSignInOpen} 
-        onClose={() => setIsSignInOpen(false)} 
+      <SignInScreen
+        onHelp={setHelpTopic}
+        isOpen={isSignInOpen}
+        onClose={() => setIsSignInOpen(false)}
         onSignInSuccess={(user) => {
           setCurrentUser(user);
           setIsSignedIn(true);
           loadHomes(true);
-        }} 
+        }}
       />
 
       {/* 9. Full-Screen Neuro Series Settings */}
-      <SettingsScreen 
-        isOpen={isSettingsOpen} 
-        onClose={() => setIsSettingsOpen(false)} 
+      <SettingsScreen
+        lock={biometricLock}
+        notifications={notifications}
+        onNotifications={() => setShowNotifications(true)}
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
         isSignedIn={isSignedIn}
         currentUser={currentUser}
         onSignOut={() => {
+          biometricLock.resetUnlock();
           authApi.logout();
           setCurrentUser(null);
           setIsSignedIn(false);
@@ -2019,11 +2039,11 @@ export function App() {
         onOpenSignIn={() => {
           setIsSettingsOpen(false);
           setIsSignInOpen(true);
-        }} 
+        }}
       />
 
       {/* 10. Dedicated Setup Your Home Onboarding Screen */}
-      <SetupHomeScreen 
+      <SetupHomeScreen
         isOpen={isSetupHomeOpen}
         allowClose={allowSetupHomeClose}
         onClose={() => setIsSetupHomeOpen(false)}
@@ -2035,26 +2055,33 @@ export function App() {
         }}
       />
 
-      {/* 11. Location QR Code Sharing Modal (Reference 3) */}
-      <LocationQrModal 
-        isOpen={isQrModalOpen}
-        onClose={() => setIsQrModalOpen(false)}
-        home={activeHome}
-      />
-
-      {/* 12. Invite Member Flow (References 3, 4, 5) */}
-      <InviteMemberModal 
-        isOpen={isInviteMemberOpen}
-        onClose={() => setIsInviteMemberOpen(false)}
-        home={activeHome}
-        currentUserName={currentUser?.full_name || 'Home Owner'}
-        onOpenQrCode={() => setIsQrModalOpen(true)}
-      />
+      {isInviteMemberOpen && activeHome && canManageLocation && (
+        <InviteMemberModal key={activeHome.id} home={activeHome} onClose={() => setIsInviteMemberOpen(false)} />
+      )}
+      {isJoinOpen && isSignedIn && !isInitializing && (
+        <JoinHomeDialog
+          initialCode={inviteCode}
+          onClose={() => {
+            setIsJoinOpen(false);
+            setInviteCode('');
+            if (window.location.hash.startsWith('#invite=')) history.replaceState(null, '', window.location.pathname + window.location.search);
+          }}
+          onJoined={async id => {
+            homeStorage.setActiveHomeId(id);
+            setIsJoinOpen(false);
+            setInviteCode('');
+            history.replaceState(null, '', window.location.pathname + window.location.search);
+            await loadHomes(false);
+            setActiveTab('home');
+          }}
+        />
+      )}
 
       {/* 13. Add Device Screen Flow */}
-      <AddDeviceScreen 
-        isOpen={isAddDeviceOpen}
-        onClose={() => setIsAddDeviceOpen(false)}
+      <AddDeviceScreen
+        isOpen={isAddDeviceOpen || isCatalogOpen}
+        catalogOnly={isCatalogOpen}
+        onClose={() => { setIsAddDeviceOpen(false); setIsCatalogOpen(false); }}
         homeId={activeHome?.id || null}
         activeHome={activeHome}
         defaultWifiSsid={activeHome?.default_wifi_ssid || ''}
@@ -2400,9 +2427,9 @@ export function App() {
                 <label className="text-xs font-bold text-slate-700 block mb-1.5">
                   Select Devices & Switches (ON / OFF)
                 </label>
-                
+
                 {(() => {
-                  const targetDevices = devices.filter(d => 
+                  const targetDevices = devices.filter(d =>
                     routineDraftRoomId === 'all' || d.room_id === routineDraftRoomId
                   );
 
@@ -2417,7 +2444,8 @@ export function App() {
                   return (
                     <div className="space-y-3">
                       {targetDevices.map(dev => {
-                        const switchCount = dev.model_code === 'GATE' ? 1 : 8;
+                        const endpoints = (dev.endpoints ?? []).filter((endpoint: { endpoint_type: string }) => endpoint.endpoint_type === 'RELAY') as { endpoint_index: number; name: string }[];
+                        if (!endpoints.length) return null;
                         return (
                           <div key={dev.id} className="bg-slate-50 rounded-2xl p-3 border border-slate-200/80 space-y-2">
                             <div className="flex items-center justify-between">
@@ -2426,9 +2454,9 @@ export function App() {
                             </div>
 
                             <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
-                              {Array.from({ length: switchCount }, (_, i) => {
-                                const ch = i + 1;
-                                const swName = `Switch ${ch}`;
+                              {endpoints.map(endpoint => {
+                                const ch = ['EMS1', 'EMS3'].includes(dev.model_code) ? 1 : endpoint.endpoint_index;
+                                const swName = endpoint.name || `Switch ${ch}`;
                                 const existingAction = routineDraftActions.find(
                                   a => a.deviceId === dev.id && a.channel === ch
                                 );
@@ -2436,7 +2464,7 @@ export function App() {
 
                                 return (
                                   <div key={ch} className="bg-white rounded-xl p-1.5 border border-slate-200/90 flex items-center justify-between">
-                                    <span className="text-[11px] font-semibold text-slate-700 truncate pr-1">SW {ch}</span>
+                                    <span className="text-[11px] font-semibold text-slate-700 truncate pr-1">{swName}</span>
                                     <button
                                       type="button"
                                       onClick={() => {
@@ -2446,7 +2474,7 @@ export function App() {
                                             { deviceId: dev.id, deviceName: dev.custom_name, channel: ch, switchName: swName, targetState: true }
                                           ]);
                                         } else if (currentState === 'ON') {
-                                          setRoutineDraftActions(prev => prev.map(a => 
+                                          setRoutineDraftActions(prev => prev.map(a =>
                                             a.deviceId === dev.id && a.channel === ch ? { ...a, targetState: false } : a
                                           ));
                                         } else {
@@ -2477,6 +2505,7 @@ export function App() {
             </div>
 
             {/* Footer Actions */}
+            {routineEditError && <p role="alert" className="px-4 py-2 text-sm text-rose-800">{routineEditError}</p>}
             <div className="flex items-center gap-2.5 pt-3 border-t border-slate-100 flex-shrink-0">
               {editingRoutine && (
                 <button
@@ -2498,6 +2527,7 @@ export function App() {
               <button
                 type="button"
                 onClick={handleSaveRoutine}
+                disabled={isSavingRoutine}
                 className="flex-1 py-2.5 rounded-full bg-[#0284c7] hover:bg-sky-600 text-white text-xs font-bold shadow-md transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-1.5"
               >
                 <CheckCircle2 className="w-4 h-4" />
@@ -2514,7 +2544,7 @@ export function App() {
         const roomLabel = devRoom ? devRoom.name : 'Living room';
 
         return (
-          <div 
+          <div
             className="fixed inset-0 z-50 overflow-y-auto overflow-x-hidden flex flex-col select-none pointer-events-auto animate-in fade-in slide-in-from-right-3 duration-200"
             style={{
               backgroundColor: '#d4edf4',
@@ -2583,12 +2613,12 @@ export function App() {
                 const isSched = (r: SmartRoutine) => r.type === 'schedule' && r.icon === 'clock';
                 const isScn = (r: SmartRoutine) => r.type === 'scene' || r.icon !== 'clock';
 
-                const roomScenes = routines.filter(r => 
-                  isScn(r) && 
+                const roomScenes = routines.filter(r =>
+                  isScn(r) &&
                   (r.roomId === devRoomId || r.roomId === 'all' || r.actions?.some(a => a.deviceId === devId))
                 );
-                const roomSchedulers = routines.filter(r => 
-                  isSched(r) && 
+                const roomSchedulers = routines.filter(r =>
+                  isSched(r) &&
                   (r.roomId === devRoomId || r.roomId === 'all' || r.actions?.some(a => a.deviceId === devId))
                 );
 
@@ -2632,7 +2662,7 @@ export function App() {
 
               {/* Dynamic Switch Controls (Without nested white background card) */}
               <div className="w-full">
-                <DynamicDeviceLayout 
+                <DynamicDeviceLayout
                   modelCode={selectedDeviceForControl.model_code || 'TP8'}
                   deviceName={selectedDeviceForControl.custom_name}
                   deviceId={selectedDeviceForControl.device_id || selectedDeviceForControl.id}
@@ -2641,6 +2671,21 @@ export function App() {
                   isOnline={selectedDeviceForControl.is_online !== false}
                   device={selectedDeviceForControl}
                 />
+                {canManageLocation && <DeviceManagement
+                  key={selectedDeviceForControl.id}
+                  device={selectedDeviceForControl}
+                  rooms={rooms}
+                  onSaved={updates => {
+                    const id = selectedDeviceForControl.id;
+                    setDevices(previous => previous.map(device => device.id === id ? { ...device, ...updates } : device));
+                    setSelectedDeviceForControl((previous: typeof selectedDeviceForControl) => previous?.id === id ? { ...previous, ...updates } : previous);
+                  }}
+                  onRemoved={() => {
+                    const id = selectedDeviceForControl.id;
+                    setDevices(previous => previous.filter(device => device.id !== id));
+                    setSelectedDeviceForControl(null);
+                  }}
+                />}
               </div>
             </main>
           </div>
@@ -2650,7 +2695,8 @@ export function App() {
 
       {/* 17. Neuro AI Assistant Conversational Modal / Smart Home Voice & Chat Control */}
       <AiAssistantModal
-        isOpen={isAiAssistantOpen}
+        isOpen={isAiAssistantOpen && canManageLocation}
+        homeId={activeHome?.id}
         onClose={() => setIsAiAssistantOpen(false)}
         devices={devices}
         rooms={rooms}
@@ -2689,10 +2735,10 @@ export function App() {
             <polygon
               points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"
               fill={
-                isHoveringLight 
-                  ? '#0284c7' 
-                  : isHoveringElement 
-                  ? '#38bdf8' 
+                isHoveringLight
+                  ? '#0284c7'
+                  : isHoveringElement
+                  ? '#38bdf8'
                   : 'transparent'
               }
               stroke={isHoveringLight ? '#0284c7' : '#7dd3fc'}
@@ -2704,6 +2750,9 @@ export function App() {
           </svg>
         </div>
       )}
+
+      {helpTopic && <HelpCenter topic={helpTopic} onSelect={setHelpTopic} onClose={() => setHelpTopic(undefined)} />}
+      {showNotifications && isSignedIn && <NotificationCenter notifications={notifications} onClose={() => setShowNotifications(false)} />}
 
     </div>
   );

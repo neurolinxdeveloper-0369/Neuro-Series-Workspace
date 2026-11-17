@@ -1,8 +1,11 @@
 import { db } from '../../config/database.js';
 import { encryptSecret, decryptSecret } from '../../utils/crypto.js';
-import jwt from 'jsonwebtoken';
-import { ENV } from '../../config/env.js';
+import { createHash, randomBytes } from 'node:crypto';
 import type { Home, CreateHomeDTO, UpdateHomeDTO, Room, HomeInvitation } from './home.types.js';
+
+function digestInvite(code: string) {
+  return createHash('sha256').update(code).digest('hex');
+}
 
 export const homeService = {
   /**
@@ -48,12 +51,23 @@ export const homeService = {
           created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       );
       CREATE INDEX IF NOT EXISTS idx_invitations_home_id ON home_invitations(home_id);
+      ALTER TABLE home_invitations ADD COLUMN IF NOT EXISTS code_digest TEXT;
+      ALTER TABLE home_invitations ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ;
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_home_invite_code ON home_invitations(code_digest);
+
+      CREATE TABLE IF NOT EXISTS home_members (
+        home_id UUID NOT NULL REFERENCES homes(id) ON DELETE CASCADE,
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        PRIMARY KEY (home_id, user_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_home_members_user ON home_members(user_id);
     `;
     try {
       await db.query(query);
       console.log('✅ Homes, Rooms & Invitations tables initialized in PostgreSQL');
     } catch (error) {
       console.error('❌ Failed to verify database tables in PostgreSQL:', error);
+      throw error;
     }
   },
 
@@ -88,6 +102,77 @@ export const homeService = {
       latitude: row.latitude ? Number(row.latitude) : null,
       longitude: row.longitude ? Number(row.longitude) : null,
     }));
+  },
+
+  getAccessibleHomes: async (userId: string): Promise<Home[]> => {
+    const owned = await homeService.getHomesByOwner(userId);
+    const result = await db.query(
+      `SELECT h.id, h.owner_id, h.name, h.property_type, h.floor_count, h.timezone,
+              h.created_at, h.updated_at, NULL AS address_line, NULL AS city,
+              NULL AS latitude, NULL AS longitude, NULL AS default_wifi_ssid
+       FROM homes h JOIN home_members m ON m.home_id = h.id
+       WHERE m.user_id = $1 AND h.owner_id <> $1 ORDER BY h.created_at`,
+      [userId]
+    );
+    return [...owned, ...result.rows];
+  },
+
+  createInvite: async (homeId: string, ownerId: string, email?: string) => {
+    const targetEmail = email?.trim().toLowerCase() ?? '';
+    if (targetEmail && (targetEmail.length > 255 || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(targetEmail))) {
+      throw new Error('Enter a valid email address');
+    }
+    const code = randomBytes(24).toString('base64url');
+    const result = await db.query(
+      `INSERT INTO home_invitations (home_id, invited_by, email, access_level, code_digest, expires_at)
+       SELECT id, owner_id, $3, 'Device control', $4, NOW() + INTERVAL '7 days'
+       FROM homes WHERE id = $1 AND owner_id = $2
+       RETURNING id, expires_at`,
+      [homeId, ownerId, targetEmail, digestInvite(code)]
+    );
+    if (!result.rowCount) throw new Error('Location not found');
+    return { id: result.rows[0].id, code, expiresAt: result.rows[0].expires_at };
+  },
+
+  redeemInvite: async (code: string, userId: string): Promise<string | null> => {
+    if (!/^[A-Za-z0-9_-]{32}$/.test(code)) return null;
+    const result = await db.query(
+      `WITH redeemed AS (
+         UPDATE home_invitations i SET status = 'accepted'
+         FROM users u, homes h
+         WHERE i.code_digest = $1 AND i.status = 'pending' AND i.expires_at > NOW()
+           AND u.id = $2 AND h.id = i.home_id AND h.owner_id <> u.id
+           AND (i.email = '' OR LOWER(u.email) = i.email)
+         RETURNING i.home_id
+       ), membership AS (
+         INSERT INTO home_members (home_id, user_id)
+         SELECT home_id, $2 FROM redeemed ON CONFLICT DO NOTHING
+       )
+       SELECT home_id FROM redeemed`,
+      [digestInvite(code), userId]
+    );
+    return result.rows[0]?.home_id ?? null;
+  },
+
+  listMembers: async (homeId: string) => {
+    const result = await db.query(
+      'SELECT u.id, u.full_name FROM home_members m JOIN users u ON u.id = m.user_id WHERE m.home_id = $1 ORDER BY u.full_name',
+      [homeId]
+    );
+    return result.rows;
+  },
+
+  removeMember: async (homeId: string, userId: string): Promise<boolean> => {
+    const result = await db.query('DELETE FROM home_members WHERE home_id = $1 AND user_id::text = $2', [homeId, userId]);
+    return Boolean(result.rowCount);
+  },
+
+  revokeInvite: async (homeId: string, id: string): Promise<boolean> => {
+    const result = await db.query(
+      "UPDATE home_invitations SET status = 'revoked' WHERE home_id = $1 AND id::text = $2 AND status = 'pending'",
+      [homeId, id]
+    );
+    return Boolean(result.rowCount);
   },
 
   /**
@@ -291,35 +376,6 @@ export const homeService = {
   },
 
   /**
-   * Generates a signed share token payload for QR code invitation
-   */
-  generateSharePayload: async (homeId: string, ownerId: string): Promise<{ shareToken: string; qrData: string }> => {
-    const home = await homeService.getHomeById(homeId, ownerId);
-    if (!home) throw new Error('Home not found or unauthorized');
-
-    const payload = {
-      type: 'neuro_home_invite',
-      homeId: home.id,
-      homeName: home.name,
-      propertyType: home.property_type,
-      ownerId: home.owner_id,
-      accessLevel: 'Full access',
-      issuedAt: Date.now(),
-    };
-
-    const shareToken = jwt.sign(payload, ENV.JWT_SECRET, { expiresIn: '7d' });
-    const qrData = JSON.stringify({
-      schema: 'neurolinx://invite',
-      token: shareToken,
-      homeId: home.id,
-      name: home.name,
-      access: 'Full access',
-    });
-
-    return { shareToken, qrData };
-  },
-
-  /**
    * Get all rooms for a home
    */
   getRoomsByHome: async (homeId: string): Promise<Room[]> => {
@@ -355,27 +411,12 @@ export const homeService = {
   },
 
   /**
-   * Record a member email invitation
-   */
-  sendInvitation: async (homeId: string, invitedBy: string, email: string, accessLevel: string = 'Full access'): Promise<HomeInvitation> => {
-    const trimmedEmail = email.trim().toLowerCase();
-    if (!trimmedEmail) throw new Error('Email address is required');
-
-    const result = await db.query(
-      `INSERT INTO home_invitations (home_id, invited_by, email, access_level, status)
-       VALUES ($1, $2, $3, $4, 'pending')
-       RETURNING id, home_id, invited_by, email, access_level, status, created_at`,
-      [homeId, invitedBy, trimmedEmail, accessLevel]
-    );
-    return result.rows[0];
-  },
-
-  /**
    * List pending invitations for a home
    */
   getInvitations: async (homeId: string): Promise<HomeInvitation[]> => {
     const result = await db.query(
-      'SELECT id, home_id, invited_by, email, access_level, status, created_at FROM home_invitations WHERE home_id = $1 ORDER BY created_at DESC',
+      `SELECT id, home_id, invited_by, email, access_level, status, created_at
+       FROM home_invitations WHERE home_id = $1 AND status = 'pending' AND expires_at > NOW() ORDER BY created_at DESC`,
       [homeId]
     );
     return result.rows;

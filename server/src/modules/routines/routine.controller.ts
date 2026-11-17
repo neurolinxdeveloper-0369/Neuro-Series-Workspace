@@ -1,3 +1,4 @@
+import { ownsHome } from '../homes/home.access.js';
 import { Router, type Response } from 'express';
 import { routineService } from './routine.service.js';
 import { authenticateToken, type AuthenticatedRequest } from '../auth/auth.middleware.js';
@@ -13,6 +14,7 @@ routineRouter.get('/', async (req: AuthenticatedRequest, res: Response) => {
   try {
     const userId = req.user?.id;
     const homeId = (req.query.homeId as string) || undefined;
+    if (homeId && !await ownsHome(userId!, homeId)) return res.status(404).json({ success: false, error: 'Location not found' });
     const routines = await routineService.getRoutines(homeId, userId);
     return res.json({ success: true, routines });
   } catch (error: unknown) {
@@ -25,7 +27,7 @@ routineRouter.get('/', async (req: AuthenticatedRequest, res: Response) => {
 routineRouter.get('/:id', async (req: AuthenticatedRequest, res: Response) => {
   try {
     const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-    const routine = await routineService.getRoutineById(id);
+    const routine = await routineService.getRoutineById(id, req.user!.id);
     if (!routine) {
       return res.status(404).json({ success: false, error: 'Routine not found' });
     }
@@ -49,6 +51,8 @@ routineRouter.post('/', async (req: AuthenticatedRequest, res: Response) => {
       return res.status(400).json({ success: false, error: 'Routine name is required' });
     }
 
+    if (body.homeId && !await ownsHome(userId, body.homeId)) return res.status(404).json({ success: false, error: 'Location not found' });
+    await routineService.validateActions(userId, body.homeId ?? null, body.actions);
     const created = await routineService.createRoutine(userId, body);
     return res.status(201).json({ success: true, routine: created });
   } catch (error: unknown) {
@@ -62,6 +66,9 @@ routineRouter.put('/:id', async (req: AuthenticatedRequest, res: Response) => {
   try {
     const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
     const body = req.body as UpdateRoutineDTO;
+    const existing = await routineService.getRoutineById(id, req.user!.id);
+    if (!existing) return res.status(404).json({ success: false, error: 'Routine not found' });
+    await routineService.validateActions(req.user!.id, existing.home_id, body.actions);
     const updated = await routineService.updateRoutine(id, body);
     if (!updated) {
       return res.status(404).json({ success: false, error: 'Routine not found' });
@@ -77,6 +84,7 @@ routineRouter.put('/:id', async (req: AuthenticatedRequest, res: Response) => {
 routineRouter.delete('/:id', async (req: AuthenticatedRequest, res: Response) => {
   try {
     const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    if (!await routineService.getRoutineById(id, req.user!.id)) return res.status(404).json({ success: false, error: 'Routine not found' });
     const success = await routineService.deleteRoutine(id);
     return res.json({ success });
   } catch (error: unknown) {
@@ -89,7 +97,7 @@ routineRouter.delete('/:id', async (req: AuthenticatedRequest, res: Response) =>
 routineRouter.post('/:id/run', async (req: AuthenticatedRequest, res: Response) => {
   try {
     const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-    const result = await routineService.executeRoutine(id);
+    const result = await routineService.executeRoutine(id, req.user!.id);
     return res.json(result);
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Failed to execute routine';

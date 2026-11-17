@@ -153,7 +153,7 @@ export class OpenWAService {
 
     if (!response.ok) {
       const errDetail = resJson.message || resJson.error || `HTTP ${response.status}`;
-      console.error(`❌ [OpenWA] Failed to dispatch WhatsApp message to ${chatId}:`, errDetail);
+      console.error("WhatsApp gateway rejected the message.");
       throw new Error(`WhatsApp delivery failed: ${errDetail}`);
     }
 

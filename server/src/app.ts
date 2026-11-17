@@ -1,3 +1,4 @@
+import { initializeNotifications, notificationRouter } from './modules/notifications/notification.controller.js';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -14,21 +15,14 @@ import { routineService } from './modules/routines/routine.service.js';
 
 export const app = express();
 
-// Initialize tables on boot
-authService.ensureTablesExist().catch((err) => {
-  console.error('Error verifying auth tables on boot:', err);
-});
-homeService.ensureTableExists().catch((err) => {
-  console.error('Error verifying tables on boot:', err);
-});
-deviceService.ensureTablesExist().catch((err) => {
-  console.error('Error verifying device tables on boot:', err);
-});
-routineService.ensureTableExists().then(() => {
+export async function initializeDatabase() {
+  await authService.ensureTablesExist();
+  await homeService.ensureTableExists();
+  await deviceService.ensureTablesExist();
+  await routineService.ensureTableExists();
+  await initializeNotifications();
   routineService.startSchedulerEngine();
-}).catch((err) => {
-  console.error('Error verifying routines table on boot:', err);
-});
+}
 
 // Security & Parsing
 app.use(helmet({
@@ -61,6 +55,7 @@ app.use(['/neuro-series/api/auth', '/api/auth', '/auth'], authRouter);
 app.use(['/neuro-series/api/devices', '/api/devices', '/devices'], deviceRouter);
 app.use(['/neuro-series/api/homes', '/api/homes', '/homes'], homeRouter);
 app.use(['/neuro-series/api/routines', '/api/routines', '/routines'], routineRouter);
+app.use(['/neuro-series/api/notifications', '/api/notifications', '/notifications'], notificationRouter);
 app.use(['/neuro-series/api/ai', '/api/ai', '/ai'], aiRouter);
 app.use([
   '/neuro-series/api/webhook',

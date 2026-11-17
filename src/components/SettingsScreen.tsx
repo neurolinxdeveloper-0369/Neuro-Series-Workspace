@@ -1,5 +1,6 @@
-import { useState } from 'react';
-import { ArrowLeft, ChevronRight, X, LogOut } from 'lucide-react';
+import type { useBiometricLock } from '../hooks/useBiometricLock';
+import type { useNotifications } from '../hooks/useNotifications';
+import { ArrowLeft, LogOut } from 'lucide-react';
 
 interface SettingsScreenProps {
   isOpen: boolean;
@@ -7,331 +8,79 @@ interface SettingsScreenProps {
   onOpenSignIn: () => void;
   isSignedIn?: boolean;
   currentUser?: {
-    id?: string;
     full_name?: string | null;
     email?: string | null;
     phone_number?: string | null;
     avatar_url?: string | null;
   } | null;
   onSignOut?: () => void;
+  onNotifications: () => void;
+  lock: ReturnType<typeof useBiometricLock>;
+  notifications: ReturnType<typeof useNotifications>;
 }
 
-export const SettingsScreen = ({ 
-  isOpen, 
-  onClose, 
-  onOpenSignIn, 
-  isSignedIn = false,
-  currentUser = null,
-  onSignOut,
-}: SettingsScreenProps) => {
-  const [featureSuggestions, setFeatureSuggestions] = useState(true);
-  const [biometricLock, setBiometricLock] = useState(false);
-
+export function SettingsScreen({ isOpen, onClose, onOpenSignIn, isSignedIn, currentUser, onSignOut, onNotifications, lock, notifications }: SettingsScreenProps) {
   if (!isOpen) return null;
 
   return (
-    <div 
-      className="fixed inset-0 z-50 overflow-y-auto flex flex-col select-none pointer-events-auto font-sans animate-in fade-in duration-200"
-      style={{
-        backgroundColor: '#d4edf4',
-        backgroundImage: `
-          radial-gradient(circle at 10% 0%, rgba(255, 255, 255, 0.45) 0%, transparent 45%),
-          radial-gradient(circle at 90% 100%, rgba(255, 255, 255, 0.45) 0%, transparent 45%)
-        `,
-      }}
-    >
-      {/* Top Header: Back Button + Neuro Series Settings */}
-      <header className="screen-top-header sticky top-0 z-30 w-full flex items-center justify-between px-5 sm:px-8 py-4 sm:py-5 bg-transparent backdrop-blur-md">
-        <div className="flex items-center gap-3">
-          <button
-            onClick={onClose}
-            className="p-2 -ml-2 rounded-full text-slate-700 hover:text-slate-900 hover:bg-white/40 transition-colors cursor-pointer"
-            aria-label="Back"
-          >
-            <ArrowLeft className="w-5 h-5 sm:w-6 sm:h-6" strokeWidth={2.2} />
-          </button>
-          <span className="text-base sm:text-xl font-bold text-slate-900 tracking-tight font-sans">
-            Neuro Series Settings
-          </span>
-        </div>
-
-        <button
-          onClick={onClose}
-          className="p-2 rounded-full text-slate-600 hover:text-slate-900 hover:bg-white/40 transition-colors cursor-pointer"
-          aria-label="Close"
-        >
-          <X className="w-5 h-5 sm:w-6 sm:h-6" strokeWidth={2.2} />
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-[#e5f3f7] text-slate-900" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+      <header className="sticky top-0 flex items-center gap-3 border-b border-slate-200 bg-[#e5f3f7] px-4 pb-3 pt-[calc(0.75rem+var(--safe-inset-top))] sm:px-6">
+        <button type="button" aria-label="Close settings" onClick={onClose}
+          className="grid size-11 place-items-center rounded-full bg-white">
+          <ArrowLeft className="size-5" aria-hidden="true" />
         </button>
+        <h1 id="settings-title" className="text-lg font-bold">Neuro Series Settings</h1>
       </header>
-
-      {/* Main Content: White Cards */}
-      <main className="w-full max-w-sm sm:max-w-md md:max-w-lg mx-auto px-4 sm:px-6 py-2 pb-16 space-y-3.5 flex-1">
-        
-        {/* Card 1: Pure White Card - Sign in heading / User profile & right arrow */}
-        <div 
-          onClick={() => {
-            if (!isSignedIn) onOpenSignIn();
-          }}
-          className={`group w-full rounded-3xl p-5 shadow-md transition-all ${
-            !isSignedIn ? 'cursor-pointer hover:bg-slate-50 active:scale-[0.99]' : ''
-          }`}
-          style={{
-            backgroundColor: '#ffffff',
-            border: '1px solid rgba(255, 255, 255, 0.95)',
-            boxShadow: '0 16px 36px -10px rgba(15, 23, 42, 0.08), 0 4px 12px rgba(0, 0, 0, 0.02)',
-          }}
-          role="button"
-          tabIndex={0}
-        >
-          <div className="flex items-center justify-between gap-3">
-            {isSignedIn && currentUser?.avatar_url ? (
-              <img 
-                src={currentUser.avatar_url} 
-                alt="Avatar" 
-                className="w-12 h-12 rounded-full object-cover border-2 border-sky-100 flex-shrink-0"
-              />
-            ) : isSignedIn ? (
-              <div className="w-12 h-12 rounded-full bg-[#0284c7] text-white font-bold flex items-center justify-center text-lg flex-shrink-0">
-                {(currentUser?.full_name || 'U')[0].toUpperCase()}
-              </div>
-            ) : null}
-
-            <div className="flex-1 pr-2">
-              <h3 className="text-base sm:text-lg font-bold text-slate-900 font-sans tracking-tight group-hover:text-[#0284c7] transition-colors">
-                {isSignedIn ? (currentUser?.full_name || 'Neuro Series Account') : 'Sign in'}
-              </h3>
-              <p className="text-xs sm:text-sm font-normal text-slate-600 leading-snug mt-1 font-sans">
-                {isSignedIn
-                  ? (currentUser?.email || currentUser?.phone_number || 'Connected to Smart Workspace')
-                  : 'Sign in to your neuro series account to make your home into smart'}
-              </p>
-            </div>
-
-            {isSignedIn ? (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onSignOut?.();
-                }}
-                className="text-xs font-semibold px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-600 transition-colors cursor-pointer"
-              >
-                Sign out
-              </button>
-            ) : (
-              <div className="w-6 h-6 flex items-center justify-center flex-shrink-0 text-slate-400 group-hover:text-[#0284c7] transition-colors">
-                <ChevronRight className="w-5 h-5" strokeWidth={2.2} />
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Card 2: Pure White Card - Notifications, Feature suggestions with toggle, Biometric lock with toggle (Disabled when not signed in) */}
-        <div 
-          className={`w-full rounded-3xl p-3.5 sm:p-4 shadow-md transition-all ${
-            !isSignedIn ? 'opacity-40 pointer-events-none select-none filter grayscale-[35%]' : ''
-          }`}
-          style={{
-            backgroundColor: '#ffffff',
-            border: '1px solid rgba(255, 255, 255, 0.95)',
-            boxShadow: '0 16px 36px -10px rgba(15, 23, 42, 0.08), 0 4px 12px rgba(0, 0, 0, 0.02)',
-          }}
-          aria-disabled={!isSignedIn}
-        >
-          {/* Row 1: Notifications + Right Arrow */}
-          <div 
-            className="group flex items-center justify-between p-2.5 rounded-2xl hover:bg-slate-50 transition-colors cursor-pointer"
-            role="button"
-            tabIndex={isSignedIn ? 0 : -1}
-          >
-            <span className={`text-xs sm:text-sm font-medium font-sans ${
-              !isSignedIn ? 'text-slate-500' : 'text-slate-800 group-hover:text-[#0284c7]'
-            } transition-colors`}>
-              Notifications
-            </span>
-            <div className="w-6 h-6 flex items-center justify-center flex-shrink-0 text-slate-400 group-hover:text-[#0284c7] transition-colors">
-              <ChevronRight className="w-4 h-4" strokeWidth={2.2} />
-            </div>
-          </div>
-
-          {/* Line Divider */}
-          <div className="h-px bg-slate-100 w-full my-1" />
-
-          {/* Row 2: Feature suggestions with toggle */}
-          <div className="flex items-center justify-between p-2.5 rounded-2xl">
-            <span className={`text-xs sm:text-sm font-medium font-sans ${
-              !isSignedIn ? 'text-slate-500' : 'text-slate-800'
-            }`}>
-              Feature suggestions
-            </span>
-            <button
-              type="button"
-              disabled={!isSignedIn}
-              onClick={() => setFeatureSuggestions(!featureSuggestions)}
-              className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                !isSignedIn ? 'bg-slate-300' : (featureSuggestions ? 'bg-[#0284c7]' : 'bg-slate-300')
-              }`}
-              role="switch"
-              aria-checked={featureSuggestions}
-            >
-              <span
-                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
-                  featureSuggestions && isSignedIn ? 'translate-x-5' : 'translate-x-0'
-                }`}
-              />
+      <main className="mx-auto grid w-full max-w-lg gap-4 px-4 py-5 pb-[calc(1.25rem+var(--nav-inset-bottom))] sm:px-6">
+        <section className="rounded-3xl bg-white p-5 shadow-sm">
+          <h2 className="font-semibold">{isSignedIn ? currentUser?.full_name || 'Your account' : 'Your account'}</h2>
+          <p className="mt-1 break-words text-sm text-slate-600">
+            {isSignedIn ? currentUser?.email || currentUser?.phone_number : 'Sign in to manage locations and devices.'}
+          </p>
+          {isSignedIn ? (
+            <button type="button" onClick={() => { onSignOut?.(); onClose(); }} className="mt-2 flex min-h-11 items-center gap-2 text-sm font-semibold text-rose-700">
+              <LogOut className="size-4" aria-hidden="true" /> Sign out
             </button>
-          </div>
-
-          {/* Line Divider */}
-          <div className="h-px bg-slate-100 w-full my-1" />
-
-          {/* Row 3: Biometric screen lock with toggle */}
-          <div className="flex items-center justify-between p-2.5 rounded-2xl">
-            <span className={`text-xs sm:text-sm font-medium font-sans ${
-              !isSignedIn ? 'text-slate-500' : 'text-slate-800'
-            }`}>
-              Biometric screen lock
-            </span>
-            <button
-              type="button"
-              disabled={!isSignedIn}
-              onClick={() => setBiometricLock(!biometricLock)}
-              className="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none bg-slate-300"
-              role="switch"
-              aria-checked={biometricLock}
-            >
-              <span
-                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
-                  biometricLock && isSignedIn ? 'translate-x-5' : 'translate-x-0'
-                }`}
-              />
+          ) : (
+            <button type="button" onClick={onOpenSignIn} className="mt-3 min-h-11 rounded-xl bg-sky-700 px-4 text-sm font-semibold text-white">
+              Sign in
             </button>
-          </div>
-        </div>
-
-        {/* Card 3: Pure White Card - Privacy Notice, Permissions, Reset app data, About Neuro Series (Disabled when not signed in) */}
-        <div 
-          className={`w-full rounded-3xl p-3.5 sm:p-4 shadow-md transition-all ${
-            !isSignedIn ? 'opacity-40 pointer-events-none select-none filter grayscale-[35%]' : ''
-          }`}
-          style={{
-            backgroundColor: '#ffffff',
-            border: '1px solid rgba(255, 255, 255, 0.95)',
-            boxShadow: '0 16px 36px -10px rgba(15, 23, 42, 0.08), 0 4px 12px rgba(0, 0, 0, 0.02)',
-          }}
-          aria-disabled={!isSignedIn}
-        >
-          {/* Row 1: Privacy Notice + Right Arrow */}
-          <div 
-            className="group flex items-center justify-between p-2.5 rounded-2xl hover:bg-slate-50 transition-colors cursor-pointer"
-            role="button"
-            tabIndex={isSignedIn ? 0 : -1}
-          >
-            <span className={`text-xs sm:text-sm font-medium font-sans ${
-              !isSignedIn ? 'text-slate-500' : 'text-slate-800 group-hover:text-[#0284c7]'
-            } transition-colors`}>
-              Privacy Notice
-            </span>
-            <div className="w-6 h-6 flex items-center justify-center flex-shrink-0 text-slate-400 group-hover:text-[#0284c7] transition-colors">
-              <ChevronRight className="w-4 h-4" strokeWidth={2.2} />
-            </div>
-          </div>
-
-          {/* Line Divider */}
-          <div className="h-px bg-slate-100 w-full my-1" />
-
-          {/* Row 2: Permissions + Right Arrow */}
-          <div 
-            className="group flex items-center justify-between p-2.5 rounded-2xl hover:bg-slate-50 transition-colors cursor-pointer"
-            role="button"
-            tabIndex={isSignedIn ? 0 : -1}
-          >
-            <span className={`text-xs sm:text-sm font-medium font-sans ${
-              !isSignedIn ? 'text-slate-500' : 'text-slate-800 group-hover:text-[#0284c7]'
-            } transition-colors`}>
-              Permissions
-            </span>
-            <div className="w-6 h-6 flex items-center justify-center flex-shrink-0 text-slate-400 group-hover:text-[#0284c7] transition-colors">
-              <ChevronRight className="w-4 h-4" strokeWidth={2.2} />
-            </div>
-          </div>
-
-          {/* Line Divider */}
-          <div className="h-px bg-slate-100 w-full my-1" />
-
-          {/* Row 3: Reset app data */}
-          <div 
-            className="group flex items-center justify-between p-2.5 rounded-2xl hover:bg-slate-50 transition-colors cursor-pointer"
-            role="button"
-            tabIndex={isSignedIn ? 0 : -1}
-          >
-            <span className={`text-xs sm:text-sm font-medium font-sans ${
-              !isSignedIn ? 'text-slate-500' : 'text-red-600 group-hover:text-red-700'
-            } transition-colors`}>
-              Reset app data
-            </span>
-            <div className="w-6 h-6 flex items-center justify-center flex-shrink-0 text-slate-400 group-hover:text-red-600 transition-colors">
-              <ChevronRight className="w-4 h-4" strokeWidth={2.2} />
-            </div>
-          </div>
-
-          {/* Line Divider */}
-          <div className="h-px bg-slate-100 w-full my-1" />
-
-          {/* Row 4: About Neuro Series */}
-          <div 
-            className="group flex items-center justify-between p-2.5 rounded-2xl hover:bg-slate-50 transition-colors cursor-pointer"
-            role="button"
-            tabIndex={isSignedIn ? 0 : -1}
-          >
-            <span className={`text-xs sm:text-sm font-medium font-sans ${
-              !isSignedIn ? 'text-slate-500' : 'text-slate-800 group-hover:text-[#0284c7]'
-            } transition-colors`}>
-              About Neuro Series
-            </span>
-            <div className="w-6 h-6 flex items-center justify-center flex-shrink-0 text-slate-400 group-hover:text-[#0284c7] transition-colors">
-              <ChevronRight className="w-4 h-4" strokeWidth={2.2} />
-            </div>
-          </div>
-        </div>
-
-        {/* Card 4: Pure White Card - Sign out option (ONLY shown after login, hidden without login) */}
+          )}
+        </section>
         {isSignedIn && (
-          <div 
-            onClick={() => {
-              onSignOut?.();
-              onClose();
-            }}
-            className="group w-full rounded-3xl p-4 sm:p-5 shadow-md transition-all cursor-pointer hover:bg-rose-50/60 active:scale-[0.99] bg-white animate-in fade-in duration-200"
-            style={{
-              backgroundColor: '#ffffff',
-              border: '1px solid rgba(255, 255, 255, 0.95)',
-              boxShadow: '0 16px 36px -10px rgba(15, 23, 42, 0.08), 0 4px 12px rgba(0, 0, 0, 0.02)',
-            }}
-            role="button"
-            tabIndex={0}
-          >
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3.5">
-                <div className="w-9 h-9 rounded-2xl bg-rose-50 flex items-center justify-center flex-shrink-0 text-rose-600 group-hover:bg-rose-100 transition-colors">
-                  <LogOut className="w-4 h-4 text-rose-600" strokeWidth={2.3} />
-                </div>
-                <div className="flex flex-col text-left">
-                  <span className="text-sm sm:text-base font-bold text-rose-600 group-hover:text-rose-700 font-sans tracking-tight">
-                    Sign out
-                  </span>
-                  <span className="text-xs text-slate-500 font-normal font-sans">
-                    {currentUser?.email || currentUser?.phone_number || 'Sign out of your Neuro Series account'}
-                  </span>
-                </div>
+          <>
+            <section className="space-y-2 rounded-3xl bg-white p-5 shadow-sm">
+              <h2 className="font-semibold">Notifications</h2>
+              <p className="text-sm text-slate-700">Device activity is saved in the app. System alerts depend on your device or browser permissions.</p>
+              <div className="flex flex-wrap gap-2">
+                <button type="button" onClick={onNotifications} className="min-h-11 rounded-xl bg-slate-100 px-3 text-sm font-semibold">View notifications</button>
+                <button type="button" onClick={() => void notifications.setSystemEnabled(!notifications.enabled)}
+                  className="min-h-11 rounded-xl bg-slate-100 px-3 text-sm font-semibold">
+                  {notifications.enabled ? 'Turn off system alerts' : 'Enable system alerts'}
+                </button>
               </div>
-              <div className="w-6 h-6 flex items-center justify-center flex-shrink-0 text-slate-400 group-hover:text-rose-600 transition-colors">
-                <ChevronRight className="w-4 h-4" strokeWidth={2.2} />
-              </div>
-            </div>
-          </div>
+              {notifications.notice && <p role="status" className="text-sm text-slate-700">{notifications.notice}</p>}
+            </section>
+            <section className="space-y-2 rounded-3xl bg-white p-5 shadow-sm">
+              <h2 className="font-semibold">Biometric lock</h2>
+              <p className="text-sm text-slate-700">
+                {lock.supported ? 'Require your enrolled face or fingerprint each time you return to the app.' : 'Available in the installed Android and iOS apps.'}
+              </p>
+              {lock.supported && <button type="button" disabled={lock.busy} onClick={() => void lock.setEnabled(!lock.enabled)}
+                className="min-h-11 rounded-xl bg-slate-100 px-3 text-sm font-semibold">
+                {lock.enabled ? 'Turn off biometric lock' : 'Enable biometric lock'}
+              </button>}
+              {lock.error && <p role="alert" className="text-sm text-rose-800">{lock.error}</p>}
+            </section>
+          </>
         )}
-
+        <section className="space-y-2 rounded-3xl bg-white p-5 shadow-sm">
+          <h2 className="font-semibold">Device permissions</h2>
+          <p className="text-sm leading-relaxed text-slate-700">
+            Manage permissions in your device or browser settings. Neuro Series uses the camera for QR scanning, the microphone for voice input, and location for setup.
+          </p>
+        </section>
       </main>
     </div>
   );
-};
+}

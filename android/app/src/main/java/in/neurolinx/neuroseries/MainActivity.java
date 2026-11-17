@@ -262,6 +262,10 @@ public class MainActivity extends BridgeActivity {
                 }
 
                 java.net.URL url = new java.net.URL(urlString);
+                if (!"http".equals(url.getProtocol()) || !"192.168.4.1".equals(url.getHost()) ||
+                        (url.getPort() != -1 && url.getPort() != 80) || url.getUserInfo() != null) {
+                    throw new IllegalArgumentException("Invalid device setup address");
+                }
                 java.net.HttpURLConnection conn;
                 if (wifiNetwork != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                     conn = (java.net.HttpURLConnection) wifiNetwork.openConnection(url);
@@ -269,6 +273,7 @@ public class MainActivity extends BridgeActivity {
                     conn = (java.net.HttpURLConnection) url.openConnection();
                 }
 
+                conn.setInstanceFollowRedirects(false);
                 conn.setRequestMethod("POST");
                 conn.setRequestProperty("Content-Type", "application/json");
                 conn.setRequestProperty("Accept", "application/json");
@@ -300,7 +305,7 @@ public class MainActivity extends BridgeActivity {
                 res.put("status", code);
                 res.put("ok", code >= 200 && code < 300);
                 res.put("body", responseText);
-                android.util.Log.d("AndroidWifiBridge", "httpPost success: " + code + " => " + responseText);
+                android.util.Log.d("AndroidWifiBridge", "httpPost success: " + code);
                 return res.toString();
             } catch (Exception e) {
                 android.util.Log.e("AndroidWifiBridge", "httpPost exception: " + e.getMessage(), e);
@@ -332,6 +337,10 @@ public class MainActivity extends BridgeActivity {
                 }
 
                 java.net.URL url = new java.net.URL(urlString);
+                if (!"http".equals(url.getProtocol()) || !"192.168.4.1".equals(url.getHost()) ||
+                        (url.getPort() != -1 && url.getPort() != 80) || url.getUserInfo() != null) {
+                    throw new IllegalArgumentException("Invalid device setup address");
+                }
                 java.net.HttpURLConnection conn;
                 if (wifiNetwork != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                     conn = (java.net.HttpURLConnection) wifiNetwork.openConnection(url);
@@ -339,6 +348,7 @@ public class MainActivity extends BridgeActivity {
                     conn = (java.net.HttpURLConnection) url.openConnection();
                 }
 
+                conn.setInstanceFollowRedirects(false);
                 conn.setRequestMethod("GET");
                 conn.setRequestProperty("Accept", "application/json");
                 conn.setConnectTimeout(5000);
@@ -361,7 +371,7 @@ public class MainActivity extends BridgeActivity {
                 res.put("status", code);
                 res.put("ok", code >= 200 && code < 300);
                 res.put("body", responseText);
-                android.util.Log.d("AndroidWifiBridge", "httpGet success: " + code + " => " + responseText);
+                android.util.Log.d("AndroidWifiBridge", "httpGet success: " + code);
                 return res.toString();
             } catch (Exception e) {
                 android.util.Log.e("AndroidWifiBridge", "httpGet exception: " + e.getMessage(), e);
@@ -479,6 +489,16 @@ public class MainActivity extends BridgeActivity {
                 }
 
                 java.net.URL url = new java.net.URL(urlString);
+                final String path = url.getPath();
+                final boolean pairingConfig = "GET".equalsIgnoreCase(method) &&
+                        path.matches("/neuro-series/api/devices/home/[0-9a-fA-F-]{36}/pairing-config");
+                final boolean registerDevice = "POST".equalsIgnoreCase(method) &&
+                        "/neuro-series/api/devices/provision".equals(path);
+                if (!"https".equals(url.getProtocol()) || !"neurolinx.in".equals(url.getHost()) ||
+                        (url.getPort() != -1 && url.getPort() != 443) || url.getUserInfo() != null ||
+                        (!pairingConfig && !registerDevice)) {
+                    throw new IllegalArgumentException("Invalid pairing API address");
+                }
                 java.net.HttpURLConnection conn;
                 if (targetInternetNet != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                     conn = (java.net.HttpURLConnection) targetInternetNet.openConnection(url);
@@ -487,6 +507,7 @@ public class MainActivity extends BridgeActivity {
                     conn = (java.net.HttpURLConnection) url.openConnection();
                 }
 
+                conn.setInstanceFollowRedirects(false);
                 conn.setRequestMethod(method.toUpperCase());
                 conn.setRequestProperty("Content-Type", "application/json");
                 conn.setRequestProperty("Accept", "application/json");
@@ -523,7 +544,7 @@ public class MainActivity extends BridgeActivity {
                 res.put("status", code);
                 res.put("ok", code >= 200 && code < 300);
                 res.put("body", responseText);
-                android.util.Log.d("AndroidWifiBridge", "nativeApiCall success: " + code + " => " + responseText);
+                android.util.Log.d("AndroidWifiBridge", "nativeApiCall success: " + code);
                 return res.toString();
             } catch (Exception e) {
                 android.util.Log.e("AndroidWifiBridge", "nativeApiCall exception: " + e.getMessage(), e);
@@ -597,6 +618,7 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
+        registerPlugin(DeviceFeaturesPlugin.class);
         super.onCreate(savedInstanceState);
         
         // Ensure status bar and navigation bar have black/dark icons on light background

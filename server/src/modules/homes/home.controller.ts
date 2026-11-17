@@ -1,3 +1,4 @@
+import { canAccessHome, requireHomeOwner } from './home.access.js';
 import { Router, type Response } from 'express';
 import { homeService } from './home.service.js';
 import { authenticateToken, type AuthenticatedRequest } from '../auth/auth.middleware.js';
@@ -7,6 +8,17 @@ export const homeRouter = Router();
 
 // Protect all home endpoints with JWT authentication
 homeRouter.use(authenticateToken);
+homeRouter.param('id', async (req: AuthenticatedRequest, res, next, id) => {
+  if (req.method !== 'GET' || !/^\/[^/]+\/rooms\/?$/.test(req.path)) return requireHomeOwner(req, res, next, id);
+  try {
+    if (!req.user || !await canAccessHome(req.user.id, id)) {
+      return res.status(404).json({ success: false, error: 'Location not found' });
+    }
+    next();
+  } catch (error) {
+    next(error);
+  }
+});
 
 // GET /api/homes - List all homes for logged-in user
 homeRouter.get('/', async (req: AuthenticatedRequest, res: Response) => {
@@ -16,7 +28,7 @@ homeRouter.get('/', async (req: AuthenticatedRequest, res: Response) => {
       return res.status(401).json({ success: false, error: 'Unauthorized' });
     }
 
-    const homes = await homeService.getHomesByOwner(userId);
+    const homes = await homeService.getAccessibleHomes(userId);
     return res.json({ success: true, homes });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Failed to fetch homes';
@@ -152,20 +164,14 @@ homeRouter.delete('/:id', async (req: AuthenticatedRequest, res: Response) => {
   }
 });
 
-// GET /api/homes/:id/qr - Generate QR invite payload
-homeRouter.get('/:id/qr', async (req: AuthenticatedRequest, res: Response) => {
+homeRouter.post('/join', async (req: AuthenticatedRequest, res, next) => {
   try {
-    const userId = req.user?.id;
-    if (!userId) {
-      return res.status(401).json({ success: false, error: 'Unauthorized' });
-    }
-
-    const homeId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-    const data = await homeService.generateSharePayload(homeId, userId);
-    return res.json({ success: true, ...data });
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Failed to generate QR payload';
-    return res.status(500).json({ success: false, error: message });
+    const code = req.body?.code;
+    const homeId = typeof code === 'string' ? await homeService.redeemInvite(code, req.user!.id) : null;
+    if (!homeId) return res.status(400).json({ success: false, error: 'This invitation is invalid, expired, or for a different account.' });
+    return res.json({ success: true, homeId });
+  } catch (error) {
+    next(error);
   }
 });
 
@@ -213,25 +219,26 @@ homeRouter.delete('/:id/rooms/:roomId', async (req: AuthenticatedRequest, res: R
   }
 });
 
-// POST /api/homes/:id/invitations - Send member invite
-homeRouter.post('/:id/invitations', async (req: AuthenticatedRequest, res: Response) => {
+homeRouter.post('/:id/invitations', async (req: AuthenticatedRequest, res) => {
   try {
-    const userId = req.user?.id;
-    if (!userId) {
-      return res.status(401).json({ success: false, error: 'Unauthorized' });
-    }
+    const homeId = String(req.params.id);
+    const email = req.body?.email;
+    if (email != null && typeof email !== 'string') return res.status(400).json({ success: false, error: 'Invalid email' });
+    const invitation = await homeService.createInvite(homeId, req.user!.id, email);
+    res.setHeader('Cache-Control', 'no-store');
+    return res.status(201).json({ success: true, ...invitation });
+  } catch (error) {
+    return res.status(400).json({ success: false, error: error instanceof Error ? error.message : 'Could not create invitation' });
+  }
+});
 
-    const homeId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-    const { email, accessLevel } = req.body;
-    if (!email) {
-      return res.status(400).json({ success: false, error: 'Email or account is required' });
-    }
-
-    const invitation = await homeService.sendInvitation(homeId, userId, email, accessLevel || 'Full access');
-    return res.status(201).json({ success: true, invitation });
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Failed to send invitation';
-    return res.status(500).json({ success: false, error: message });
+homeRouter.delete('/:id/invitations/:inviteId', async (req, res, next) => {
+  try {
+    const revoked = await homeService.revokeInvite(String(req.params.id), String(req.params.inviteId));
+    if (!revoked) return res.status(404).json({ success: false, error: 'Pending invitation not found' });
+    return res.json({ success: true });
+  } catch (error) {
+    next(error);
   }
 });
 
@@ -244,5 +251,24 @@ homeRouter.get('/:id/invitations', async (req: AuthenticatedRequest, res: Respon
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Failed to fetch invitations';
     return res.status(500).json({ success: false, error: message });
+  }
+});
+
+homeRouter.get('/:id/members', async (req, res, next) => {
+  try {
+    return res.json({ success: true, members: await homeService.listMembers(String(req.params.id)) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+homeRouter.delete('/:id/members/:userId', async (req, res, next) => {
+  try {
+    if (!await homeService.removeMember(String(req.params.id), String(req.params.userId))) {
+      return res.status(404).json({ success: false, error: 'Member not found' });
+    }
+    return res.json({ success: true });
+  } catch (error) {
+    next(error);
   }
 });

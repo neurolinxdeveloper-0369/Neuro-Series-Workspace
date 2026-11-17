@@ -37,6 +37,7 @@ export interface ChatMessage {
 
 interface AiAssistantModalProps {
   isOpen: boolean;
+  homeId?: string;
   onClose: () => void;
   devices?: any[];
   rooms?: any[];
@@ -62,6 +63,7 @@ const SUPPORT_PHONE = '917995558994';
 
 export const AiAssistantModal = ({
   isOpen,
+  homeId,
   onClose,
   devices = [],
   rooms = [],
@@ -452,7 +454,7 @@ export const AiAssistantModal = ({
           content: m.text,
         }));
 
-        const res = await aiApi.chat(query, historyPayload);
+        const res = await aiApi.chat(query, historyPayload, homeId);
         if (res && res.reply) {
           aiText = res.reply;
           providerName = res.provider === 'ollama' ? `Ollama (${res.model || 'llama3.2'})` : 'Neuro Engine (Real-Time Grounded)';
@@ -463,12 +465,6 @@ export const AiAssistantModal = ({
               phone: res.action.phone,
               prefillText: res.action.prefillText,
             };
-            if (res.action.type === 'control' && onToggleSwitch && res.action.deviceId && typeof res.action.channel === 'number') {
-              onToggleSwitch(res.action.deviceId, res.action.channel - 1, res.action.targetState === 'on');
-            } else if (res.action.type === 'scene' && onRunRoutine && res.action.routineId) {
-              const matched = routines.find((r) => r.id === res.action?.routineId);
-              if (matched) onRunRoutine(matched);
-            }
           }
         }
       } catch (err) {

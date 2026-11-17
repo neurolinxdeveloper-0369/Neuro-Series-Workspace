@@ -1,185 +1,44 @@
-import { 
-  HouseWifi, 
-  Mic, 
-  CircleQuestionMark, 
-  UserCog, 
-  CloudExclamationPoint,
-  ChevronRight,
-  LogOut 
-} from 'lucide-react';
+import { Bell, BookOpen, ChevronRight, CircleHelp, LogOut, Mic, Settings } from 'lucide-react';
 
 interface MenuTabContentProps {
   isSignedIn?: boolean;
+  onBrowse: () => void;
+  onAssistant?: () => void;
+  onJoin: () => void;
+  onSettings: () => void;
+  onHelp: () => void;
+  onNotifications?: () => void;
+  unread?: number;
   onSignOut?: () => void;
 }
 
-export const MenuTabContent = ({ isSignedIn = false, onSignOut }: MenuTabContentProps) => {
+export function MenuTabContent({ isSignedIn, onBrowse, onAssistant, onJoin, onSettings, onHelp, onNotifications, unread, onSignOut }: MenuTabContentProps) {
+  const links = [
+    { label: 'Supported devices', icon: BookOpen, onClick: onBrowse },
+    ...(onAssistant ? [{ label: 'Neuro AI assistant', icon: Mic, onClick: onAssistant }] : []),
+    { label: 'Join a location', icon: BookOpen, onClick: onJoin },
+    ...(onNotifications ? [{ label: unread ? 'Notifications (' + unread + ' unread)' : 'Notifications', icon: Bell, onClick: onNotifications }] : []),
+    { label: 'Help center', icon: CircleHelp, onClick: onHelp },
+    { label: 'Settings', icon: Settings, onClick: onSettings },
+  ];
+
   return (
-    <div className="w-full flex flex-col items-center space-y-3.5 select-none pointer-events-auto">
-      {/* Top Transparent Card: Supported Device */}
-      <div 
-        className="group w-full max-w-sm sm:max-w-md md:max-w-lg rounded-3xl p-4 sm:p-5 transition-all cursor-pointer hover:bg-white/30 active:scale-[0.99]"
-        style={{
-          background: 'rgba(255, 255, 255, 0.22)',
-          backdropFilter: 'blur(16px)',
-          WebkitBackdropFilter: 'blur(16px)',
-          border: '1px solid rgba(255, 255, 255, 0.55)',
-          boxShadow: '0 8px 32px 0 rgba(15, 23, 42, 0.05), inset 0 1px 1px rgba(255, 255, 255, 0.6)',
-        }}
-        role="button"
-        tabIndex={0}
-      >
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex-1 pr-2">
-            <h3 className="text-base sm:text-lg font-bold text-slate-900 font-sans tracking-tight group-hover:text-[#0284c7] transition-colors">
-              Supported Device
-            </h3>
-            <p className="text-xs sm:text-sm font-normal text-slate-600 leading-snug mt-1 font-sans">
-              Find out which devices work with Neuro Series
-            </p>
-          </div>
-          <div className="w-6 h-6 flex items-center justify-center flex-shrink-0 text-slate-500/70 group-hover:text-[#0284c7] transition-colors">
-            <ChevronRight className="w-5 h-5" strokeWidth={2.2} />
-          </div>
-        </div>
+    <div className="w-full max-w-lg space-y-4 text-slate-900 pointer-events-auto">
+      <div className="divide-y divide-slate-100 overflow-hidden rounded-3xl bg-white shadow-sm">
+        {links.map(({ label, icon: Icon, onClick }) => (
+          <button key={label} type="button" onClick={onClick}
+            className="flex min-h-12 w-full items-center gap-3 px-5 py-3 text-left text-sm font-semibold hover:bg-slate-50">
+            <Icon className="size-5 text-sky-700" aria-hidden="true" />
+            <span className="flex-1">{label}</span>
+            <ChevronRight className="size-4 text-slate-500" aria-hidden="true" />
+          </button>
+        ))}
       </div>
-      {/* Card 1: Virtual Home & Voice assistant */}
-      <div 
-        className="w-full max-w-sm sm:max-w-md md:max-w-lg rounded-3xl p-3.5 sm:p-4 shadow-md transition-all"
-        style={{
-          backgroundColor: '#ffffff',
-          border: '1px solid rgba(255, 255, 255, 0.95)',
-          boxShadow: '0 16px 36px -10px rgba(15, 23, 42, 0.08), 0 4px 12px rgba(0, 0, 0, 0.02)',
-        }}
-      >
-        {/* Item 1: Virtual Home with house-wifi icon */}
-        <div 
-          className="group flex items-center justify-between p-2.5 rounded-2xl hover:bg-slate-50 transition-colors cursor-pointer"
-          role="button"
-          tabIndex={0}
-        >
-          <div className="flex items-center gap-3">
-            <div className="w-6 h-6 flex items-center justify-center flex-shrink-0">
-              <HouseWifi className="w-5 h-5 text-[#0284c7]" strokeWidth={2.2} />
-            </div>
-            <span className="text-xs sm:text-sm font-medium text-slate-800 font-sans group-hover:text-[#0284c7] transition-colors">
-              Virtual Home
-            </span>
-          </div>
-        </div>
-
-        {/* Line Divider */}
-        <div className="h-px bg-slate-100 w-full my-1" />
-
-        {/* Item 2: Voice assistant with mic icon */}
-        <div 
-          className="group flex items-center justify-between p-2.5 rounded-2xl hover:bg-slate-50 transition-colors cursor-pointer"
-          role="button"
-          tabIndex={0}
-        >
-          <div className="flex items-center gap-3">
-            <div className="w-6 h-6 flex items-center justify-center flex-shrink-0">
-              <Mic className="w-5 h-5 text-[#0284c7]" strokeWidth={2.2} />
-            </div>
-            <span className="text-xs sm:text-sm font-medium text-slate-800 font-sans group-hover:text-[#0284c7] transition-colors">
-              Voice assistant
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* Card 2: How to use, Contact us & Offline diagnostics */}
-      <div 
-        className="w-full max-w-sm sm:max-w-md md:max-w-lg rounded-3xl p-3.5 sm:p-4 shadow-md transition-all"
-        style={{
-          backgroundColor: '#ffffff',
-          border: '1px solid rgba(255, 255, 255, 0.95)',
-          boxShadow: '0 16px 36px -10px rgba(15, 23, 42, 0.08), 0 4px 12px rgba(0, 0, 0, 0.02)',
-        }}
-      >
-        {/* Item 1: How to use with circle-question-mark icon */}
-        <div 
-          className="group flex items-center justify-between p-2.5 rounded-2xl hover:bg-slate-50 transition-colors cursor-pointer"
-          role="button"
-          tabIndex={0}
-        >
-          <div className="flex items-center gap-3">
-            <div className="w-6 h-6 flex items-center justify-center flex-shrink-0">
-              <CircleQuestionMark className="w-5 h-5 text-[#0284c7]" strokeWidth={2.2} />
-            </div>
-            <span className="text-xs sm:text-sm font-medium text-slate-800 font-sans group-hover:text-[#0284c7] transition-colors">
-              How to use
-            </span>
-          </div>
-        </div>
-
-        {/* Line Divider */}
-        <div className="h-px bg-slate-100 w-full my-1" />
-
-        {/* Item 2: Contact us with user-cog icon */}
-        <div 
-          className="group flex items-center justify-between p-2.5 rounded-2xl hover:bg-slate-50 transition-colors cursor-pointer"
-          role="button"
-          tabIndex={0}
-        >
-          <div className="flex items-center gap-3">
-            <div className="w-6 h-6 flex items-center justify-center flex-shrink-0">
-              <UserCog className="w-5 h-5 text-[#0284c7]" strokeWidth={2.2} />
-            </div>
-            <span className="text-xs sm:text-sm font-medium text-slate-800 font-sans group-hover:text-[#0284c7] transition-colors">
-              Contact us
-            </span>
-          </div>
-        </div>
-
-        {/* Line Divider */}
-        <div className="h-px bg-slate-100 w-full my-1" />
-
-        {/* Item 3: Offline diagnostics with cloud-exclamation-point icon */}
-        <div 
-          className="group flex items-center justify-between p-2.5 rounded-2xl hover:bg-slate-50 transition-colors cursor-pointer"
-          role="button"
-          tabIndex={0}
-        >
-          <div className="flex items-center gap-3">
-            <div className="w-6 h-6 flex items-center justify-center flex-shrink-0">
-              <CloudExclamationPoint className="w-5 h-5 text-[#0284c7]" strokeWidth={2.2} />
-            </div>
-            <span className="text-xs sm:text-sm font-medium text-slate-800 font-sans group-hover:text-[#0284c7] transition-colors">
-              Offline diagnostics
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* Card 3: Sign out option (ONLY shown after login, hidden without login) */}
       {isSignedIn && (
-        <div 
-          onClick={onSignOut}
-          className="w-full max-w-sm sm:max-w-md md:max-w-lg rounded-3xl p-3.5 sm:p-4 shadow-md transition-all bg-white cursor-pointer hover:bg-rose-50/50 active:scale-[0.99] animate-in fade-in duration-200"
-          style={{
-            backgroundColor: '#ffffff',
-            border: '1px solid rgba(255, 255, 255, 0.95)',
-            boxShadow: '0 16px 36px -10px rgba(15, 23, 42, 0.08), 0 4px 12px rgba(0, 0, 0, 0.02)',
-          }}
-          role="button"
-          tabIndex={0}
-        >
-          <div className="group flex items-center justify-between p-2.5 rounded-2xl">
-            <div className="flex items-center gap-3">
-              <div className="w-6 h-6 flex items-center justify-center flex-shrink-0">
-                <LogOut className="w-5 h-5 text-rose-600" strokeWidth={2.2} />
-              </div>
-              <span className="text-xs sm:text-sm font-semibold text-rose-600 font-sans group-hover:text-rose-700 transition-colors">
-                Sign out
-              </span>
-            </div>
-            <div className="w-6 h-6 flex items-center justify-center flex-shrink-0 text-slate-400 group-hover:text-rose-600 transition-colors">
-              <ChevronRight className="w-4 h-4" strokeWidth={2.2} />
-            </div>
-          </div>
-        </div>
+        <button type="button" onClick={onSignOut} className="flex min-h-12 w-full items-center gap-3 rounded-3xl bg-white px-5 py-3 text-sm font-semibold text-rose-700 shadow-sm">
+          <LogOut className="size-5" aria-hidden="true" />Sign out
+        </button>
       )}
     </div>
   );
-};
+}

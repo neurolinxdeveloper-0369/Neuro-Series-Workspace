@@ -1,3 +1,4 @@
+import { findOwnedDevice, ownsHome } from '../homes/home.access.js';
 import { db } from '../../config/database.js';
 import { deviceService } from '../devices/device.service.js';
 import type { RoutineRecord, CreateRoutineDTO, UpdateRoutineDTO } from './routine.types.js';
@@ -59,6 +60,12 @@ export const routineService = {
           updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       );
 
+      CREATE TABLE IF NOT EXISTS routine_executions (
+        routine_id UUID NOT NULL REFERENCES routines(id) ON DELETE CASCADE,
+        scheduled_minute TIMESTAMPTZ NOT NULL,
+        target_state BOOLEAN NOT NULL,
+        PRIMARY KEY (routine_id, scheduled_minute, target_state)
+      );
       CREATE INDEX IF NOT EXISTS idx_routines_home_id ON routines(home_id);
       CREATE INDEX IF NOT EXISTS idx_routines_user_id ON routines(user_id);
       ALTER TABLE routines ADD COLUMN IF NOT EXISTS schedule_off_time VARCHAR(50);
@@ -68,6 +75,7 @@ export const routineService = {
       console.log('✅ Routines table initialized in PostgreSQL');
     } catch (error) {
       console.error('❌ Failed to verify routines table in PostgreSQL:', error);
+      throw error;
     }
   },
 
@@ -82,12 +90,12 @@ export const routineService = {
 
       if (homeId) {
         values.push(homeId);
-        query += ` AND (home_id = $${values.length} OR home_id IS NULL)`;
+        query += ` AND home_id = $${values.length}`;
       }
 
       if (userId) {
         values.push(userId);
-        query += ` AND (user_id = $${values.length} OR user_id IS NULL)`;
+        query += ` AND user_id = $${values.length}`;
       }
 
       query += ` ORDER BY created_at DESC`;
@@ -103,9 +111,9 @@ export const routineService = {
   /**
    * Get routine by ID
    */
-  getRoutineById: async (id: string): Promise<RoutineRecord | null> => {
+  getRoutineById: async (id: string, userId?: string): Promise<RoutineRecord | null> => {
     try {
-      const result = await db.query(`SELECT * FROM routines WHERE id = $1`, [id]);
+      const result = await db.query('SELECT * FROM routines WHERE id::text = $1 AND ($2::uuid IS NULL OR user_id = $2)', [id, userId ?? null]);
       return result.rows[0] || null;
     } catch (error) {
       console.error('Error fetching routine by ID:', error);
@@ -226,7 +234,7 @@ export const routineService = {
     const query = `
       UPDATE routines 
       SET ${fields.join(', ')}, updated_at = CURRENT_TIMESTAMP 
-      WHERE id = $${values.length} 
+      WHERE id = $${values.length}
       RETURNING *;
     `;
 
@@ -247,107 +255,84 @@ export const routineService = {
     }
   },
 
-  /**
-   * Execute routine actions across connected devices
-   */
-  executeRoutine: async (id: string): Promise<{ success: boolean; executedActions: number }> => {
-    const routine = await routineService.getRoutineById(id);
-    if (!routine) {
-      throw new Error('Routine not found');
-    }
-
-    const actions = Array.isArray(routine.actions) ? routine.actions : [];
-    let count = 0;
-
-    for (const act of actions) {
-      if (act.deviceId && act.channel) {
-        try {
-          await deviceService.controlSwitch(act.deviceId, act.channel, act.targetState ? 'on' : 'off');
-          count++;
-        } catch (err) {
-          console.error(`Failed to execute routine action on device ${act.deviceId}:`, err);
-        }
+  validateActions: async (userId: string, homeId: string | null, actions: CreateRoutineDTO['actions']) => {
+    if (!actions) return;
+    if (!Array.isArray(actions)) throw new Error('Invalid routine actions');
+    const devices = new Map<string, Awaited<ReturnType<typeof findOwnedDevice>>>();
+    for (const action of actions) {
+      if (!action || typeof action.deviceId !== 'string' || !Number.isInteger(action.channel) ||
+          action.channel < 1 || typeof action.targetState !== 'boolean') {
+        throw new Error('Invalid routine action');
       }
+      if (!devices.has(action.deviceId)) devices.set(action.deviceId, await findOwnedDevice(userId, action.deviceId));
+      const device = devices.get(action.deviceId);
+      if (!device || (homeId && device.home_id !== homeId)) throw new Error('Device is outside this location');
     }
-
-    return { success: true, executedActions: count };
   },
 
-  /**
-   * Starts background automated scheduler engine for time-based hardware control
-   */
-  startSchedulerEngine: (): void => {
-    const firedKeys = new Set<string>();
+  dispatchActions: async (routine: RoutineRecord, override?: boolean) => {
+    const actions = Array.isArray(routine.actions) ? routine.actions : [];
+    let executedActions = 0;
+    let failedActions = 0;
+    if (!routine.user_id || (routine.home_id && !await ownsHome(routine.user_id, routine.home_id))) {
+      return { success: false, executedActions, failedActions: actions.length };
+    }
+    for (const action of actions) {
+      try {
+        await routineService.validateActions(routine.user_id, routine.home_id, [action]);
+        const target = override ?? action.targetState;
+        await deviceService.controlSwitch(action.deviceId, action.channel, target ? 'on' : 'off');
+        executedActions++;
+      } catch {
+        failedActions++;
+      }
+    }
+    return { success: executedActions > 0 && failedActions === 0, executedActions, failedActions };
+  },
 
+  executeRoutine: async (id: string, userId: string) => {
+    const routine = await routineService.getRoutineById(id, userId);
+    if (!routine) throw new Error('Routine not found');
+    return routineService.dispatchActions(routine);
+  },
+
+  startSchedulerEngine: (): void => {
+    let running = false;
+    let lastCleanup = 0;
     setInterval(async () => {
+      if (running) return;
+      running = true;
       try {
         const now = new Date();
-        const { minutes: currentMinutes, day: istDay, timeStr: istTimeStr } = getCurrentIstMinutes(now);
-        const minuteKey = `${istDay}_${istTimeStr}`;
-
-        const schedulesResult = await db.query(
-          `SELECT * FROM routines WHERE is_active = true AND (type = 'schedule' OR icon = 'clock')`
+        const scheduledMinute = new Date(Math.floor(now.getTime() / 60000) * 60000);
+        const { minutes, day } = getCurrentIstMinutes(now);
+        if (now.getTime() - lastCleanup >= 86400000) {
+          await db.query("DELETE FROM routine_executions WHERE scheduled_minute < NOW() - INTERVAL '7 days'");
+          lastCleanup = now.getTime();
+        }
+        const result = await db.query<RoutineRecord>(
+          "SELECT * FROM routines WHERE is_active = true AND (type = 'schedule' OR icon = 'clock')"
         );
-        const schedules: RoutineRecord[] = schedulesResult.rows || [];
-
-        for (const sched of schedules) {
-          const repeatDays: string[] = Array.isArray(sched.repeat_days) ? sched.repeat_days : [];
-          if (repeatDays.length > 0 && !repeatDays.some(d => d.toLowerCase().slice(0, 3) === istDay.toLowerCase().slice(0, 3))) {
-            continue;
-          }
-
-          // Check ON Time match
-          if (sched.schedule_time) {
-            const onMinutes = parseTimeToMinutes(sched.schedule_time);
-            if (onMinutes !== null && onMinutes === currentMinutes) {
-              const onKey = `${sched.id}_on_${minuteKey}`;
-              if (!firedKeys.has(onKey)) {
-                firedKeys.add(onKey);
-                console.log(`⏰ [SERVER SCHEDULER] Triggering ON: "${sched.name}" at ${istTimeStr} IST (${istDay})`);
-                const actions = Array.isArray(sched.actions) ? sched.actions : [];
-                for (const act of actions) {
-                  if (act.deviceId && act.channel) {
-                    try {
-                      await deviceService.controlSwitch(act.deviceId, act.channel, 'on');
-                      console.log(`✅ [SCHEDULER ACTION] Turn ON dev ${act.deviceId} ch ${act.channel} SUCCESS`);
-                    } catch (e: any) {
-                      console.error(`❌ [SCHEDULER ACTION] Turn ON dev ${act.deviceId} ch ${act.channel} FAILED:`, e.message);
-                    }
-                  }
-                }
-              }
-            }
-          }
-
-          // Check OFF Time match
-          if (sched.schedule_off_time) {
-            const offMinutes = parseTimeToMinutes(sched.schedule_off_time);
-            if (offMinutes !== null && offMinutes === currentMinutes) {
-              const offKey = `${sched.id}_off_${minuteKey}`;
-              if (!firedKeys.has(offKey)) {
-                firedKeys.add(offKey);
-                console.log(`⏰ [SERVER SCHEDULER] Triggering OFF: "${sched.name}" at ${istTimeStr} IST (${istDay})`);
-                const actions = Array.isArray(sched.actions) ? sched.actions : [];
-                for (const act of actions) {
-                  if (act.deviceId && act.channel) {
-                    try {
-                      await deviceService.controlSwitch(act.deviceId, act.channel, 'off');
-                      console.log(`✅ [SCHEDULER ACTION] Turn OFF dev ${act.deviceId} ch ${act.channel} SUCCESS`);
-                    } catch (e: any) {
-                      console.error(`❌ [SCHEDULER ACTION] Turn OFF dev ${act.deviceId} ch ${act.channel} FAILED:`, e.message);
-                    }
-                  }
-                }
-              }
-            }
+        for (const routine of result.rows) {
+          const repeatDays = Array.isArray(routine.repeat_days) ? routine.repeat_days : [];
+          if (repeatDays.length && !repeatDays.some(d => typeof d === 'string' && d.toLowerCase().slice(0, 3) === day.toLowerCase().slice(0, 3))) continue;
+          const times = [[routine.schedule_time, true], [routine.schedule_off_time, false]] as const;
+          for (const [time, target] of times) {
+            if (parseTimeToMinutes(time) !== minutes) continue;
+            const claim = await db.query(
+              'INSERT INTO routine_executions VALUES ($1, $2, $3) ON CONFLICT DO NOTHING',
+              [routine.id, scheduledMinute, target]
+            );
+            if (!claim.rowCount) continue;
+            const outcome = await routineService.dispatchActions(routine, target);
+            if (!outcome.success) console.warn('Scheduled routine did not complete', routine.id, outcome);
           }
         }
-
-        if (firedKeys.size > 200) firedKeys.clear();
-      } catch (err) {
-        console.error('Error running automated server scheduler engine:', err);
+      } catch (error) {
+        console.error('Error running scheduler', error);
+      } finally {
+        running = false;
       }
-    }, 10000); // Poll every 10 seconds for real-time accuracy
+    }, 10000).unref();
   },
 };
-

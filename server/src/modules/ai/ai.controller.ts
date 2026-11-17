@@ -15,14 +15,14 @@ aiRouter.post(
   async (req: Request, res: Response): Promise<void> => {
     try {
       const userId = (req as any).user?.id;
-      const { message, history } = req.body;
+      const { message, history, homeId } = req.body;
 
       if (!message || typeof message !== 'string') {
         res.status(400).json({ error: 'Message is required' });
         return;
       }
 
-      const result = await aiService.chat(userId, message, history);
+      const result = await aiService.chat(userId, message, history, typeof homeId === 'string' ? homeId : undefined);
       res.json({
         success: true,
         ...result,

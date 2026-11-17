@@ -1,3 +1,4 @@
+import { randomInt } from 'node:crypto';
 import jwt from 'jsonwebtoken';
 import { OAuth2Client } from 'google-auth-library';
 import nodemailer from 'nodemailer';
@@ -8,8 +9,29 @@ import { openwaService } from './openwa.service.js';
 const googleClient = new OAuth2Client(ENV.GOOGLE_WEB_CLIENT_ID);
 
 export class AuthService {
-  // In-memory fallback for phone OTPs when PostgreSQL is temporarily offline or local
-  private inMemoryPhoneOtps = new Map<string, { otp: string; expiresAt: number; attempts: number; verified: boolean }>();
+  private async storeOtp(table: 'email_otps' | 'phone_otps', column: 'email' | 'phone_number', identity: string, otp: string, minutes: number) {
+    const client = await db.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [table + ':' + identity]);
+      const recent = await client.query(
+        `SELECT 1 FROM ${table} WHERE ${column} = $1 AND created_at > NOW() - INTERVAL '60 seconds' LIMIT 1`,
+        [identity]
+      );
+      if (recent.rowCount) throw new Error('Wait 60 seconds before requesting another code.');
+      await client.query(`UPDATE ${table} SET verified = TRUE WHERE ${column} = $1 AND verified = FALSE`, [identity]);
+      await client.query(
+        `INSERT INTO ${table} (${column}, otp, expires_at) VALUES ($1, $2, NOW() + $3 * INTERVAL '1 minute')`,
+        [identity, otp, minutes]
+      );
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
 
   // Ensure users, auth_identities, email_otps, and phone_otps tables exist
   public async ensureTablesExist() {
@@ -62,6 +84,7 @@ export class AuthService {
       console.log('✅ Users, Auth Identities, Email OTP, and Phone OTP tables verified in PostgreSQL');
     } catch (err) {
       console.error('❌ Failed to ensure auth tables exist:', err);
+      throw err;
     }
   }
 
@@ -70,7 +93,7 @@ export class AuthService {
     return jwt.sign(
       { id: userId, email, phone_number: phoneNumber },
       ENV.JWT_SECRET,
-      { expiresIn: '30d' }
+      { expiresIn: '30d', audience: 'neuro-series-verified-session' }
     );
   }
 
@@ -83,22 +106,11 @@ export class AuthService {
     }
 
     // Generate 6-digit OTP
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const otp = randomInt(100000, 1000000).toString();
 
     // Invalidate existing unused OTPs
-    await db.query(
-      `DELETE FROM email_otps WHERE email = $1 AND verified = FALSE`,
-      [email]
-    );
+    await this.storeOtp('email_otps', 'email', email, otp, 10);
 
-    // Save OTP with 10-minute validity
-    await db.query(
-      `INSERT INTO email_otps (email, otp, expires_at)
-       VALUES ($1, $2, NOW() + INTERVAL '10 minutes')`,
-      [email, otp]
-    );
-
-    console.log(`🔑 [AUTH OTP GENERATED] Email: ${email} => Code: ${otp}`);
 
     // Send email via nodemailer if SMTP configured
     let emailSent = false;
@@ -153,18 +165,19 @@ export class AuthService {
         });
         emailSent = true;
         console.log(`📧 [EMAIL SENT] Verification code successfully sent to ${email} via ${ENV.SMTP_USER}`);
-      } catch (mailErr) {
-        console.error(`❌ [SMTP ERROR] Could not send email via SMTP (${(mailErr as Error).message}). Code is logged for dev/fallback.`);
+      } catch {
+        console.error('Email OTP delivery failed');
       }
-    } else {
-      console.log(`ℹ️ [SMTP NOTICE] SMTP_USER or SMTP_PASS not set. Set SMTP_PASS in Portainer stack env. OTP code logged: ${otp}`);
+    }
+    if (!emailSent) {
+      await db.query('DELETE FROM email_otps WHERE email = $1 AND otp = $2', [email, otp]);
+      throw new Error('Email delivery unavailable. Try again later.');
     }
 
     return {
       success: true,
       message: 'Verification code sent to your email',
       email,
-      ...(!emailSent ? { debugOtp: otp } : {}),
     };
   }
 
@@ -181,19 +194,18 @@ export class AuthService {
     try {
       await client.query('BEGIN');
 
+      await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', ['email_otps:' + email]);
       // Verify OTP in email_otps table
       const otpRes = await client.query(
         `SELECT id, attempts, expires_at 
          FROM email_otps 
-         WHERE email = $1 AND otp = $2 AND verified = FALSE AND expires_at > NOW() 
-         ORDER BY created_at DESC 
-         LIMIT 1`,
+         WHERE email = $1 AND otp = $2 AND verified = FALSE AND expires_at > NOW() AND attempts < 5 ORDER BY created_at DESC LIMIT 1 FOR UPDATE`,
         [email, otp]
       );
 
       if (otpRes.rows.length === 0) {
         await client.query(
-          `UPDATE email_otps SET attempts = attempts + 1 WHERE email = $1 AND verified = FALSE`,
+          `UPDATE email_otps SET attempts = attempts + 1 WHERE email = $1 AND verified = FALSE AND expires_at > NOW() AND attempts < 5`,
           [email]
         );
         await client.query('COMMIT');
@@ -265,51 +277,17 @@ export class AuthService {
     }
 
     // Generate 6-digit OTP
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    const expiryMs = Date.now() + 5 * 60 * 1000; // 5 minutes
-
-    // Store in PostgreSQL database (with in-memory fallback)
-    try {
-      await db.query(
-        `DELETE FROM phone_otps WHERE phone_number = $1 AND verified = FALSE`,
-        [cleanPhone]
-      );
-
-      await db.query(
-        `INSERT INTO phone_otps (phone_number, otp, expires_at)
-         VALUES ($1, $2, NOW() + INTERVAL '5 minutes')`,
-        [cleanPhone, otp]
-      );
-    } catch (dbErr) {
-      console.warn('⚠️ [Postgres OTP Table Warning] Falling back to in-memory OTP cache:', dbErr);
-      this.inMemoryPhoneOtps.set(cleanPhone, {
-        otp,
-        expiresAt: expiryMs,
-        attempts: 0,
-        verified: false,
-      });
-    }
-
-    // Always update in-memory cache as secondary resilience
-    this.inMemoryPhoneOtps.set(cleanPhone, {
-      otp,
-      expiresAt: expiryMs,
-      attempts: 0,
-      verified: false,
-    });
-
-    console.log(`🔑 [WHATSAPP OTP GENERATED] Phone: ${cleanPhone} => Code: ${otp} (Valid: 5 mins)`);
+    const otp = randomInt(100000, 1000000).toString();
+    await this.storeOtp('phone_otps', 'phone_number', cleanPhone, otp, 5);
 
     // Dispatch via OpenWA WhatsApp Gateway
     let messageId: string | undefined;
     try {
       const sendRes = await openwaService.sendOtp(cleanPhone, otp, 5);
       messageId = sendRes.messageId;
-      console.log(`📱 [WHATSAPP DELIVERED] Code ${otp} delivered to ${cleanPhone} via OpenWA (${messageId || 'ok'})`);
-    } catch (waErr: unknown) {
-      const msg = waErr instanceof Error ? waErr.message : String(waErr);
-      console.error(`❌ [OpenWA Dispatch Error] Could not send via OpenWA (${msg}). Code is logged for dev/fallback.`);
-      throw new Error(`WhatsApp delivery failed: ${msg}`);
+    } catch {
+      await db.query('DELETE FROM phone_otps WHERE phone_number = $1 AND otp = $2', [cleanPhone, otp]);
+      throw new Error('WhatsApp delivery unavailable. Try again later.');
     }
 
     return {
@@ -337,12 +315,11 @@ export class AuthService {
       try {
         await client.query('BEGIN');
 
+        await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', ['phone_otps:' + cleanPhone]);
         const otpRes = await client.query(
           `SELECT id, attempts, expires_at 
            FROM phone_otps 
-           WHERE phone_number = $1 AND otp = $2 AND verified = FALSE AND expires_at > NOW() 
-           ORDER BY created_at DESC 
-           LIMIT 1`,
+           WHERE phone_number = $1 AND otp = $2 AND verified = FALSE AND expires_at > NOW() AND attempts < 5 ORDER BY created_at DESC LIMIT 1 FOR UPDATE`,
           [cleanPhone, otp]
         );
 
@@ -351,7 +328,7 @@ export class AuthService {
           await client.query(`UPDATE phone_otps SET verified = TRUE WHERE id = $1`, [otpRes.rows[0].id]);
         } else {
           await client.query(
-            `UPDATE phone_otps SET attempts = attempts + 1 WHERE phone_number = $1 AND verified = FALSE`,
+            `UPDATE phone_otps SET attempts = attempts + 1 WHERE phone_number = $1 AND verified = FALSE AND expires_at > NOW() AND attempts < 5`,
             [cleanPhone]
           );
         }
@@ -399,7 +376,6 @@ export class AuthService {
           const token = this.generateToken(user.id, user.email, user.phone_number);
 
           // Clear from in-memory cache
-          this.inMemoryPhoneOtps.delete(cleanPhone);
 
           console.log(`✅ [WHATSAPP OTP VERIFIED] User ${cleanPhone} (${user.id}) signed in successfully`);
           return { user, token };
@@ -413,27 +389,6 @@ export class AuthService {
         client.release();
       }
     } catch (dbErr) {
-      // In-memory fallback check
-      const memOtp = this.inMemoryPhoneOtps.get(cleanPhone);
-      if (memOtp && memOtp.otp === otp && !memOtp.verified && memOtp.expiresAt > Date.now()) {
-        memOtp.verified = true;
-        this.inMemoryPhoneOtps.delete(cleanPhone);
-
-        const fallbackUser = {
-          id: 'usr_' + cleanPhone,
-          full_name: fullName?.trim() || `User ${cleanPhone.slice(-4)}`,
-          email: null,
-          phone_number: cleanPhone,
-          avatar_url: null,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        };
-        const token = this.generateToken(fallbackUser.id, undefined, fallbackUser.phone_number);
-
-        console.log(`✅ [WHATSAPP OTP IN-MEMORY VERIFIED] User ${cleanPhone} signed in via cache`);
-        return { user: fallbackUser, token };
-      }
-
       console.error('Database error during WhatsApp OTP verification:', dbErr);
       throw new Error('Invalid or expired verification code');
     }
@@ -452,6 +407,8 @@ export class AuthService {
       ENV.GOOGLE_IOS_CLIENT_ID,
     ].filter(Boolean);
 
+    if (!validAudiences.length) throw new Error('Google sign-in is unavailable.');
+
     let googleSub: string;
     let email: string | null = null;
     let fullName = 'Neuro Series User';
@@ -461,23 +418,23 @@ export class AuthService {
       try {
         const ticket = await googleClient.verifyIdToken({
           idToken,
-          audience: validAudiences.length > 0 ? validAudiences : undefined,
+          audience: validAudiences,
         });
         const payload = ticket.getPayload();
         if (!payload || !payload.sub) {
           throw new Error('Invalid Google token payload');
         }
         googleSub = payload.sub;
-        email = payload.email || null;
+        email = payload.email_verified === true ? payload.email?.trim().toLowerCase() || null : null;
         fullName = payload.name || 'Neuro Series User';
         avatarUrl = payload.picture || null;
       } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : 'Invalid Google ID token';
-        console.error('Google ID token verification failed:', msg);
-        throw new Error(`Google ID token verification failed: ${msg}`);
+        throw new Error('Google ID token verification failed');
       }
     } else if (accessToken) {
       try {
+        const tokenInfo = await googleClient.getTokenInfo(accessToken);
+        if (!validAudiences.includes(tokenInfo.aud)) throw new Error('Invalid Google token audience');
         const userInfoRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
           headers: { Authorization: `Bearer ${accessToken}` },
         });
@@ -487,6 +444,7 @@ export class AuthService {
         const info = await userInfoRes.json() as {
           sub: string;
           email?: string;
+          email_verified?: boolean;
           name?: string;
           picture?: string;
         };
@@ -494,13 +452,11 @@ export class AuthService {
           throw new Error('Failed to retrieve user info from Google');
         }
         googleSub = info.sub;
-        email = info.email || null;
+        email = info.email_verified === true ? info.email?.trim().toLowerCase() || null : null;
         fullName = info.name || 'Neuro Series User';
         avatarUrl = info.picture || null;
       } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : 'Invalid Google access token';
-        console.error('Google access token verification failed:', msg);
-        throw new Error(`Google access token verification failed: ${msg}`);
+        throw new Error('Google access token verification failed');
       }
     } else {
       throw new Error('Either idToken or accessToken is required for Google Sign-In');
@@ -548,58 +504,6 @@ export class AuthService {
       await client.query('COMMIT');
 
       // Fetch complete user profile
-      const userProfile = await db.query('SELECT * FROM users WHERE id = $1', [userId]);
-      const user = userProfile.rows[0];
-      const token = this.generateToken(user.id, user.email, user.phone_number);
-
-      return { user, token };
-    } catch (error) {
-      await client.query('ROLLBACK');
-      throw error;
-    } finally {
-      client.release();
-    }
-  }
-
-  // Phone Number Login / OTP verification
-  public async handlePhoneAuth(phoneNumber: string, fullName?: string) {
-    const client = await db.connect();
-    try {
-      await client.query('BEGIN');
-
-      const existingIdentity = await client.query(
-        'SELECT user_id FROM auth_identities WHERE provider = $1 AND provider_key = $2',
-        ['phone', phoneNumber]
-      );
-
-      let userId: string;
-
-      if (existingIdentity.rows.length > 0) {
-        userId = existingIdentity.rows[0].user_id;
-        await client.query(
-          'UPDATE auth_identities SET last_login = NOW() WHERE provider = $1 AND provider_key = $2',
-          ['phone', phoneNumber]
-        );
-      } else {
-        const newUserRes = await client.query(
-          `INSERT INTO users (full_name, phone_number)
-           VALUES ($1, $2)
-           ON CONFLICT (phone_number) DO UPDATE SET updated_at = NOW()
-           RETURNING id`,
-          [fullName || 'Neuro Series User', phoneNumber]
-        );
-        userId = newUserRes.rows[0].id;
-
-        await client.query(
-          `INSERT INTO auth_identities (user_id, provider, provider_key)
-           VALUES ($1, $2, $3)
-           ON CONFLICT (provider, provider_key) DO UPDATE SET last_login = NOW()`,
-          [userId, 'phone', phoneNumber]
-        );
-      }
-
-      await client.query('COMMIT');
-
       const userProfile = await db.query('SELECT * FROM users WHERE id = $1', [userId]);
       const user = userProfile.rows[0];
       const token = this.generateToken(user.id, user.email, user.phone_number);

@@ -1,5 +1,20 @@
 import { api } from './api';
 
+export interface DeviceReading {
+  channel: number;
+  value: number | boolean;
+  unit?: string;
+  reportedAt?: string;
+}
+
+export interface DeviceEndpoint {
+  id: string;
+  endpoint_index: number;
+  name: string;
+  endpoint_type: 'RELAY' | 'SENSOR' | 'PHASE';
+  state?: { reading?: DeviceReading };
+}
+
 export interface Device {
   id: string;
   home_id: string;
@@ -14,7 +29,8 @@ export interface Device {
   is_online?: boolean;
   switches?: Record<string, boolean>;
   switch_configs?: Array<{ index: number; name: string; iconPath?: string }>;
-  endpoints?: any[];
+  endpoints?: DeviceEndpoint[];
+  last_seen_at?: string;
   voltage?: number;
   current?: number;
   power?: number;
@@ -77,10 +93,6 @@ export interface ProvisionInput {
 export interface ProvisionResult {
   success: boolean;
   deviceId: string;
-  mqttHost: string;
-  mqttPort: number;
-  mqttUsername: string;
-  mqttPassword: string;
   device: {
     id: string;
     device_id: string;
@@ -98,7 +110,24 @@ export interface ProvisionResult {
   }>;
 }
 
+export interface PairingConfig {
+  mqttHost: string;
+  mqttPort: number;
+  mqttUsername: string;
+  mqttPassword: string;
+}
+
 export const deviceApi = {
+  getPairingConfig: async (homeId: string): Promise<PairingConfig> => {
+    const path = `/devices/home/${encodeURIComponent(homeId)}/pairing-config`;
+    const bridge = typeof window !== 'undefined' ? (window as any).AndroidWifiBridge : undefined;
+    if (!bridge?.nativeApiCall) return api.get<PairingConfig>(path);
+    const token = localStorage.getItem('neuro_auth_token') || '';
+    const response = JSON.parse(bridge.nativeApiCall('https://neurolinx.in/neuro-series/api' + path, 'GET', '', token));
+    if (!response.ok) throw new Error('Pairing configuration is unavailable. Check your internet connection and try again.');
+    return JSON.parse(response.body);
+  },
+
   getDevices: async (): Promise<SmartDevice[]> => {
     const res = await api.get<{ success: boolean; devices: SmartDevice[] }>('/devices');
     return res.success && Array.isArray(res.devices) ? res.devices : [];
@@ -139,20 +168,15 @@ export const deviceApi = {
     return res;
   },
 
-  addDevice: async (input: { name: string; room?: string; type?: SmartDevice['type']; homeId?: string }): Promise<SmartDevice> => {
-    const res = await api.post<{ success: boolean; device: SmartDevice }>('/devices', input);
-    if (!res.success || !res.device) {
-      throw new Error('Failed to add device');
-    }
-    return res.device;
+  updateDetails: async (id: string, name: string, roomId: string | null) => {
+    const result = await api.patch<{ success: boolean; device: { custom_name: string; room_id: string | null } }>(
+      `/devices/${encodeURIComponent(id)}`, { name, roomId }
+    );
+    return result.device;
   },
 
-  updateDeviceState: async (id: string, updates: Partial<SmartDevice['state']>): Promise<SmartDevice> => {
-    const res = await api.patch<{ success: boolean; device: SmartDevice }>(`/devices/${id}/state`, updates);
-    if (!res.success || !res.device) {
-      throw new Error('Failed to update device state');
-    }
-    return res.device;
+  removeDevice: async (id: string): Promise<void> => {
+    await api.del(`/devices/${encodeURIComponent(id)}`);
   },
 
   controlSwitch: async (id: string, channel: number, action: 'on' | 'off' | 'toggle'): Promise<{

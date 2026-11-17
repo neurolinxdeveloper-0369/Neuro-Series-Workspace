@@ -77,6 +77,8 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Use Face ID to unlock Neuro Series on this device.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Camera access is required to scan QR codes on Neuro Series hardware devices.</string>
 	<key>NSBluetoothAlwaysUsageDescription</key>

@@ -1,8 +1,8 @@
+import { normalizeReadings, normalizeSwitches } from './telemetry.js';
 import { emqxService } from '../mqtt/emqx.client.js';
 import { socketManager } from '../websocket/socket.server.js';
 import { db } from '../../config/database.js';
-import { ENV } from '../../config/env.js';
-import type { SmartDevice, DeviceRecord, DeviceEndpointRecord, ProvisionDeviceDTO } from './device.types.js';
+import type { DeviceRecord, DeviceEndpointRecord, ProvisionDeviceDTO } from './device.types.js';
 
 interface EndpointConfig {
   name: string;
@@ -10,39 +10,6 @@ interface EndpointConfig {
 }
 
 class DeviceService {
-  private devices: Map<string, SmartDevice> = new Map([
-    [
-      'light_living_room',
-      {
-        id: 'light_living_room',
-        name: 'Ceiling Light',
-        room: 'Living Room',
-        type: 'light',
-        state: { power: true, brightness: 80, online: true },
-      },
-    ],
-    [
-      'ac_bedroom',
-      {
-        id: 'ac_bedroom',
-        name: 'Air Conditioner',
-        room: 'Master Bedroom',
-        type: 'thermostat',
-        state: { power: true, targetTemperature: 22, currentTemperature: 24, online: true },
-      },
-    ],
-    [
-      'fan_study',
-      {
-        id: 'fan_study',
-        name: 'Ceiling Fan',
-        room: 'Study Room',
-        type: 'fan',
-        state: { power: false, speed: 2, online: true },
-      },
-    ],
-  ]);
-
   /**
    * Automatically initializes `devices` and `device_endpoints` tables in PostgreSQL
    */
@@ -137,9 +104,10 @@ class DeviceService {
         } catch {
           // ignore
         }
-      }, 2000);
+      }, 2000).unref();
     } catch (err) {
       console.error('❌ Failed to initialize devices tables:', err);
+      throw err;
     }
   }
 
@@ -274,10 +242,6 @@ class DeviceService {
   public async provisionDevice(dto: ProvisionDeviceDTO): Promise<{
     device: DeviceRecord;
     endpoints: DeviceEndpointRecord[];
-    mqttHost: string;
-    mqttPort: number;
-    mqttUsername: string;
-    mqttPassword: string;
     deviceId: string;
   }> {
     const mac4 = (dto.mac4 || 'BC88').toUpperCase().slice(-4);
@@ -286,156 +250,107 @@ class DeviceService {
       ? dto.deviceId.trim()
       : this.generateDeviceId(mac4, modelCode);
 
-    // Ensure valid home_id exists in database to satisfy foreign key constraint
-    let targetHomeId = dto.homeId;
-    if (!targetHomeId || targetHomeId === '00000000-0000-0000-0000-000000000000') {
-      const existingHome = await db.query(`SELECT id FROM homes ORDER BY created_at ASC LIMIT 1`);
-      if (existingHome.rows.length > 0) {
-        targetHomeId = existingHome.rows[0].id;
-      } else {
-        // Find or create default user for the home
-        let userId: string;
-        const userRes = await db.query(`SELECT id FROM users LIMIT 1`);
-        if (userRes.rows.length > 0) {
-          userId = userRes.rows[0].id;
-        } else {
-          const newUser = await db.query(`
-            INSERT INTO users (email, full_name, auth_provider)
-            VALUES ('owner@neurolinx.in', 'Home Owner', 'email')
-            RETURNING id;
-          `);
-          userId = newUser.rows[0].id;
-        }
+    const client = await db.connect();
+    let deviceRecord: DeviceRecord;
+    const endpoints: DeviceEndpointRecord[] = [];
+    try {
+      await client.query('BEGIN');
+      const targetHomeId = dto.homeId;
 
-        const newHome = await db.query(`
-          INSERT INTO homes (owner_id, name, property_type, default_wifi_ssid)
-          VALUES ($1, 'My Home', 'Apartment', $2)
-          RETURNING id;
-        `, [userId, dto.wifiSsid || 'Home Wi-Fi']);
-        targetHomeId = newHome.rows[0].id;
-      }
-    } else {
-      // Validate that the provided homeId actually exists
-      const homeCheck = await db.query(`SELECT id FROM homes WHERE id = $1`, [targetHomeId]);
-      if (homeCheck.rows.length === 0) {
-        const anyHome = await db.query(`SELECT id FROM homes ORDER BY created_at ASC LIMIT 1`);
-        if (anyHome.rows.length > 0) {
-          targetHomeId = anyHome.rows[0].id;
+      // Verify a supplied room belongs to the selected location.
+      let targetRoomId = dto.roomId || null;
+      if (targetRoomId) {
+        const roomCheck = await client.query(`SELECT id FROM rooms WHERE id::text = $1 AND home_id = $2`, [targetRoomId, targetHomeId]);
+        if (roomCheck.rows.length === 0) {
+          throw new Error('Room does not belong to this location');
         }
       }
-    }
 
-    // Ensure valid room_id exists or create default room
-    let targetRoomId = dto.roomId || null;
-    if (targetRoomId) {
-      const roomCheck = await db.query(`SELECT id FROM rooms WHERE id = $1`, [targetRoomId]);
-      if (roomCheck.rows.length === 0) {
-        targetRoomId = null;
-      }
-    }
-
-    if (!targetRoomId && targetHomeId) {
-      // Check if a default 'Living room' exists or create it
-      const defaultRoom = await db.query(
-        `SELECT id FROM rooms WHERE home_id = $1 AND LOWER(name) = 'living room' LIMIT 1`,
-        [targetHomeId]
-      );
-      if (defaultRoom.rows.length > 0) {
-        targetRoomId = defaultRoom.rows[0].id;
-      } else {
-        const createdRoom = await db.query(
-          `INSERT INTO rooms (home_id, name) VALUES ($1, 'Living room') RETURNING id`,
+      if (!targetRoomId && targetHomeId) {
+        // Check if a default 'Living room' exists or create it
+        const defaultRoom = await client.query(
+          `SELECT id FROM rooms WHERE home_id = $1 AND LOWER(name) = 'living room' LIMIT 1`,
           [targetHomeId]
         );
-        targetRoomId = createdRoom.rows[0].id;
+        if (defaultRoom.rows.length > 0) {
+          targetRoomId = defaultRoom.rows[0].id;
+        } else {
+          const createdRoom = await client.query(
+            `INSERT INTO rooms (home_id, name) VALUES ($1, 'Living room') RETURNING id`,
+            [targetHomeId]
+          );
+          targetRoomId = createdRoom.rows[0].id;
+        }
       }
-    }
 
-    // 1. Insert or Update Parent Device Record
-    const deviceQuery = `
-      INSERT INTO devices (
-        home_id, room_id, device_id, mac_4, model_code, custom_name, icon, wifi_ssid, ip_address, firmware_version, is_online
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, true)
-      ON CONFLICT (device_id) DO UPDATE SET
-        home_id = EXCLUDED.home_id,
-        room_id = EXCLUDED.room_id,
-        custom_name = EXCLUDED.custom_name,
-        icon = EXCLUDED.icon,
-        wifi_ssid = EXCLUDED.wifi_ssid,
-        ip_address = EXCLUDED.ip_address,
-        is_online = true,
-        updated_at = CURRENT_TIMESTAMP
-      RETURNING *;
-    `;
-    const deviceValues = [
-      targetHomeId,
-      targetRoomId,
-      deviceId,
-      mac4,
-      modelCode,
-      dto.customName.trim(),
-      dto.icon || null,
-      dto.wifiSsid.trim(),
-      dto.ipAddress || '192.168.4.1',
-      dto.firmwareVersion || 'v1.2.4-neuro',
-    ];
-
-    const deviceResult = await db.query(deviceQuery, deviceValues);
-    const deviceRecord: DeviceRecord = deviceResult.rows[0];
-
-    // 2. Insert Child Endpoints
-    const endpointConfigs = this.getEndpointsForModel(modelCode);
-    const endpoints: DeviceEndpointRecord[] = [];
-
-    for (let i = 0; i < endpointConfigs.length; i++) {
-      const ep = endpointConfigs[i];
-      const epQuery = `
-        INSERT INTO device_endpoints (
-          device_id, endpoint_index, name, endpoint_type, state, is_favorite
-        ) VALUES ($1, $2, $3, $4, $5, false)
-        ON CONFLICT (device_id, endpoint_index) DO UPDATE SET
-          name = EXCLUDED.name,
-          endpoint_type = EXCLUDED.endpoint_type
+      // 1. Insert or Update Parent Device Record
+      const deviceQuery = `
+        INSERT INTO devices (
+          home_id, room_id, device_id, mac_4, model_code, custom_name, icon, wifi_ssid, ip_address, firmware_version, is_online
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, false)
+        ON CONFLICT (device_id) DO UPDATE SET
+          room_id = EXCLUDED.room_id,
+          custom_name = EXCLUDED.custom_name,
+          icon = EXCLUDED.icon,
+          wifi_ssid = EXCLUDED.wifi_ssid,
+          ip_address = EXCLUDED.ip_address,
+          updated_at = CURRENT_TIMESTAMP
+        WHERE devices.home_id = EXCLUDED.home_id
         RETURNING *;
       `;
-      const epResult = await db.query(epQuery, [
+      const deviceValues = [
+        targetHomeId,
+        targetRoomId,
         deviceId,
-        i + 1,
-        ep.name,
-        ep.type,
-        JSON.stringify({ status: 'OFF' }),
-      ]);
-      endpoints.push(epResult.rows[0]);
+        mac4,
+        modelCode,
+        dto.customName.trim(),
+        dto.icon || null,
+        dto.wifiSsid.trim(),
+        dto.ipAddress || '192.168.4.1',
+        dto.firmwareVersion || 'v1.2.4-neuro',
+      ];
+
+      const deviceResult = await client.query(deviceQuery, deviceValues);
+      deviceRecord = deviceResult.rows[0];
+      if (!deviceRecord) throw new Error('Device already belongs to another location');
+
+      // 2. Insert Child Endpoints
+      const endpointConfigs = this.getEndpointsForModel(modelCode);
+
+      for (let i = 0; i < endpointConfigs.length; i++) {
+        const ep = endpointConfigs[i];
+        const epQuery = `
+          INSERT INTO device_endpoints (
+            device_id, endpoint_index, name, endpoint_type, state, is_favorite
+          ) VALUES ($1, $2, $3, $4, $5, false)
+          ON CONFLICT (device_id, endpoint_index) DO UPDATE SET
+            name = EXCLUDED.name,
+            endpoint_type = EXCLUDED.endpoint_type
+          RETURNING *;
+        `;
+        const epResult = await client.query(epQuery, [
+          deviceId,
+          i + 1,
+          ep.name,
+          ep.type,
+          JSON.stringify({ status: 'OFF' }),
+        ]);
+        endpoints.push(epResult.rows[0]);
+      }
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
     }
 
-    // 3. Keep in-memory cache synchronized
-    this.devices.set(deviceId, {
-      id: deviceId,
-      name: deviceRecord.custom_name,
-      room: 'Living Room',
-      type: modelCode.startsWith('TP') || modelCode.startsWith('SS') ? 'switch' : 'light',
-      state: { power: false, online: true },
-      lastSeen: new Date().toISOString(),
-    });
-
-    // 4. Return provision response with MQTT broker coordinates
     return {
       device: deviceRecord,
       endpoints,
       deviceId,
-      mqttHost: ENV.MQTT_PUBLIC_HOST || 'api.neurolinx.in',
-      mqttPort: ENV.MQTT_PUBLIC_PORT || 1887,
-      mqttUsername: ENV.MQTT_USERNAME || 'neuro_device_user',
-      mqttPassword: ENV.MQTT_PASSWORD || 'NeuroSeriesEmqx2026!',
     };
-  }
-
-  public getDevices(): SmartDevice[] {
-    return Array.from(this.devices.values());
-  }
-
-  public getDeviceById(id: string): SmartDevice | undefined {
-    return this.devices.get(id);
   }
 
   public async getDevicesByHome(homeId: string): Promise<Array<DeviceRecord & { endpoints: DeviceEndpointRecord[] }>> {
@@ -464,44 +379,6 @@ class DeviceService {
     return list;
   }
 
-  public async updateDeviceState(id: string, updates: Partial<SmartDevice['state']>): Promise<SmartDevice> {
-    const device = this.devices.get(id);
-    if (!device) {
-      throw new Error(`Device ${id} not found`);
-    }
-
-    device.state = { ...device.state, ...updates };
-    device.lastSeen = new Date().toISOString();
-    this.devices.set(id, device);
-
-    try {
-      await emqxService.publishCommand(id, updates);
-    } catch (err) {
-      console.warn(`MQTT Publish warning for ${id}:`, err);
-    }
-
-    socketManager.broadcastDeviceUpdate(id, device.state);
-    return device;
-  }
-
-  public addDevice(data: { name: string; room?: string; type?: SmartDevice['type']; homeId?: string }): SmartDevice {
-    const id = `dev_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-    const newDevice: SmartDevice = {
-      id,
-      name: data.name.trim(),
-      room: data.room?.trim() || 'Living room',
-      type: data.type || 'light',
-      state: {
-        power: false,
-        online: true,
-      },
-      lastSeen: new Date().toISOString(),
-    };
-    this.devices.set(id, newDevice);
-    socketManager.broadcastDeviceUpdate(id, newDevice.state);
-    return newDevice;
-  }
-
   /**
    * Processes incoming hardware telemetry published on nt/v1/{deviceId}/stat/telemetry
    * Example payload:
@@ -515,6 +392,7 @@ class DeviceService {
    */
   public async handleTelemetryUpdate(deviceId: string, data: {
     switches?: Record<string, boolean>;
+    readings?: unknown;
     online?: boolean;
     rssi?: number;
     type?: string;
@@ -532,21 +410,10 @@ class DeviceService {
     alerts?: Record<string, any>;
   }): Promise<void> {
     try {
-      const isOnline = data.online !== undefined ? data.online : true;
+      const isOnline = typeof data.online === 'boolean' ? data.online : true;
       const rssi = typeof data.rssi === 'number' ? data.rssi : null;
-      let switches = data.switches || (data as any).payload || (typeof (data as any).state === 'object' ? (data as any).state : null) || {};
-      if (typeof switches !== 'object' || switches === null) {
-        switches = {};
-      }
-      if (Object.keys(switches).length === 0) {
-        const numericKeys = Object.keys(data).filter(k => !isNaN(parseInt(k, 10)));
-        if (numericKeys.length > 0) {
-          switches = {};
-          for (const k of numericKeys) {
-            switches[k] = (data as any)[k];
-          }
-        }
-      }
+      const switches = normalizeSwitches(data.switches ?? (data as any).payload ?? (data as any).state ?? data);
+      const readings = normalizeReadings(data.readings);
 
       // Energy meter specific telemetry parsing
       const voltage = typeof data.voltage === 'number' ? data.voltage : null;
@@ -560,7 +427,7 @@ class DeviceService {
       const energyWh = typeof data.energy_wh === 'number' ? data.energy_wh : null;
       
       let relayVal: boolean | null = null;
-      if (data.relay !== undefined) {
+      if (typeof data.relay === 'boolean') {
         relayVal = Boolean(data.relay);
         if (switches['1'] === undefined) {
           switches['1'] = relayVal;
@@ -632,10 +499,21 @@ class DeviceService {
         }
       }
 
+      if (readings.length) {
+        await db.query(
+          `UPDATE device_endpoints e SET state = e.state || jsonb_build_object(
+               'reading', to_jsonb(r) || jsonb_build_object('reportedAt', CURRENT_TIMESTAMP))
+           FROM jsonb_to_recordset($2::jsonb) AS r(channel int, value jsonb, unit text)
+           WHERE e.device_id = $1 AND e.endpoint_index = r.channel AND e.endpoint_type IN ('SENSOR', 'PHASE')`,
+          [deviceId, JSON.stringify(readings)]
+        );
+      }
+
       // 3. Broadcast to all connected WebSocket clients in real time
       const wsBroadcastPayload = {
         deviceId,
         switches,
+        readings,
         is_online: isOnline,
         rssi,
         last_seen_at: new Date().toISOString(),
@@ -660,40 +538,14 @@ class DeviceService {
     }
   }
 
-  /**
-   * Dedicated Energy Reset: Sends MQTT command to `devices/${deviceId}/reset_energy`
-   * and resets energy totalizers in PostgreSQL and WebSocket state to 0
-   */
   public async resetEnergy(deviceId: string): Promise<void> {
-    try {
-      // 1. Send dedicated MQTT command to hardware on devices/${deviceId}/reset_energy
-      await emqxService.sendEnergyResetCommand(deviceId).catch((err) => {
-        console.warn(`⚠️ [EMQX] Could not deliver energy reset packet:`, err.message);
-      });
-
-      // 2. Reset energy totalizers to 0 in PostgreSQL database
-      await db.query(
-        `UPDATE devices 
-         SET energy_kwh = 0, 
-             energy_wh = 0, 
-             updated_at = CURRENT_TIMESTAMP 
-         WHERE device_id = $1`,
-        [deviceId]
-      );
-
-      // 3. Broadcast real-time 0 update to all active web & mobile clients
-      socketManager.broadcastDeviceUpdate(deviceId, {
-        deviceId,
-        energy_kwh: 0,
-        energy_wh: 0,
-        last_seen_at: new Date().toISOString(),
-      });
-
-      console.log(`⚡ [ENERGY RESET SUCCESS] Energy counter reset to 0 for ${deviceId}`);
-    } catch (err) {
-      console.error(`❌ Failed to reset energy for ${deviceId}:`, err);
-      throw err;
-    }
+    const result = await db.query(
+      `SELECT 1 FROM devices WHERE device_id = $1 AND model_code IN ('EM1', 'EMS1', 'EM3', 'EMS3')
+       AND is_online = true AND last_seen_at > NOW() - INTERVAL '12 seconds'`,
+      [deviceId]
+    );
+    if (!result.rowCount) throw new Error('An online energy meter is required');
+    await emqxService.sendEnergyResetCommand(deviceId);
   }
 
   /**
@@ -746,18 +598,25 @@ class DeviceService {
     state: boolean;
     switches: Record<string, boolean>;
   }> {
-    // 1. Fetch current device from database
+    if (!Number.isInteger(channel) || channel < 1 || !['on', 'off', 'toggle'].includes(action)) {
+      throw new Error('Invalid switch command');
+    }
+    // 1. Resolve the control channel from the registered device capabilities.
     const devRes = await db.query(
-      `SELECT id, device_id, model_code, switches, is_online, last_seen_at FROM devices WHERE id::text = $1 OR device_id = $1 LIMIT 1`,
-      [identifier]
+      `SELECT d.device_id, d.switches, d.is_online, d.last_seen_at
+       FROM devices d JOIN device_endpoints e ON e.device_id = d.device_id
+       WHERE (d.id::text = $1 OR d.device_id = $1) AND e.endpoint_type = 'RELAY'
+         AND CASE WHEN d.model_code IN ('EMS1', 'EMS3') THEN $2::int = 1 ELSE e.endpoint_index = $2 END
+       LIMIT 1`,
+      [identifier, channel]
     );
     if (devRes.rows.length === 0) {
       throw new Error(`Device ${identifier} not found in database`);
     }
 
     const device = devRes.rows[0];
-    const isOnline = Boolean(device.is_online) || (device.last_seen_at && (Date.now() - new Date(device.last_seen_at).getTime() <= 60000));
-    if (!isOnline && device.last_seen_at && (Date.now() - new Date(device.last_seen_at).getTime() > 120000)) {
+    const isOnline = device.is_online && device.last_seen_at && Date.now() - new Date(device.last_seen_at).getTime() <= 12000;
+    if (!isOnline) {
       throw new Error(`Device ${device.device_id} is offline. Switches cannot be controlled.`);
     }
 
@@ -774,39 +633,8 @@ class DeviceService {
     // 2. Publish to EMQX MQTT using official hardware specification
     await emqxService.sendSwitchCommand(deviceId, channel, targetState);
 
-    // 3. Update database
-    const updatedSwitches = {
-      ...currentSwitches,
-      [String(channel)]: targetState,
-    };
-
-    await db.query(
-      `UPDATE devices 
-       SET switches = $1::jsonb,
-           updated_at = CURRENT_TIMESTAMP 
-       WHERE device_id = $2`,
-      [JSON.stringify(updatedSwitches), deviceId]
-    );
-
-    // Update endpoint record in device_endpoints table
-    const epState = JSON.stringify({
-      status: targetState ? 'ON' : 'OFF',
-      power: targetState,
-    });
-    await db.query(
-      `UPDATE device_endpoints 
-       SET state = $1::jsonb 
-       WHERE device_id = $2 AND endpoint_index = $3`,
-      [epState, deviceId, channel]
-    );
-
-    // 4. Broadcast via WebSocket
-    socketManager.broadcastDeviceUpdate(deviceId, {
-      deviceId,
-      switches: updatedSwitches,
-      channel,
-      state: targetState,
-    });
+    // Confirmed state comes from firmware telemetry. This response describes the requested command.
+    const updatedSwitches = { ...currentSwitches, [String(channel)]: targetState };
 
     return {
       deviceId,
