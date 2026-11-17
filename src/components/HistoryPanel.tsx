@@ -27,8 +27,8 @@ function CommandList({ commands }: { commands: Command[] }) {
   </ul>;
 }
 
-export function HistoryPanel({ kind, id, canManage, onClose }: {
-  kind: 'device' | 'routines' | 'energy'; id: string; canManage: boolean; onClose: () => void;
+export function HistoryPanel({ kind, id, canManage, onClose, refreshRevision }: {
+  kind: 'device' | 'routines' | 'energy'; id: string; canManage: boolean; refreshRevision: number; onClose: () => void;
 }) {
   const [period, setPeriod] = useState<'day' | 'month'>('day');
   const [revision, setRevision] = useState(0);
@@ -69,7 +69,7 @@ export function HistoryPanel({ kind, id, canManage, onClose }: {
     }
     void load();
     return () => { active = false; };
-  }, [kind, path, id, period, revision]);
+  }, [kind, path, id, period, revision, refreshRevision]);
 
   async function save(event: FormEvent) {
     event.preventDefault();

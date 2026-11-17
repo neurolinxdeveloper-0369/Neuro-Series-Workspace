@@ -358,14 +358,7 @@ export const SignInScreen = ({ isOpen, onClose, onSignInSuccess, onHelp }: SignI
 
   return (
     <div
-      className="fixed inset-0 z-50 overflow-y-auto flex flex-col justify-between select-none pointer-events-auto font-sans animate-in fade-in duration-200"
-      style={{
-        backgroundColor: '#d4edf4',
-        backgroundImage: `
-          radial-gradient(circle at 10% 10%, rgba(255, 255, 255, 0.95) 0%, transparent 50%),
-          radial-gradient(circle at 90% 90%, rgba(255, 255, 255, 0.90) 0%, transparent 50%)
-        `,
-      }}
+      className="app-screen fixed inset-0 z-50 overflow-y-auto flex flex-col justify-between select-none pointer-events-auto font-sans animate-in fade-in duration-200"
     >
       {/* Real-time Neuro Series Glowing Light Blue Loader */}
       {isLoading && <NeuroLoader message={step === 'otp' ? 'Verifying code...' : 'Please wait...'} />}
@@ -384,7 +377,7 @@ export const SignInScreen = ({ isOpen, onClose, onSignInSuccess, onHelp }: SignI
               }
             }}
             className="p-2 -ml-2 rounded-full text-slate-700 hover:text-slate-900 hover:bg-white/60 transition-colors cursor-pointer"
-            aria-label="Go back"
+            aria-label="Go back" data-screen-back
           >
             <ArrowLeft className="w-5 h-5 sm:w-6 sm:h-6" strokeWidth={2.2} />
           </button>

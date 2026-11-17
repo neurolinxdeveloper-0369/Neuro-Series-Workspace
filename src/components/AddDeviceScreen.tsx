@@ -162,6 +162,7 @@ export const DEVICE_CATALOG: DeviceModelItem[] = [
 interface AddDeviceScreenProps {
   isOpen: boolean;
   catalogOnly?: boolean;
+  refreshRevision: number;
   onClose: () => void;
   homeId: string | null;
   activeHome?: Home | null;
@@ -176,6 +177,7 @@ type ScreenView = 'main' | 'catalog' | 'qr_scanner' | 'scan_nearby' | 'provision
 export const AddDeviceScreen = ({
   isOpen,
   catalogOnly = false,
+  refreshRevision,
   onClose,
   homeId,
   activeHome,
@@ -820,14 +822,14 @@ export const AddDeviceScreen = ({
         if (timerId) clearTimeout(timerId);
       };
     }
-  }, [isOpen, currentView, activeNearbyMode]);
+  }, [isOpen, currentView, activeNearbyMode, refreshRevision]);
 
   // Auto-scan all 2.4GHz Wi-Fi networks when entering provision form
   useEffect(() => {
     if (isOpen && currentView === 'provision_form') {
       scanAll24GhzNetworks();
     }
-  }, [isOpen, currentView]);
+  }, [isOpen, currentView, refreshRevision]);
 
   const runNearbyScan = async (mode: 'auto' | 'ap' | 'ble') => {
     setIsNearbyScanning(true);
@@ -1147,14 +1149,7 @@ export const AddDeviceScreen = ({
 
   return (
     <div 
-      className="screen-top-container fixed inset-0 z-50 w-full h-full overflow-y-auto overflow-x-hidden flex flex-col font-sans select-none animate-in fade-in duration-200"
-      style={{
-        backgroundColor: '#d4edf4',
-        backgroundImage: `
-          radial-gradient(circle at 10% 10%, rgba(255, 255, 255, 0.95) 0%, transparent 50%),
-          radial-gradient(circle at 90% 90%, rgba(255, 255, 255, 0.90) 0%, transparent 50%)
-        `,
-      }}
+      className="app-screen screen-top-container fixed inset-0 z-50 w-full h-full overflow-y-auto overflow-x-hidden flex flex-col font-sans select-none animate-in fade-in duration-200"
     >
       
       {/* ------------------- VIEW 1: MAIN ADD DEVICE SCREEN ------------------- */}
@@ -1166,7 +1161,7 @@ export const AddDeviceScreen = ({
               <button
                 onClick={onClose}
                 className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-slate-800 shadow-sm hover:bg-slate-100 transition-colors cursor-pointer"
-                aria-label="Back"
+                aria-label="Back" data-screen-back
               >
                 <ChevronLeft className="w-6 h-6" strokeWidth={2.5} />
               </button>
@@ -1257,7 +1252,7 @@ export const AddDeviceScreen = ({
               <button
                 onClick={() => catalogOnly ? onClose() : setCurrentView('main')}
                 className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-slate-800 shadow-sm hover:bg-slate-100 transition-colors cursor-pointer"
-                aria-label="Back"
+                aria-label="Back" data-screen-back
               >
                 <ChevronLeft className="w-6 h-6" strokeWidth={2.5} />
               </button>
@@ -1380,7 +1375,7 @@ export const AddDeviceScreen = ({
                   setCurrentView('catalog');
                 }}
                 className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-slate-800 shadow-sm hover:bg-slate-100 transition-colors cursor-pointer"
-                aria-label="Back"
+                aria-label="Back" data-screen-back
               >
                 <ChevronLeft className="w-6 h-6" strokeWidth={2.5} />
               </button>
@@ -1399,7 +1394,7 @@ export const AddDeviceScreen = ({
             </div>
 
             {/* Live Camera Viewfinder Card with corner brackets */}
-            <div className="w-full aspect-[4/3] sm:aspect-square bg-slate-950 rounded-[32px] overflow-hidden relative shadow-md border border-slate-200/80 mb-4 flex items-center justify-center">
+            <div className="w-full aspect-[4/3] sm:aspect-square bg-slate-50 rounded-[32px] overflow-hidden relative shadow-md border border-slate-200/80 mb-4 flex items-center justify-center">
               
               <video
                 ref={videoRef}
@@ -1424,7 +1419,7 @@ export const AddDeviceScreen = ({
 
               {/* Viewfinder Bottom Controls: Choose Photo & Torch */}
               <div className="absolute bottom-4 left-4 right-4 flex items-center justify-between pointer-events-auto">
-                <label className="flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-slate-900/70 hover:bg-slate-900/90 text-white text-xs font-semibold backdrop-blur-md cursor-pointer transition-all shadow-md active:scale-95">
+                <label className="flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-white/95 hover:bg-white text-slate-900 text-xs font-semibold backdrop-blur-md cursor-pointer transition-all shadow-md active:scale-95">
                   <ImageIcon className="w-4 h-4 text-sky-400" />
                   <span>Choose Photo</span>
                   <input
@@ -1439,7 +1434,7 @@ export const AddDeviceScreen = ({
                 <button
                   onClick={toggleTorch}
                   className={`w-11 h-11 rounded-full flex items-center justify-center transition-all cursor-pointer shadow-lg backdrop-blur-md ${
-                    isTorchOn ? 'bg-amber-400 text-slate-950 scale-105' : 'bg-slate-900/60 text-white hover:bg-slate-900/80'
+                    isTorchOn ? 'bg-amber-400 text-slate-950 scale-105' : 'bg-white/95 text-slate-900 hover:bg-white'
                   }`}
                   aria-label="Flashlight"
                 >
@@ -1448,7 +1443,7 @@ export const AddDeviceScreen = ({
               </div>
 
               {cameraError && (
-                <div className="absolute inset-4 bg-slate-900/90 rounded-2xl p-4 flex flex-col items-center justify-center text-center text-white space-y-2">
+                <div className="absolute inset-4 bg-white/95 rounded-2xl p-4 flex flex-col items-center justify-center text-center text-slate-900 space-y-2">
                   <QrCode className="w-8 h-8 text-sky-400 mb-1" />
                   <p className="text-xs sm:text-sm text-slate-300 leading-snug">{cameraError}</p>
                 </div>
@@ -1480,7 +1475,7 @@ export const AddDeviceScreen = ({
               )}
 
               <div className="flex items-center justify-center pt-2">
-                <div className="flex items-center rounded-xl bg-slate-900 text-white px-3.5 py-2 shadow-sm border border-slate-800 gap-3">
+                <div className="flex items-center rounded-xl bg-slate-50 text-slate-900 px-3.5 py-2 shadow-sm border border-slate-200 gap-3">
                   <span className="font-extrabold text-xs sm:text-sm tracking-wide font-sans">
                     Neuro Series
                   </span>
@@ -1572,7 +1567,7 @@ export const AddDeviceScreen = ({
               <button
                 onClick={() => setCurrentView('catalog')}
                 className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-slate-800 shadow-sm hover:bg-slate-100 transition-colors cursor-pointer"
-                aria-label="Back"
+                aria-label="Back" data-screen-back
               >
                 <ChevronLeft className="w-6 h-6" strokeWidth={2.5} />
               </button>
@@ -1837,7 +1832,7 @@ export const AddDeviceScreen = ({
               <button
                 onClick={() => setCurrentView('catalog')}
                 className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-slate-800 shadow-sm hover:bg-slate-100 transition-colors cursor-pointer"
-                aria-label="Back"
+                aria-label="Back" data-screen-back
               >
                 <ChevronLeft className="w-6 h-6" strokeWidth={2.5} />
               </button>
@@ -2296,7 +2291,7 @@ export const AddDeviceScreen = ({
 
       {/* ------------------- MODAL: DEVICE ICON PICKER ------------------- */}
       {isIconPickerOpen && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in select-none">
+        <div className="fixed inset-0 z-50 bg-slate-300/55 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in select-none">
           <div className="w-full max-w-md bg-white rounded-3xl p-5 shadow-2xl border border-slate-100 max-h-[85vh] flex flex-col">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-3">
               <div>

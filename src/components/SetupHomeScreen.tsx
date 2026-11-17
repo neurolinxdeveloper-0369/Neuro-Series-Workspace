@@ -139,14 +139,7 @@ export const SetupHomeScreen = ({
 
   return (
     <div 
-      className="fixed inset-0 z-50 overflow-y-auto flex flex-col justify-between select-none pointer-events-auto font-sans animate-in fade-in duration-200"
-      style={{
-        backgroundColor: '#d4edf4',
-        backgroundImage: `
-          radial-gradient(circle at 10% 10%, rgba(255, 255, 255, 0.95) 0%, transparent 50%),
-          radial-gradient(circle at 90% 90%, rgba(255, 255, 255, 0.90) 0%, transparent 50%)
-        `,
-      }}
+      className="app-screen fixed inset-0 z-50 overflow-y-auto flex flex-col justify-between select-none pointer-events-auto font-sans animate-in fade-in duration-200"
     >
       {/* Real-time Loader */}
       {isLoading && <NeuroLoader message="Configuring Smart Home..." />}

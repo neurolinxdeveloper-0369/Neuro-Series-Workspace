@@ -6,6 +6,8 @@ type DeviceUpdateHandler = (deviceId: string, state: any) => void;
 class RealtimeSocketClient {
   private ws: WebSocket | null = null;
   private listeners: Set<DeviceUpdateHandler> = new Set();
+  private readyListeners = new Set<() => void>();
+  private authenticated = false;
   private reconnectTimer: any = null;
 
   private getSocketUrl(): string {
@@ -44,9 +46,13 @@ class RealtimeSocketClient {
       socket.onopen = () => socket.send(JSON.stringify({ type: 'AUTH', token }));
 
       this.ws.onmessage = (event) => {
+        if (this.ws !== socket) return;
         try {
           const data = JSON.parse(event.data);
-          if (data.type === 'DEVICE_STATE_CHANGED' && data.deviceId) {
+          if (data.type === 'CONNECTION_ACK') {
+            this.authenticated = true;
+            for (const listener of this.readyListeners) listener();
+          } else if (data.type === 'DEVICE_STATE_CHANGED' && data.deviceId && data.state) {
             for (const listener of this.listeners) {
               try {
                 listener(data.deviceId, data.state);
@@ -67,6 +73,7 @@ class RealtimeSocketClient {
       socket.onclose = event => {
         if (this.ws !== socket) return;
         this.ws = null;
+        this.authenticated = false;
         if (this.listeners.size && event.code !== 1008) {
           clearTimeout(this.reconnectTimer);
           this.reconnectTimer = setTimeout(() => {
@@ -88,8 +95,18 @@ class RealtimeSocketClient {
         clearTimeout(this.reconnectTimer);
         this.ws?.close();
         this.ws = null;
+        this.authenticated = false;
       }
     };
+  }
+
+  public onReady(handler: () => void): () => void {
+    this.readyListeners.add(handler);
+    return () => { this.readyListeners.delete(handler); };
+  }
+
+  public isReady() {
+    return this.authenticated;
   }
 }
 

@@ -700,16 +700,13 @@ export const TouchPanelLayout = ({
   if (editingIndex !== null && typeof document !== 'undefined') {
     return createPortal(
       <div 
-        className="fixed inset-0 z-[100] flex flex-col select-none overflow-hidden animate-in fade-in slide-in-from-right-3 duration-200"
-        style={{
-          backgroundColor: '#d4edf4',
-          background: 'linear-gradient(180deg, #d4edf4 0%, #e9f5f8 50%, #f7fafc 100%)',
-        }}
+        className="app-screen fixed inset-0 z-[100] flex flex-col overflow-hidden animate-in fade-in slide-in-from-right-3 duration-200"
       >
         {/* Dedicated Screen Top Header */}
         <header className="w-full bg-white/75 backdrop-blur-xl border-b border-white/80 px-4 sm:px-6 py-3 flex items-center justify-between flex-shrink-0 shadow-xs z-10">
           <button
             type="button"
+            data-device-dismiss
             onClick={() => setEditingIndex(null)}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white hover:bg-slate-50 text-slate-700 text-xs sm:text-sm font-bold border border-slate-200/90 shadow-2xs transition-all active:scale-95 cursor-pointer"
           >
@@ -742,7 +739,7 @@ export const TouchPanelLayout = ({
           {/* Live Switch Preview Card */}
           <div className="bg-white/75 backdrop-blur-xl rounded-3xl p-4 border border-white/90 shadow-xs flex items-center justify-between">
             <div className="flex items-center gap-3.5">
-              <div className="relative rounded-full aspect-square w-16 h-16 bg-[#0f172a] border-2 border-white ring-4 ring-[#0284c7] flex items-center justify-center shadow-[0_0_18px_rgba(2,132,199,0.35)]">
+              <div className="relative rounded-full aspect-square w-16 h-16 bg-sky-100 border-2 border-white ring-4 ring-[#0284c7] flex items-center justify-center shadow-[0_0_18px_rgba(2,132,199,0.35)]">
                 {draftIconPath ? (
                   <img 
                     src={getAssetUrl(`ICONS/${draftIconPath}`)} 
@@ -889,7 +886,7 @@ export const TouchPanelLayout = ({
                 className={`aspect-square rounded-2xl p-2.5 flex flex-col items-center justify-center transition-all cursor-pointer border ${
                   !draftIconPath
                     ? 'bg-[#0284c7] border-white ring-2 ring-[#0284c7] shadow-[0_0_14px_rgba(2,132,199,0.45)] scale-105'
-                    : 'bg-[#0f172a] border-slate-700/80 hover:bg-slate-800'
+                    : 'bg-slate-50 border-slate-200 hover:bg-sky-100'
                 }`}
                 title="Default Power Icon"
               >
@@ -906,7 +903,7 @@ export const TouchPanelLayout = ({
                     className={`aspect-square rounded-2xl p-2.5 flex items-center justify-center transition-all cursor-pointer relative group border ${
                       isSelected
                         ? 'bg-[#0284c7] border-white ring-2 ring-[#0284c7] shadow-[0_0_14px_rgba(2,132,199,0.45)] scale-105'
-                        : 'bg-[#0f172a] border-slate-700/80 hover:bg-slate-800 hover:border-[#0284c7]'
+                        : 'bg-slate-50 border-slate-200 hover:bg-sky-100 hover:border-[#0284c7]'
                     }`}
                     title={iconName}
                   >
@@ -1128,30 +1125,6 @@ export const EnergyMeterLayout = ({
     if (device.alerts) setAlerts(device.alerts);
   }, [device]);
 
-  // Real-time WebSocket live updates from EMQX MQTT broker
-  useEffect(() => {
-    if (!deviceId) return;
-    const unsubscribe = realtimeSocket.subscribe((incomingDeviceId: string, incomingState: any) => {
-      if (incomingDeviceId === deviceId && incomingState) {
-        if (incomingState.voltage !== undefined) setVoltage(Number(incomingState.voltage ?? Number.NaN));
-        if (incomingState.current !== undefined) setCurrent(Number(incomingState.current ?? Number.NaN));
-        if (incomingState.power !== undefined) setPower(Number(incomingState.power ?? Number.NaN));
-        if (incomingState.apparent_power !== undefined) setApparentPower(Number(incomingState.apparent_power ?? Number.NaN));
-        if (incomingState.reactive_power !== undefined) setReactivePower(Number(incomingState.reactive_power ?? Number.NaN));
-        if (incomingState.power_factor !== undefined) setPowerFactor(Number(incomingState.power_factor ?? Number.NaN));
-        if (incomingState.frequency !== undefined) setFrequency(Number(incomingState.frequency ?? Number.NaN));
-        if (incomingState.energy_kwh !== undefined) setEnergyKwh(Number(incomingState.energy_kwh ?? Number.NaN));
-        if (incomingState.energy_wh !== undefined) setEnergyWh(Number(incomingState.energy_wh ?? Number.NaN));
-        if (incomingState.relay !== undefined) setRelayOn(Boolean(incomingState.relay));
-        else if (incomingState.switches?.['1'] !== undefined) setRelayOn(Boolean(incomingState.switches['1']));
-        if (incomingState.rssi !== undefined) setRssi(Number(incomingState.rssi ?? Number.NaN));
-        if (incomingState.trip_reason !== undefined) setTripReason(String(incomingState.trip_reason));
-        if (incomingState.alerts) setAlerts(incomingState.alerts);
-      }
-    });
-    return () => unsubscribe();
-  }, [deviceId]);
-
   const reading = (value: number, digits: number) => Number.isFinite(value) ? value.toFixed(digits) : '?';
 
   // Relay toggle handler (Capacitive single-switch provisional control)
@@ -1204,10 +1177,10 @@ export const EnergyMeterLayout = ({
   );
 
   return (
-    <div className="relative bg-gradient-to-b from-slate-900 via-slate-920 to-slate-950 text-white rounded-3xl p-4 sm:p-5 border border-slate-800 shadow-2xl select-none space-y-4">
+    <div className="relative bg-white text-slate-900 rounded-3xl p-4 sm:p-5 border border-slate-200 shadow-sm select-none space-y-4">
       {/* Toast Notification Banner */}
       {toastMessage && (
-        <div className="absolute top-3 left-4 right-4 z-40 bg-sky-600/95 text-white text-xs font-semibold px-4 py-2.5 rounded-xl shadow-lg border border-sky-400/40 flex items-center justify-between backdrop-blur-md animate-fade-in">
+        <div className="absolute top-3 left-4 right-4 z-40 bg-sky-700 text-white text-xs font-semibold px-4 py-2.5 rounded-xl shadow-sm border border-sky-400/40 flex items-center justify-between backdrop-blur-md animate-fade-in">
           <span>{toastMessage}</span>
           <button type="button" onClick={() => setToastMessage(null)} className="ml-2 hover:opacity-80">
             <X className="w-3.5 h-3.5" />
@@ -1216,21 +1189,21 @@ export const EnergyMeterLayout = ({
       )}
 
       {/* Top Header Card */}
-      <div className="flex items-center justify-between pb-3.5 border-b border-slate-800/80">
+      <div className="flex flex-wrap items-start justify-between gap-2 pb-3.5 border-b border-slate-200">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-amber-500/20 to-amber-600/10 text-amber-400 flex items-center justify-center border border-amber-500/30 shadow-inner">
+          <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-amber-500/20 to-amber-600/10 text-amber-700 flex items-center justify-center border border-amber-500/30 shadow-inner">
             <Zap className="w-5 h-5" />
           </div>
           <div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold uppercase tracking-wider text-amber-400 font-mono">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs font-bold uppercase tracking-wider text-amber-700 font-mono">
                 {modelCode}
               </span>
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 border border-slate-700 font-mono text-slate-300">
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-50 border border-slate-200 font-mono text-slate-600">
                 {isThreePhase ? '3-Phase Smart Meter' : '1-Phase Single Switch Meter'}
               </span>
             </div>
-            <div className="text-base font-extrabold text-white mt-0.5">
+            <div className="text-base font-extrabold text-slate-900 mt-0.5">
               {deviceName || (isThreePhase ? 'Three Phase Energy Meter' : 'Single Phase Energy Meter')}
             </div>
           </div>
@@ -1238,12 +1211,12 @@ export const EnergyMeterLayout = ({
 
         {/* Status Indicators: Online & RSSI */}
         <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-800/80 border border-slate-700/80 text-[11px] font-mono">
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-50 border border-slate-200 text-[11px] font-mono">
             <span className={`w-2 h-2 rounded-full ${isOnline ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'}`} />
-            <span className={isOnline ? 'text-emerald-400' : 'text-rose-400'}>{isOnline ? 'LIVE' : 'OFFLINE'}</span>
+            <span className={isOnline ? 'text-emerald-700' : 'text-rose-700'}>{isOnline ? 'LIVE' : 'OFFLINE'}</span>
           </div>
-          <div className="hidden sm:flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-800/80 border border-slate-700/80 text-[11px] font-mono text-slate-300">
-            <Wifi className="w-3 h-3 text-sky-400" />
+          <div className="hidden sm:flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-50 border border-slate-200 text-[11px] font-mono text-slate-600">
+            <Wifi className="w-3 h-3 text-sky-700" />
             <span>{reading(rssi, 0)} dBm</span>
           </div>
         </div>
@@ -1251,13 +1224,13 @@ export const EnergyMeterLayout = ({
 
       {/* Trip Reason / Alert Warning Banner */}
       {hasAnyAlert && (
-        <div className="bg-amber-950/40 border border-amber-500/40 rounded-2xl p-3 flex items-start gap-2.5 text-amber-200">
-          <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
+        <div className="bg-amber-50 border border-amber-500/40 rounded-2xl p-3 flex items-start gap-2.5 text-amber-700">
+          <AlertTriangle className="w-4 h-4 text-amber-700 flex-shrink-0 mt-0.5" />
           <div className="text-xs space-y-0.5">
-            <div className="font-bold text-amber-300">
+            <div className="font-bold text-amber-700">
               {tripReason ? `Trip Warning: ${tripReason}` : 'Safety Alert Triggered'}
             </div>
-            <div className="text-amber-200/80 text-[11px]">
+            <div className="text-amber-700 text-[11px]">
               {alerts.message || 'Hardware safety threshold detected. Review electrical parameters below.'}
             </div>
           </div>
@@ -1265,64 +1238,64 @@ export const EnergyMeterLayout = ({
       )}
 
       {/* Hero Card: Total Accumulated Energy (kWh / Wh) + Dedicated Reset Action */}
-      <div className="bg-gradient-to-br from-sky-950/70 via-slate-900 to-slate-950 rounded-2xl p-4 sm:p-5 border border-sky-500/30 shadow-lg space-y-3">
+      <div className="bg-sky-50 rounded-2xl p-4 sm:p-5 border border-sky-500/30 shadow-sm space-y-3">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
-            <div className="flex items-center gap-1.5 text-[11px] font-mono uppercase tracking-wider text-sky-300">
-              <Sparkles className="w-3.5 h-3.5 text-sky-400" />
+            <div className="flex items-center gap-1.5 text-[11px] font-mono uppercase tracking-wider text-sky-700">
+              <Sparkles className="w-3.5 h-3.5 text-sky-700" />
               <span>Total Accumulated Consumption</span>
             </div>
             <div className="mt-1 flex items-baseline gap-2">
-              <span className="text-3xl sm:text-4xl font-black font-mono tracking-tight text-white">
+              <span className="text-3xl sm:text-4xl font-black font-mono tracking-tight text-slate-900">
                 {reading(energyKwh, 4)}
               </span>
-              <span className="text-sm sm:text-base font-bold text-sky-400 font-mono">kWh (Units)</span>
+              <span className="text-sm sm:text-base font-bold text-sky-700 font-mono">kWh (Units)</span>
             </div>
-            <div className="text-xs text-slate-400 font-mono mt-0.5">
-              Accumulated: <strong className="text-slate-200">{reading(energyWh, 2)} Wh</strong> • Non-volatile Flash Registers
+            <div className="text-xs text-slate-600 font-mono mt-0.5">
+              Reported: <strong className="text-slate-600">{reading(energyWh, 2)} Wh</strong>
             </div>
           </div>
 
           {/* Dedicated Reset Option Command Button */}
-          <div className="flex sm:flex-col items-center sm:items-end justify-between gap-2 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-800">
+          <div className="flex sm:flex-col items-center sm:items-end justify-between gap-2 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-200">
             <button
               type="button"
               onClick={() => setShowResetModal(true)}
               disabled={!isOnline || isResetting}
-              className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold bg-sky-500/10 hover:bg-sky-500/20 text-sky-300 border border-sky-500/30 hover:border-sky-500/50 shadow-sm transition-all cursor-pointer group disabled:opacity-50"
+              className="inline-flex items-center gap-2 min-h-11 px-3.5 py-2 rounded-xl text-xs font-bold bg-sky-500/10 hover:bg-sky-500/20 text-sky-700 border border-sky-500/30 hover:border-sky-500/50 shadow-sm transition-all cursor-pointer group disabled:opacity-50"
             >
-              <RotateCcw className={`w-3.5 h-3.5 text-sky-400 group-hover:rotate-[-45deg] transition-transform ${isResetting ? 'animate-spin' : ''}`} />
+              <RotateCcw className={`w-3.5 h-3.5 text-sky-700 group-hover:rotate-[-45deg] transition-transform ${isResetting ? 'animate-spin' : ''}`} />
               <span>Reset energy</span>
             </button>
-            <span className="text-[10px] text-slate-500 font-mono">Topic: devices/{deviceId || 'EMS1'}/reset_energy</span>
+
           </div>
         </div>
       </div>
 
       {/* Relay Switch Provisional Control Card (When hasSwitch is true, e.g. EMS1) */}
       {hasSwitch && (
-        <div className="bg-slate-900/90 rounded-2xl p-4 border border-slate-800 shadow-md">
+        <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200 shadow-sm">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className={`w-10 h-10 rounded-2xl flex items-center justify-center transition-all ${
-                relayOn 
-                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 shadow-[0_0_15px_rgba(16,185,129,0.2)]' 
-                  : 'bg-slate-800 text-slate-400 border border-slate-700'
+                relayOn
+                  ? 'bg-emerald-500/20 text-emerald-700 border border-emerald-500/40 shadow-[0_0_15px_rgba(16,185,129,0.2)]'
+                  : 'bg-slate-50 text-slate-600 border border-slate-200'
               }`}>
                 <Power className="w-5 h-5" />
               </div>
               <div>
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-extrabold text-white">Relay Switch Output (Switch 1)</span>
+                  <span className="text-xs font-extrabold text-slate-900">Relay Switch Output (Switch 1)</span>
                   <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full font-bold ${
-                    relayOn 
-                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' 
-                      : 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
+                    relayOn
+                      ? 'bg-emerald-500/20 text-emerald-700 border border-emerald-500/40'
+                      : 'bg-rose-500/20 text-rose-700 border border-rose-500/40'
                   }`}>
                     {!hasRelayReading ? 'Unknown' : relayOn ? 'ACTIVE LOAD' : 'CUT OFF'}
                   </span>
                 </div>
-                <div className="text-[11px] text-slate-400 mt-0.5">
+                <div className="text-[11px] text-slate-600 mt-0.5">
                   Provisional capacitive load control with hardware protection
                 </div>
               </div>
@@ -1333,10 +1306,10 @@ export const EnergyMeterLayout = ({
               type="button"
               onClick={handleToggleRelay}
               disabled={!isOnline || !hasRelayReading || isControllingRelay}
-              className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer shadow-md disabled:opacity-50 ${
+              className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer shadow-sm disabled:opacity-50 ${
                 relayOn
-                  ? 'bg-emerald-500 text-white hover:bg-emerald-600 shadow-[0_0_15px_rgba(16,185,129,0.35)]'
-                  : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700'
+                  ? 'bg-emerald-700 text-white hover:bg-emerald-800 shadow-[0_0_15px_rgba(16,185,129,0.35)]'
+                  : 'bg-slate-50 hover:bg-slate-50 text-slate-600 border border-slate-200'
               }`}
             >
               <Power className="w-4 h-4" />
@@ -1349,100 +1322,100 @@ export const EnergyMeterLayout = ({
       {/* 6 Core Required Electrical Metrics */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
         {/* 1. Active Power (W) */}
-        <div className="bg-slate-800/80 rounded-2xl p-3 border border-slate-700/60 flex flex-col justify-between">
-          <span className="text-[10px] font-mono uppercase text-slate-400 flex items-center gap-1">
-            <Zap className="w-3 h-3 text-emerald-400" /> Active Power
+        <div className="bg-slate-50 rounded-2xl p-3 border border-slate-200 flex flex-col justify-between">
+          <span className="text-[10px] font-mono uppercase text-slate-600 flex items-center gap-1">
+            <Zap className="w-3 h-3 text-emerald-700" /> Active Power
           </span>
           <div className="mt-1">
-            <div className="text-xl font-black font-mono text-emerald-400 tracking-tight">
+            <div className="text-xl font-black font-mono text-emerald-700 tracking-tight">
               {reading(power, 2)}
             </div>
-            <div className="flex items-center justify-between text-[11px] text-emerald-400/80 font-bold">
+            <div className="flex items-center justify-between text-[11px] text-emerald-700 font-bold">
               <span>Watts (W)</span>
-              <span className="text-[10px] font-mono text-slate-400">{reading(power / 1000, 3)} kW</span>
+              <span className="text-[10px] font-mono text-slate-600">{reading(power / 1000, 3)} kW</span>
             </div>
           </div>
         </div>
 
         {/* 2. RMS Voltage (V) */}
-        <div className="bg-slate-800/80 rounded-2xl p-3 border border-slate-700/60 flex flex-col justify-between">
-          <span className="text-[10px] font-mono uppercase text-slate-400 flex items-center gap-1">
-            <Gauge className="w-3 h-3 text-sky-400" /> Voltage
+        <div className="bg-slate-50 rounded-2xl p-3 border border-slate-200 flex flex-col justify-between">
+          <span className="text-[10px] font-mono uppercase text-slate-600 flex items-center gap-1">
+            <Gauge className="w-3 h-3 text-sky-700" /> Voltage
           </span>
           <div className="mt-1">
-            <div className="text-xl font-black font-mono text-white tracking-tight">
+            <div className="text-xl font-black font-mono text-slate-900 tracking-tight">
               {reading(voltage, 2)}
             </div>
-            <span className="text-[11px] text-sky-400 font-bold">Volts (AC)</span>
+            <span className="text-[11px] text-sky-700 font-bold">Volts (AC)</span>
           </div>
         </div>
 
         {/* 3. RMS Current (A) */}
-        <div className="bg-slate-800/80 rounded-2xl p-3 border border-slate-700/60 flex flex-col justify-between">
-          <span className="text-[10px] font-mono uppercase text-slate-400 flex items-center gap-1">
-            <Activity className="w-3 h-3 text-amber-400" /> Current
+        <div className="bg-slate-50 rounded-2xl p-3 border border-slate-200 flex flex-col justify-between">
+          <span className="text-[10px] font-mono uppercase text-slate-600 flex items-center gap-1">
+            <Activity className="w-3 h-3 text-amber-700" /> Current
           </span>
           <div className="mt-1">
-            <div className="text-xl font-black font-mono text-white tracking-tight">
+            <div className="text-xl font-black font-mono text-slate-900 tracking-tight">
               {reading(current, 4)}
             </div>
-            <span className="text-[11px] text-amber-400 font-bold">Amperes (A)</span>
+            <span className="text-[11px] text-amber-700 font-bold">Amperes (A)</span>
           </div>
         </div>
 
         {/* 4. Power Factor (PF) */}
-        <div className="bg-slate-800/80 rounded-2xl p-3 border border-slate-700/60 flex flex-col justify-between">
-          <span className="text-[10px] font-mono uppercase text-slate-400 flex items-center gap-1">
-            <Sliders className="w-3 h-3 text-purple-400" /> Power Factor
+        <div className="bg-slate-50 rounded-2xl p-3 border border-slate-200 flex flex-col justify-between">
+          <span className="text-[10px] font-mono uppercase text-slate-600 flex items-center gap-1">
+            <Sliders className="w-3 h-3 text-purple-700" /> Power Factor
           </span>
           <div className="mt-1">
-            <div className="text-xl font-black font-mono text-white tracking-tight">
+            <div className="text-xl font-black font-mono text-slate-900 tracking-tight">
               {reading(powerFactor, 3)}
             </div>
-            <span className="text-[11px] text-purple-400 font-bold">
+            <span className="text-[11px] text-purple-700 font-bold">
               {!Number.isFinite(powerFactor) ? 'No reading yet' : powerFactor >= 0.9 ? 'High Efficiency' : 'Low PF'}
             </span>
           </div>
         </div>
 
         {/* 5. Apparent Power (VA) */}
-        <div className="bg-slate-800/80 rounded-2xl p-3 border border-slate-700/60 flex flex-col justify-between">
-          <span className="text-[10px] font-mono uppercase text-slate-400 flex items-center gap-1">
-            <Activity className="w-3 h-3 text-indigo-400" /> Apparent Power
+        <div className="bg-slate-50 rounded-2xl p-3 border border-slate-200 flex flex-col justify-between">
+          <span className="text-[10px] font-mono uppercase text-slate-600 flex items-center gap-1">
+            <Activity className="w-3 h-3 text-indigo-700" /> Apparent Power
           </span>
           <div className="mt-1">
-            <div className="text-xl font-black font-mono text-white tracking-tight">
+            <div className="text-xl font-black font-mono text-slate-900 tracking-tight">
               {reading(apparentPower, 2)}
             </div>
-            <span className="text-[11px] text-indigo-400 font-bold">Volt-Amps (VA)</span>
+            <span className="text-[11px] text-indigo-700 font-bold">Volt-Amps (VA)</span>
           </div>
         </div>
 
         {/* 6. Reactive Power (VAR) */}
-        <div className="bg-slate-800/80 rounded-2xl p-3 border border-slate-700/60 flex flex-col justify-between">
-          <span className="text-[10px] font-mono uppercase text-slate-400 flex items-center gap-1">
-            <Waves className="w-3 h-3 text-rose-400" /> Reactive Power
+        <div className="bg-slate-50 rounded-2xl p-3 border border-slate-200 flex flex-col justify-between">
+          <span className="text-[10px] font-mono uppercase text-slate-600 flex items-center gap-1">
+            <Waves className="w-3 h-3 text-rose-700" /> Reactive Power
           </span>
           <div className="mt-1">
-            <div className="text-xl font-black font-mono text-white tracking-tight">
+            <div className="text-xl font-black font-mono text-slate-900 tracking-tight">
               {reading(reactivePower, 2)}
             </div>
-            <span className="text-[11px] text-rose-400 font-bold">VAr</span>
+            <span className="text-[11px] text-rose-700 font-bold">VAr</span>
           </div>
         </div>
       </div>
 
       {isThreePhase && (
-        <p className="rounded-xl bg-slate-800 p-3 text-sm text-slate-200">
+        <p className="rounded-xl bg-slate-50 p-3 text-sm text-slate-600">
           Individual phase readings are unavailable.
         </p>
       )}
 
       {/* Protection & Hardware Safety Matrix */}
-      <div className="bg-slate-900/70 rounded-2xl p-3 border border-slate-800 space-y-2">
-        <div className="flex items-center justify-between text-xs font-bold text-slate-400 uppercase tracking-wider font-mono">
+      <div className="bg-slate-50 rounded-2xl p-3 border border-slate-200 space-y-2">
+        <div className="flex items-center justify-between text-xs font-bold text-slate-600 uppercase tracking-wider font-mono">
           <span className="flex items-center gap-1.5">
-            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-700" />
             Hardware Protection & Safety Matrix
           </span>
           <span className="text-[10px] text-slate-500 font-mono">Real-time Tripping Guard</span>
@@ -1450,55 +1423,55 @@ export const EnergyMeterLayout = ({
 
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 text-[11px] font-mono">
           <div className={`p-2 rounded-xl border flex items-center justify-between ${
-            alerts.over_current ? 'bg-rose-950/40 border-rose-500/50 text-rose-300' : 'bg-slate-800/40 border-slate-700/40 text-slate-300'
+            alerts.over_current ? 'bg-rose-50 border-rose-500/50 text-rose-700' : 'bg-slate-50 border-slate-200 text-slate-600'
           }`}>
             <span>Over Current</span>
-            <span className={`font-bold ${alerts.over_current ? 'text-rose-400 animate-pulse' : 'text-emerald-400'}`}>
+            <span className={`font-bold ${alerts.over_current ? 'text-rose-700 animate-pulse' : 'text-emerald-700'}`}>
               {alerts.over_current === undefined ? '?' : alerts.over_current ? 'TRIP' : 'OK'}
             </span>
           </div>
 
           <div className={`p-2 rounded-xl border flex items-center justify-between ${
-            alerts.over_voltage ? 'bg-amber-950/40 border-amber-500/50 text-amber-300' : 'bg-slate-800/40 border-slate-700/40 text-slate-300'
+            alerts.over_voltage ? 'bg-amber-50 border-amber-500/50 text-amber-700' : 'bg-slate-50 border-slate-200 text-slate-600'
           }`}>
             <span>Over Voltage</span>
-            <span className={`font-bold ${alerts.over_voltage ? 'text-amber-400 animate-pulse' : 'text-emerald-400'}`}>
+            <span className={`font-bold ${alerts.over_voltage ? 'text-amber-700 animate-pulse' : 'text-emerald-700'}`}>
               {alerts.over_voltage === undefined ? '?' : alerts.over_voltage ? 'HIGH' : 'OK'}
             </span>
           </div>
 
           <div className={`p-2 rounded-xl border flex items-center justify-between ${
-            alerts.under_voltage ? 'bg-amber-950/40 border-amber-500/50 text-amber-300' : 'bg-slate-800/40 border-slate-700/40 text-slate-300'
+            alerts.under_voltage ? 'bg-amber-50 border-amber-500/50 text-amber-700' : 'bg-slate-50 border-slate-200 text-slate-600'
           }`}>
             <span>Under Voltage</span>
-            <span className={`font-bold ${alerts.under_voltage ? 'text-amber-400 animate-pulse' : 'text-emerald-400'}`}>
+            <span className={`font-bold ${alerts.under_voltage ? 'text-amber-700 animate-pulse' : 'text-emerald-700'}`}>
               {alerts.under_voltage === undefined ? '?' : alerts.under_voltage ? 'LOW' : 'OK'}
             </span>
           </div>
 
           <div className={`p-2 rounded-xl border flex items-center justify-between ${
-            alerts.low_pf ? 'bg-purple-950/40 border-purple-500/50 text-purple-300' : 'bg-slate-800/40 border-slate-700/40 text-slate-300'
+            alerts.low_pf ? 'bg-purple-50 border-purple-500/50 text-purple-700' : 'bg-slate-50 border-slate-200 text-slate-600'
           }`}>
             <span>Low PF</span>
-            <span className={`font-bold ${alerts.low_pf ? 'text-purple-400' : 'text-emerald-400'}`}>
+            <span className={`font-bold ${alerts.low_pf ? 'text-purple-700' : 'text-emerald-700'}`}>
               {alerts.low_pf === undefined ? '?' : alerts.low_pf ? 'WARN' : 'OK'}
             </span>
           </div>
 
           <div className={`p-2 rounded-xl border flex items-center justify-between ${
-            alerts.freq_error ? 'bg-rose-950/40 border-rose-500/50 text-rose-300' : 'bg-slate-800/40 border-slate-700/40 text-slate-300'
+            alerts.freq_error ? 'bg-rose-50 border-rose-500/50 text-rose-700' : 'bg-slate-50 border-slate-200 text-slate-600'
           }`}>
             <span>Freq Error</span>
-            <span className={`font-bold ${alerts.freq_error ? 'text-rose-400' : 'text-emerald-400'}`}>
+            <span className={`font-bold ${alerts.freq_error ? 'text-rose-700' : 'text-emerald-700'}`}>
               {alerts.freq_error === undefined ? '?' : alerts.freq_error ? 'ERROR' : 'OK'}
             </span>
           </div>
 
           <div className={`p-2 rounded-xl border flex items-center justify-between ${
-            alerts.reverse_power ? 'bg-rose-950/40 border-rose-500/50 text-rose-300' : 'bg-slate-800/40 border-slate-700/40 text-slate-300'
+            alerts.reverse_power ? 'bg-rose-50 border-rose-500/50 text-rose-700' : 'bg-slate-50 border-slate-200 text-slate-600'
           }`}>
             <span>Reverse Pwr</span>
-            <span className={`font-bold ${alerts.reverse_power ? 'text-rose-400' : 'text-emerald-400'}`}>
+            <span className={`font-bold ${alerts.reverse_power ? 'text-rose-700' : 'text-emerald-700'}`}>
               {alerts.reverse_power === undefined ? '?' : alerts.reverse_power ? 'REV' : 'OK'}
             </span>
           </div>
@@ -1506,10 +1479,10 @@ export const EnergyMeterLayout = ({
       </div>
 
       {/* Grid Frequency & Health Footer */}
-      <div className="flex flex-col sm:flex-row items-center justify-between text-xs text-slate-400 pt-1 font-mono gap-1 border-t border-slate-800/80">
+      <div className="flex flex-col sm:flex-row items-center justify-between text-xs text-slate-600 pt-1 font-mono gap-1 border-t border-slate-200">
         <span className="flex items-center gap-1.5">
           <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-          Grid Frequency: <strong className="text-white">{reading(frequency, 2)} Hz</strong> (Nominal 50.00 Hz)
+          Grid Frequency: <strong className="text-slate-900">{reading(frequency, 2)} Hz</strong> (Nominal 50.00 Hz)
         </span>
         <span className="text-[11px] text-slate-500">
           IEC 62053-21 Class 1.0 Metering Accuracy
@@ -1518,21 +1491,21 @@ export const EnergyMeterLayout = ({
 
       {/* Confirmation Dialog Modal for Hardware Energy Reset */}
       {showResetModal && createPortal(
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in select-none">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-sm w-full shadow-2xl space-y-4">
-            <div className="w-12 h-12 rounded-2xl bg-sky-500/20 text-sky-400 flex items-center justify-center border border-sky-500/30 mx-auto">
+        <div className="fixed inset-0 z-50 bg-slate-300/55 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in select-none">
+          <div className="bg-slate-50 border border-slate-200 rounded-3xl p-6 max-w-sm w-full shadow-sm space-y-4">
+            <div className="w-12 h-12 rounded-2xl bg-sky-500/20 text-sky-700 flex items-center justify-center border border-sky-500/30 mx-auto">
               <RotateCcw className="w-6 h-6" />
             </div>
 
             <div className="text-center space-y-1">
-              <h3 className="text-lg font-extrabold text-white">Reset Energy to 0?</h3>
-              <p className="text-xs text-slate-400">
+              <h3 className="text-lg font-extrabold text-slate-900">Reset Energy to 0?</h3>
+              <p className="text-xs text-slate-600">
                 This will dispatch a reset command to the hardware meter via MQTT topic:
               </p>
-              <div className="p-2 rounded-xl bg-slate-950 border border-slate-800 font-mono text-[11px] text-sky-300 mt-2 break-all">
+              <div className="p-2 rounded-xl bg-slate-50 border border-slate-200 font-mono text-[11px] text-sky-700 mt-2 break-all">
                 devices/{deviceId || 'EMS1'}/reset_energy
               </div>
-              <p className="text-[11px] text-slate-400 mt-1">
+              <p className="text-[11px] text-slate-600 mt-1">
                 Both the hardware non-volatile registers and database counters will restart from <strong>0.0000 kWh</strong>.
               </p>
             </div>
@@ -1540,9 +1513,9 @@ export const EnergyMeterLayout = ({
             <div className="flex items-center gap-3 pt-2">
               <button
                 type="button"
-                onClick={() => setShowResetModal(false)}
+                data-device-dismiss onClick={() => setShowResetModal(false)}
                 disabled={isResetting}
-                className="flex-1 py-2.5 rounded-xl border border-slate-700 text-slate-300 text-xs font-bold hover:bg-slate-800 transition-colors cursor-pointer"
+                className="flex-1 py-2.5 rounded-xl border border-slate-200 text-slate-600 text-xs font-bold hover:bg-slate-50 transition-colors cursor-pointer"
               >
                 Cancel
               </button>
@@ -1550,7 +1523,7 @@ export const EnergyMeterLayout = ({
                 type="button"
                 onClick={handleConfirmReset}
                 disabled={isResetting}
-                className="flex-1 py-2.5 rounded-xl bg-sky-500 hover:bg-sky-600 text-white text-xs font-bold transition-all shadow-md cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50"
+                className="flex-1 py-2.5 rounded-xl bg-sky-700 hover:bg-sky-800 text-white text-xs font-bold transition-all shadow-sm cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50"
               >
                 {isResetting ? (
                   <>
@@ -1709,32 +1682,32 @@ export const GateControllerLayout = ({
       )}
 
       {/* 1. Gate Visualizer & Live Status Display Card */}
-      <div className="w-full rounded-2xl sm:rounded-3xl bg-slate-900 text-white p-4 sm:p-5 border border-slate-800 shadow-md overflow-hidden relative">
+      <div className="w-full rounded-2xl sm:rounded-3xl bg-white text-slate-900 p-4 sm:p-5 border border-slate-200 shadow-sm overflow-hidden relative">
         {/* Glow ambient background */}
-        <div 
+        <div
           className="absolute inset-0 pointer-events-none transition-opacity duration-500"
           style={{
-            background: isActive 
+            background: isActive
               ? 'radial-gradient(circle at 50% 30%, rgba(16, 185, 129, 0.22) 0%, transparent 70%)'
               : 'radial-gradient(circle at 50% 30%, rgba(56, 189, 248, 0.08) 0%, transparent 70%)'
           }}
         />
 
         {/* Top Status Row inside Visualizer */}
-        <div className="flex items-center justify-between pb-3 border-b border-slate-800/80 relative z-10">
+        <div className="flex items-center justify-between pb-3 border-b border-slate-200 relative z-10">
           <div className="flex items-center gap-2">
             <div className={`w-8 h-8 rounded-xl flex items-center justify-center border transition-all ${
-              isActive 
-                ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40' 
-                : 'bg-sky-500/10 text-sky-400 border-sky-500/20'
+              isActive
+                ? 'bg-emerald-500/20 text-emerald-700 border-emerald-500/40'
+                : 'bg-sky-500/10 text-sky-700 border-sky-500/20'
             }`}>
               <RotateCw className={`w-4 h-4 ${isActive ? 'animate-spin' : ''}`} />
             </div>
             <div>
-              <span className="text-[11px] font-bold text-slate-300 tracking-wide uppercase font-mono truncate max-w-[150px] sm:max-w-xs block">
+              <span className="text-[11px] font-bold text-slate-600 tracking-wide uppercase font-mono truncate max-w-[150px] sm:max-w-xs block">
                 {deviceName || 'Motorized Barrier'}
               </span>
-              <p className="text-[10px] text-slate-400 font-mono">
+              <p className="text-[10px] text-slate-600 font-mono">
                 Relay 1 • GPIO 13
               </p>
             </div>
@@ -1743,8 +1716,8 @@ export const GateControllerLayout = ({
           {/* Status Badge */}
           <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold border flex items-center gap-1.5 backdrop-blur-md transition-all ${
             isActive
-              ? 'bg-emerald-500/25 text-emerald-300 border-emerald-400/50 shadow-xs animate-pulse'
-              : 'bg-slate-800/90 text-slate-300 border-slate-700/80'
+              ? 'bg-emerald-500/25 text-emerald-700 border-emerald-400/50 shadow-xs animate-pulse'
+              : 'bg-slate-50 text-slate-600 border-slate-200'
           }`}>
             <span className={`w-1.5 h-1.5 rounded-full ${isActive ? 'bg-emerald-400 animate-ping' : 'bg-slate-400'}`} />
             {isTriggering ? 'MOTOR TRIGGERED' : (isOn ? 'ENERGIZED' : 'STANDBY')}
@@ -1755,7 +1728,7 @@ export const GateControllerLayout = ({
         <div className="relative py-3.5 flex flex-col items-center justify-center z-10">
           <div className="w-full max-w-sm h-22 relative flex items-center justify-between px-2">
             {/* Left Gate Pillar */}
-            <div className="w-5 sm:w-6 h-full rounded-md bg-gradient-to-b from-slate-700 via-slate-800 to-slate-900 border border-slate-600 shadow-sm flex flex-col justify-between p-1 z-20">
+            <div className="w-5 sm:w-6 h-full rounded-md bg-gradient-to-b from-slate-200 via-slate-300 to-slate-400 border border-slate-200 shadow-sm flex flex-col justify-between p-1 z-20">
               <span className="w-full h-1 bg-sky-400/60 rounded-full" />
               <div className={`w-1.5 h-1.5 rounded-full mx-auto ${isActive ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
               <span className="w-full h-1 bg-sky-400/60 rounded-full" />
@@ -1764,39 +1737,39 @@ export const GateControllerLayout = ({
             {/* Sliding Gate Barrier Structure */}
             <div className="flex-1 h-16 mx-2 relative overflow-hidden flex items-center">
               {/* Rail Guide Top and Bottom */}
-              <div className="absolute top-0 inset-x-0 h-1 bg-slate-700/80 rounded-full" />
-              <div className="absolute bottom-0 inset-x-0 h-1.5 bg-slate-700/80 rounded-full" />
+              <div className="absolute top-0 inset-x-0 h-1 bg-slate-50 rounded-full" />
+              <div className="absolute bottom-0 inset-x-0 h-1.5 bg-slate-50 rounded-full" />
 
               {/* Sliding Gate Panel */}
-              <div 
+              <div
                 className={`w-full h-full rounded-md border flex items-center justify-around px-2 transition-all duration-700 ${
-                  isActive 
-                    ? 'translate-x-10 opacity-75 border-emerald-400/70 bg-emerald-950/40 shadow-sm' 
-                    : 'translate-x-0 opacity-95 border-sky-500/30 bg-slate-800/60'
+                  isActive
+                    ? 'translate-x-10 opacity-75 border-emerald-400/70 bg-emerald-50 shadow-sm'
+                    : 'translate-x-0 opacity-95 border-sky-500/30 bg-slate-50'
                 }`}
               >
                 {/* Vertical Metal Bars of Gate */}
                 {Array.from({ length: 9 }).map((_, i) => (
-                  <div 
-                    key={i} 
+                  <div
+                    key={i}
                     className={`w-1 h-full rounded-full transition-colors ${
                       isActive ? 'bg-gradient-to-b from-emerald-400 to-teal-500' : 'bg-gradient-to-b from-slate-400 to-slate-600'
-                    }`} 
+                    }`}
                   />
                 ))}
               </div>
 
               {/* Motor Cogwheels Animation */}
               <div className={`absolute bottom-1 left-1/2 -translate-x-1/2 flex items-center gap-1.5 transition-opacity ${isActive ? 'opacity-100' : 'opacity-40'}`}>
-                <RotateCw className={`w-3.5 h-3.5 text-emerald-400 ${isActive ? 'animate-spin' : ''}`} />
-                <span className="text-[9px] font-mono font-bold uppercase tracking-wider text-emerald-400">
+                <RotateCw className={`w-3.5 h-3.5 text-emerald-700 ${isActive ? 'animate-spin' : ''}`} />
+                <span className="text-[9px] font-mono font-bold uppercase tracking-wider text-emerald-700">
                   {!isOnline ? 'POSITION UNKNOWN' : isActive ? 'SIGNAL PULSE ACTIVE' : 'MOTOR READY'}
                 </span>
               </div>
             </div>
 
             {/* Right Gate Pillar */}
-            <div className="w-5 sm:w-6 h-full rounded-md bg-gradient-to-b from-slate-700 via-slate-800 to-slate-900 border border-slate-600 shadow-sm flex flex-col justify-between p-1 z-20">
+            <div className="w-5 sm:w-6 h-full rounded-md bg-gradient-to-b from-slate-200 via-slate-300 to-slate-400 border border-slate-200 shadow-sm flex flex-col justify-between p-1 z-20">
               <span className="w-full h-1 bg-sky-400/60 rounded-full" />
               <div className={`w-1.5 h-1.5 rounded-full mx-auto ${isActive ? 'bg-emerald-400 animate-ping' : 'bg-slate-500'}`} />
               <span className="w-full h-1 bg-sky-400/60 rounded-full" />
@@ -1824,7 +1797,7 @@ export const GateControllerLayout = ({
             className={`w-36 h-36 sm:w-40 sm:h-40 rounded-full flex flex-col items-center justify-center transition-all duration-200 cursor-pointer select-none active:scale-95 shadow-xl relative border-4 ${
               isActive
                 ? 'bg-gradient-to-br from-emerald-500 via-teal-500 to-emerald-600 text-white border-emerald-300 shadow-emerald-500/30 scale-105 ring-6 ring-emerald-400/20'
-                : 'bg-gradient-to-br from-white via-slate-50 to-sky-50 text-slate-800 border-white hover:border-sky-300 hover:shadow-sky-500/20 shadow-lg ring-6 ring-sky-100/60'
+                : 'bg-gradient-to-br from-white via-slate-50 to-sky-50 text-slate-800 border-white hover:border-sky-300 hover:shadow-sky-500/20 shadow-sm ring-6 ring-sky-100/60'
             }`}
             aria-label="Gate Trigger Switch"
           >
@@ -1846,8 +1819,8 @@ export const GateControllerLayout = ({
             <span className={`text-[10px] font-semibold mt-0.5 ${
               isActive ? 'text-emerald-100' : 'text-slate-500'
             }`}>
-              {isTriggering 
-                ? 'Pulse signal (1.5s)' 
+              {isTriggering
+                ? 'Pulse signal (1.5s)'
                 : (triggerMode === 'pulse' ? 'Tap to Open / Close' : (isOn ? 'Relay is ON' : 'Tap to toggle'))}
             </span>
           </button>
@@ -1883,12 +1856,12 @@ export const GateControllerLayout = ({
       {/* 3. Gate Telemetry & Statistics Cards */}
       <div className="w-full grid grid-cols-2 sm:grid-cols-4 gap-2 pt-0.5">
         <div className="bg-white/90 backdrop-blur-sm rounded-2xl p-2.5 px-3 border border-sky-100 shadow-xs flex flex-col justify-between">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-mono">Channel</span>
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-600 font-mono">Channel</span>
           <span className="text-xs sm:text-sm font-extrabold text-slate-800 mt-0.5">1 (GPIO 13)</span>
         </div>
 
         <div className="bg-white/90 backdrop-blur-sm rounded-2xl p-2.5 px-3 border border-sky-100 shadow-xs flex flex-col justify-between">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-mono">Motor State</span>
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-600 font-mono">Motor State</span>
           <span className={`text-xs sm:text-sm font-extrabold mt-0.5 ${
             isActive ? 'text-emerald-600' : 'text-slate-800'
           }`}>
@@ -1897,14 +1870,14 @@ export const GateControllerLayout = ({
         </div>
 
         <div className="bg-white/90 backdrop-blur-sm rounded-2xl p-2.5 px-3 border border-sky-100 shadow-xs flex flex-col justify-between">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-mono">Last Action</span>
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-600 font-mono">Last Action</span>
           <span className="text-xs sm:text-sm font-extrabold text-slate-800 mt-0.5 truncate">
             {lastActionTime || 'Ready'}
           </span>
         </div>
 
         <div className="bg-white/90 backdrop-blur-sm rounded-2xl p-2.5 px-3 border border-sky-100 shadow-xs flex flex-col justify-between">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-mono">Total Triggers</span>
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-600 font-mono">Total Triggers</span>
           <span className="text-xs sm:text-sm font-extrabold text-[#0284c7] mt-0.5 font-mono">{triggerCount} Cycles</span>
         </div>
       </div>
@@ -1925,10 +1898,10 @@ interface DynamicDeviceLayoutProps {
   device?: any;
 }
 
-export const DynamicDeviceLayout = ({ 
-  modelCode, 
-  deviceName, 
-  deviceId, 
+export const DynamicDeviceLayout = ({
+  modelCode,
+  deviceName,
+  deviceId,
   initialSwitches,
   switchConfigs,
   isOnline = true,
@@ -1939,7 +1912,7 @@ export const DynamicDeviceLayout = ({
   switch (registered?.layoutType) {
     case 'gate_controller':
       return (
-        <GateControllerLayout 
+        <GateControllerLayout
           modelCode={modelCode}
           deviceName={deviceName}
           deviceId={deviceId}
@@ -1949,8 +1922,8 @@ export const DynamicDeviceLayout = ({
       );
     case 'touch_panel':
       return (
-        <TouchPanelLayout 
-          switchCount={registered.switchCount || 8} 
+        <TouchPanelLayout
+          switchCount={registered.switchCount || 8}
           modelCode={modelCode}
           deviceName={deviceName}
           deviceId={deviceId}
@@ -1961,8 +1934,8 @@ export const DynamicDeviceLayout = ({
       );
     case 'energy_meter':
       return (
-        <EnergyMeterLayout 
-          isThreePhase={registered.isThreePhase} 
+        <EnergyMeterLayout
+          isThreePhase={registered.isThreePhase}
           hasSwitch={registered.hasSwitch}
           modelCode={modelCode}
           deviceName={deviceName}

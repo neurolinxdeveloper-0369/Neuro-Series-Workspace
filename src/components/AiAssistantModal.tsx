@@ -571,7 +571,7 @@ export const AiAssistantModal = ({
       {/* Blurred Backdrop */}
       <div 
         onClick={onClose}
-        className="fixed inset-0 bg-slate-900/40 backdrop-blur-md transition-opacity"
+        className="fixed inset-0 bg-slate-300/55 backdrop-blur-md transition-opacity"
         aria-hidden="true"
       />
 
@@ -587,7 +587,7 @@ export const AiAssistantModal = ({
         <header className="px-5 py-3.5 border-b border-sky-100/80 bg-white/70 backdrop-blur-xl flex items-center justify-between flex-shrink-0">
           <div className="flex items-center gap-3">
             {/* Logo in Circle with glowing ring */}
-            <div className="relative w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-slate-950 border-2 border-white ring-2 ring-sky-400/80 shadow-[0_0_14px_rgba(56,189,248,0.5)] flex items-center justify-center flex-shrink-0">
+            <div className="relative w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-sky-50 border-2 border-white ring-2 ring-sky-400/80 shadow-[0_0_14px_rgba(56,189,248,0.5)] flex items-center justify-center flex-shrink-0">
               <img 
                 src={getAssetUrl('logo.png')} 
                 alt="Neuro AI" 
@@ -651,7 +651,7 @@ export const AiAssistantModal = ({
             >
               <div className="flex items-end gap-2 max-w-[90%] sm:max-w-[85%]">
                 {msg.sender === 'assistant' && (
-                  <div className="w-7 h-7 rounded-full bg-slate-950 border border-sky-300 flex items-center justify-center flex-shrink-0 shadow-xs mb-1">
+                  <div className="w-7 h-7 rounded-full bg-sky-50 border border-sky-300 flex items-center justify-center flex-shrink-0 shadow-xs mb-1">
                     <img src={getAssetUrl('logo.png')} alt="" className="w-4 h-4 object-contain" />
                   </div>
                 )}
@@ -728,7 +728,7 @@ export const AiAssistantModal = ({
           {/* Typing Indicator */}
           {isTyping && (
             <div className="flex items-center gap-2 animate-in fade-in duration-100">
-              <div className="w-7 h-7 rounded-full bg-slate-950 border border-sky-300 flex items-center justify-center flex-shrink-0 shadow-xs">
+              <div className="w-7 h-7 rounded-full bg-sky-50 border border-sky-300 flex items-center justify-center flex-shrink-0 shadow-xs">
                 <img src={getAssetUrl('logo.png')} alt="" className="w-4 h-4 object-contain" />
               </div>
               <div className="bg-white rounded-2xl px-4 py-3 border border-slate-200/80 shadow-xs flex items-center gap-1.5">

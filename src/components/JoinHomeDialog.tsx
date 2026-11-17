@@ -32,7 +32,7 @@ export function JoinHomeDialog({ initialCode, onJoined, onClose }: {
   }
 
   return (
-    <div className="fixed inset-0 z-[60] grid place-items-center bg-slate-950/55 p-4" role="dialog" aria-modal="true" aria-labelledby="join-title">
+    <div className="fixed inset-0 z-[60] grid place-items-center bg-slate-300/55 p-4" role="dialog" aria-modal="true" aria-labelledby="join-title">
       <form onSubmit={join} className="w-full max-w-md space-y-4 rounded-3xl bg-white p-5 text-slate-900 sm:p-6">
         <h2 id="join-title" className="text-lg font-bold">Join a location</h2>
         <label className="grid gap-1.5 text-sm font-medium">

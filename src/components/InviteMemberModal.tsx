@@ -104,7 +104,7 @@ export function InviteMemberModal({ home, onClose, rooms, devices }: { home: Hom
   }
 
   return (
-    <div className="fixed inset-0 z-[60] grid place-items-center bg-slate-950/55 p-4" role="dialog" aria-modal="true" aria-labelledby="invite-title">
+    <div className="fixed inset-0 z-[60] grid place-items-center bg-slate-300/55 p-4" role="dialog" aria-modal="true" aria-labelledby="invite-title">
       <section className="max-h-[85dvh] w-full max-w-md overflow-y-auto rounded-3xl bg-white p-5 text-slate-900 sm:p-6">
         <header className="flex items-center justify-between gap-3">
           <h2 id="invite-title" className="text-lg font-bold">Invite someone to {home.name}</h2>

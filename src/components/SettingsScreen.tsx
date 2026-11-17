@@ -23,8 +23,8 @@ export function SettingsScreen({ isOpen, onClose, onOpenSignIn, isSignedIn, curr
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-[#e5f3f7] text-slate-900" role="dialog" aria-modal="true" aria-labelledby="settings-title">
-      <header className="sticky top-0 flex items-center gap-3 border-b border-slate-200 bg-[#e5f3f7] px-4 pb-3 pt-[calc(0.75rem+var(--safe-inset-top))] sm:px-6">
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-[var(--app-background)] text-slate-900" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+      <header className="sticky top-0 flex items-center gap-3 border-b border-slate-200 bg-[var(--app-background)] px-4 pb-3 pt-[calc(0.75rem+var(--safe-inset-top))] sm:px-6">
         <button type="button" aria-label="Close settings" onClick={onClose}
           className="grid size-11 place-items-center rounded-full bg-white">
           <ArrowLeft className="size-5" aria-hidden="true" />

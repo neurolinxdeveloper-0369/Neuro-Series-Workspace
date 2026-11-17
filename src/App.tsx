@@ -7,7 +7,8 @@ import { useNotifications } from './hooks/useNotifications';
 import { useBiometricLock } from './hooks/useBiometricLock';
 import { DeviceManagement } from './components/DeviceManagement';
 import { Capacitor } from '@capacitor/core';
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useScreenGestures } from './hooks/useScreenGestures';
+import { useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react';
 import {
   Home,
   LayoutPanelTop,
@@ -61,14 +62,34 @@ import { formatIstTime, formatIstDate } from './utils/time';
 import { SplashScreen } from '@capacitor/splash-screen';
 import { StatusBar, Style } from '@capacitor/status-bar';
 
+const meterFields = ['voltage', 'current', 'power', 'apparent_power', 'reactive_power', 'power_factor',
+  'frequency', 'energy_kwh', 'energy_wh', 'relay', 'trip_reason', 'alerts'] as const;
+
+function applyTelemetry(device: any, state: any) {
+  if (state.last_seen_at && device.last_seen_at &&
+      Date.parse(state.last_seen_at) < Date.parse(device.last_seen_at)) return device;
+  const reportedAt = state.last_seen_at || new Date().toISOString();
+  const endpoints = Array.isArray(state.readings) && state.readings.length
+    ? device.endpoints?.map((endpoint: DeviceEndpoint) => {
+      const reading = (state.readings as DeviceReading[]).find(item => item.channel === endpoint.endpoint_index);
+      return reading && endpoint.endpoint_type !== 'RELAY'
+        ? { ...endpoint, state: { ...endpoint.state, reading: { ...reading, reportedAt } } }
+        : endpoint;
+    }) : device.endpoints;
+  const telemetry = Object.fromEntries(meterFields.flatMap(field => state[field] === undefined ? [] : [[field, state[field]]]));
+  return {
+    ...device, ...telemetry, endpoints,
+    is_online: typeof state.is_online === 'boolean' ? state.is_online : device.is_online,
+    rssi: state.rssi ?? device.rssi,
+    last_seen_at: state.last_seen_at ?? device.last_seen_at,
+    switches: state.switches ? { ...device.switches, ...state.switches } : device.switches,
+    switch_configs: state.switchConfigs ?? device.switch_configs,
+  };
+}
+
 export function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
-  const [mousePos, setMousePos] = useState({ x: -100, y: -100 });
-  const [isHovered, setIsHovered] = useState(false);
-  const [isClicking, setIsClicking] = useState(false);
-  const [isHoveringElement, setIsHoveringElement] = useState(false);
-  const [isHoveringLight, setIsHoveringLight] = useState(false);
 
   // Sign In & User Authentication State
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(() => authStorage.getUser());
@@ -81,6 +102,9 @@ export function App() {
   const [historyView, setHistoryView] = useState<'device' | 'routines' | 'energy'>();
   const [recoveryOpen, setRecoveryOpen] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [refreshRevision, setRefreshRevision] = useState(0);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const refreshInProgress = useRef(false);
   const [isInitializing, setIsInitializing] = useState<boolean>(() => authStorage.isAuthenticated());
 
   const [activeTab, setActiveTab] = useState<'home' | 'devices' | 'explore' | 'routines' | 'menu'>('home');
@@ -147,20 +171,28 @@ export function App() {
 
   const [devices, setDevices] = useState<any[]>([]);
   const [selectedDeviceForControl, setSelectedDeviceForControl] = useState<any | null>(null);
+  const activeHomeId = activeHome?.id;
+  const currentHomeId = useRef(activeHomeId);
+  useLayoutEffect(() => { currentHomeId.current = activeHomeId; }, [activeHomeId]);
+  const deviceFetch = useRef(0);
 
   // Load rooms and devices for a given home
   const loadRooms = async (homeId: string) => {
     try {
       const homeRooms = await homeApi.getRooms(homeId);
-      setRooms(homeRooms);
+      if (currentHomeId.current === homeId) setRooms(homeRooms);
     } catch {
-      setRooms([]);
+      // Keep the last successful snapshot on a transient failure.
     }
   };
 
-  const loadDevices = async (homeId: string) => {
+  const loadDevices = useCallback(async (homeId: string) => {
+    if (currentHomeId.current !== homeId) return;
+    const request = ++deviceFetch.current;
+    const token = authStorage.getToken();
     try {
       const homeDevices = await deviceApi.getDevicesByHome(homeId);
+      if (currentHomeId.current !== homeId || request !== deviceFetch.current || token !== authStorage.getToken()) return;
       const now = Date.now();
       const mapped = (homeDevices || []).map((d: any) => {
         const isOnline = Boolean(d.is_online) && d.last_seen_at && (now - new Date(d.last_seen_at).getTime() <= 12000);
@@ -170,80 +202,78 @@ export function App() {
           last_seen_at: d.last_seen_at || null,
         };
       });
-      setDevices(mapped);
+      const preserveNewer = (snapshot: any, previous: any) => {
+        if (previous && Date.parse(previous.last_seen_at) > (Date.parse(snapshot.last_seen_at) || 0)) {
+          return { ...applyTelemetry(snapshot, { ...previous, switchConfigs: previous.switch_configs }),
+            endpoints: previous.endpoints ?? snapshot.endpoints };
+        }
+        return snapshot;
+      };
+      setDevices(previous => mapped.map(snapshot => preserveNewer(snapshot, previous.find(device => device.id === snapshot.id))));
+      setSelectedDeviceForControl((previous: any) => {
+        if (!previous) return previous;
+        const snapshot = mapped.find(device => device.id === previous.id);
+        return snapshot ? preserveNewer(snapshot, previous) : null;
+      });
     } catch {
-      setDevices([]);
+      // Leave current readings visible while reconnecting.
     }
-  };
+  }, []);
 
   const loadRoutines = async (homeId?: string) => {
     try {
       const dbRoutines = await routineApi.getRoutines(homeId);
-      setRoutines(dbRoutines);
+      if (currentHomeId.current === homeId) setRoutines(dbRoutines);
     } catch {
-      setRoutines([]);
+      // Keep the last successful snapshot on a transient failure.
     }
   };
 
   useEffect(() => {
-    if (activeHome) {
-      loadRooms(activeHome.id);
-      loadDevices(activeHome.id);
-      loadRoutines(activeHome.id);
-    } else {
-      setRooms([]);
-      setDevices([]);
-      setRoutines([]);
+    setRooms([]);
+    setDevices([]);
+    setRoutines([]);
+    setSelectedDeviceForControl(null);
+    if (activeHomeId) {
+      void loadRooms(activeHomeId);
+      void loadDevices(activeHomeId);
+      void loadRoutines(activeHomeId);
     }
-  }, [activeHome?.id]);
+  }, [activeHomeId, loadDevices]);
 
   // Subscribe only while a signed-in session is active.
   useEffect(() => {
     if (!isSignedIn) return;
+    const sync = () => {
+      const id = currentHomeId.current;
+      if (id && document.visibilityState !== 'hidden') void loadDevices(id);
+    };
+    const stopReady = realtimeSocket.onReady(sync);
     const unsubscribe = realtimeSocket.subscribe((deviceId, incomingState) => {
-      const nowIso = incomingState.last_seen_at || new Date().toISOString();
-      const mergeReadings = (endpoints?: DeviceEndpoint[]) => !incomingState.readings?.length ? endpoints :
-        endpoints?.map(endpoint => {
-          const reading = (incomingState.readings as DeviceReading[]).find(item => item.channel === endpoint.endpoint_index);
-          return reading && endpoint.endpoint_type !== 'RELAY'
-            ? { ...endpoint, state: { ...endpoint.state, reading: { ...reading, reportedAt: nowIso } } }
-            : endpoint;
-        });
-      const isOnline = typeof incomingState.is_online === 'boolean' ? incomingState.is_online : undefined;
-
-      setDevices(prev => prev.map(dev => {
-        if (dev.device_id === deviceId || dev.id === deviceId) {
-          return {
-            ...dev,
-            is_online: isOnline ?? dev.is_online,
-            rssi: incomingState.rssi ?? dev.rssi,
-            last_seen_at: incomingState.last_seen_at ?? dev.last_seen_at,
-            switches: incomingState.switches ? { ...dev.switches, ...incomingState.switches } : dev.switches,
-            switch_configs: incomingState.switchConfigs || dev.switch_configs,
-            endpoints: mergeReadings(dev.endpoints),
-          };
-        }
-        return dev;
-      }));
-
-      setSelectedDeviceForControl((prev: any) => {
-        if (prev && (prev.device_id === deviceId || prev.id === deviceId)) {
-          return {
-            ...prev,
-            is_online: isOnline ?? prev.is_online,
-            rssi: incomingState.rssi ?? prev.rssi,
-            last_seen_at: incomingState.last_seen_at ?? prev.last_seen_at,
-            switches: incomingState.switches ? { ...prev.switches, ...incomingState.switches } : prev.switches,
-            switch_configs: incomingState.switchConfigs || prev.switch_configs,
-            endpoints: mergeReadings(prev.endpoints),
-          };
-        }
-        return prev;
-      });
+      const update = (device: any) =>
+        device && (device.device_id === deviceId || device.id === deviceId) ? applyTelemetry(device, incomingState) : device;
+      setDevices(previous => previous.map(update));
+      setSelectedDeviceForControl(update);
     });
-
-    return unsubscribe;
-  }, [isSignedIn]);
+    const resume = () => {
+      if (document.visibilityState === 'hidden') return;
+      realtimeSocket.connect();
+      sync();
+    };
+    const fallback = window.setInterval(() => {
+      if (!realtimeSocket.isReady()) resume();
+      else sync();
+    }, 15000);
+    document.addEventListener('visibilitychange', resume);
+    window.addEventListener('online', resume);
+    return () => {
+      stopReady();
+      unsubscribe();
+      window.clearInterval(fallback);
+      document.removeEventListener('visibilitychange', resume);
+      window.removeEventListener('online', resume);
+    };
+  }, [isSignedIn, loadDevices]);
 
   // 12-second watchdog timer: If hardware hasn't sent RSSI/telemetry within 12 seconds, flip status to offline
   useEffect(() => {
@@ -408,7 +438,7 @@ export function App() {
     try {
       if (Capacitor.isNativePlatform()) {
         void StatusBar.setStyle({ style: Style.Light }).catch(() => {});
-        void StatusBar.setBackgroundColor({ color: '#d4edf4' }).catch(() => {});
+        void StatusBar.setBackgroundColor({ color: '#eaf5fa' }).catch(() => {});
       }
       const bridge = (window as any).AndroidWifiBridge;
       if (bridge && typeof bridge.setSystemIconsBlack === 'function') {
@@ -423,72 +453,6 @@ export function App() {
 
   // Settings Screen State
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-
-  // Total 5 navigation items as requested
-
-  useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      setMousePos({ x: e.clientX, y: e.clientY });
-      setIsHovered(true);
-    };
-
-    const handleMouseLeave = () => {
-      setIsHovered(false);
-      setIsHoveringElement(false);
-      setIsHoveringLight(false);
-    };
-
-    const handleMouseOver = (e: MouseEvent) => {
-      const target = e.target as HTMLElement | null;
-      if (target) {
-        // Detect white or light background
-        let isLight = false;
-        let curr: HTMLElement | null = target;
-        while (curr && curr !== document.body) {
-          if (
-            curr.classList.contains('bg-white') ||
-            curr.getAttribute('data-bg-light') === 'true'
-          ) {
-            isLight = true;
-            break;
-          }
-          const bg = window.getComputedStyle(curr).backgroundColor;
-          if (
-            bg === 'rgb(255, 255, 255)' ||
-            bg.startsWith('rgba(255, 255, 255')
-          ) {
-            isLight = true;
-            break;
-          }
-          curr = curr.parentElement;
-        }
-        setIsHoveringLight(isLight);
-
-        if (target.closest('button, a, img, svg, input, [role="button"]')) {
-          setIsHoveringElement(true);
-        } else {
-          setIsHoveringElement(false);
-        }
-      }
-    };
-
-    const handleMouseDown = () => setIsClicking(true);
-    const handleMouseUp = () => setIsClicking(false);
-
-    window.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseleave', handleMouseLeave);
-    window.addEventListener('mouseover', handleMouseOver);
-    window.addEventListener('mousedown', handleMouseDown);
-    window.addEventListener('mouseup', handleMouseUp);
-
-    return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseleave', handleMouseLeave);
-      window.removeEventListener('mouseover', handleMouseOver);
-      window.removeEventListener('mousedown', handleMouseDown);
-      window.removeEventListener('mouseup', handleMouseUp);
-    };
-  }, []);
 
   // Exactly 5 Menu Items
   const navItems = [
@@ -1236,6 +1200,66 @@ export function App() {
     </div>
   );
 
+  const canGoBack = Boolean(helpTopic || showNotifications || historyView || recoveryOpen || isSignInOpen ||
+    isSettingsOpen || isSetupHomeOpen || isJoinOpen || isInviteMemberOpen || isAddDeviceOpen || isCatalogOpen ||
+    isAiAssistantOpen || isRoutineModalOpen || isCreateRoomOpen || selectedDeviceForControl || isSearchOpen ||
+    isHomeDropdownOpen || isPlusMenuOpen || isDotsMenuOpen || activeTab !== 'home');
+  const goBack = () => {
+    if (biometricLock.locked) return false;
+    if (helpTopic) setHelpTopic(undefined);
+    else if (showNotifications) setShowNotifications(false);
+    else if (historyView) setHistoryView(undefined);
+    else if (recoveryOpen) setRecoveryOpen(false);
+    else if (isAiAssistantOpen) setIsAiAssistantOpen(false);
+    else if (isSignInOpen || isAddDeviceOpen || isCatalogOpen) {
+      const backButton = document.querySelector<HTMLButtonElement>('[data-screen-back]');
+      if (backButton) backButton.click();
+      else if (isSignInOpen) setIsSignInOpen(false);
+      else { setIsAddDeviceOpen(false); setIsCatalogOpen(false); }
+    } else if (isInviteMemberOpen) setIsInviteMemberOpen(false);
+    else if (isJoinOpen) {
+      setIsJoinOpen(false);
+      setInviteCode('');
+      if (location.hash.startsWith('#invite=')) history.replaceState(history.state, '', location.pathname + location.search);
+    }
+    else if (isSetupHomeOpen) {
+      if (allowSetupHomeClose) setIsSetupHomeOpen(false);
+      else return false;
+    } else if (isSettingsOpen) setIsSettingsOpen(false);
+    else if (isRoutineModalOpen) setIsRoutineModalOpen(false);
+    else if (isCreateRoomOpen) setIsCreateRoomOpen(false);
+    else if (selectedDeviceForControl) {
+      const dismiss = document.querySelector<HTMLButtonElement>('[data-device-dismiss]');
+      if (dismiss) dismiss.click();
+      else setSelectedDeviceForControl(null);
+    } else if (isSearchOpen) setIsSearchOpen(false);
+    else if (isHomeDropdownOpen || isPlusMenuOpen || isDotsMenuOpen) {
+      setIsHomeDropdownOpen(false);
+      setIsPlusMenuOpen(false);
+      setIsDotsMenuOpen(false);
+    } else if (activeTab !== 'home') setActiveTab('home');
+    else return false;
+    return true;
+  };
+  const refreshScreen = async () => {
+    if (biometricLock.locked || refreshInProgress.current) return;
+    refreshInProgress.current = true;
+    setIsRefreshing(true);
+    setRefreshRevision(value => value + 1);
+    try {
+      if (isSignedIn) {
+        notifications.refresh();
+        realtimeSocket.connect();
+        if (activeHomeId) await Promise.all([loadRooms(activeHomeId), loadDevices(activeHomeId), loadRoutines(activeHomeId)]);
+        else await loadHomes();
+      }
+    } finally {
+      refreshInProgress.current = false;
+      setIsRefreshing(false);
+    }
+  };
+  useScreenGestures(canGoBack && !biometricLock.locked, goBack, () => { void refreshScreen(); });
+
   if (biometricLock.locked) return <LockedScreen lock={biometricLock} onSignOut={() => {
     authApi.logout();
     biometricLock.resetForAccountRecovery();
@@ -1250,55 +1274,8 @@ export function App() {
   }} />;
 
   return (
-    <div className="bg-app-container fixed inset-0 w-screen h-screen overflow-hidden select-none cursor-none font-sans">
-
-      {/* 1. Mobile & Tabs (<1200px or portrait or touch): Light Blue #d4edf4 with top-left & bottom-right white gradients */}
-      <div className="bg-mobile-tab" />
-
-      {/* 2. Desktop Landscape (>=1200px fine pointer): Villa Architecture Backdrop with frosted glass & dark obsidian sheen */}
-      <div className="bg-desktop absolute inset-0 pointer-events-none overflow-hidden">
-        <img
-          src={getAssetUrl('background.png')}
-          alt="Modern Villa Glass Architecture"
-          className="absolute inset-0 w-full h-full object-cover object-center scale-105"
-        />
-        {/* Frosted Blur & Refraction Layer */}
-        <div
-          className="absolute inset-0"
-          style={{
-            backdropFilter: 'blur(20px) saturate(150%)',
-            WebkitBackdropFilter: 'blur(20px) saturate(150%)',
-          }}
-        />
-        {/* Dark Obsidian Glass Tint */}
-        <div
-          className="absolute inset-0"
-          style={{
-            background: 'linear-gradient(180deg, rgba(3, 5, 10, 0.45) 0%, rgba(5, 7, 14, 0.65) 100%)',
-          }}
-        />
-        {/* Diagonal Glossy Specular Glass Sheen */}
-        <div
-          className="absolute inset-0"
-          style={{
-            background: 'linear-gradient(125deg, rgba(255, 255, 255, 0.09) 0%, rgba(255, 255, 255, 0.015) 35%, transparent 65%)'
-          }}
-        />
-        {/* Top Specular Edge Glare */}
-        <div
-          className="absolute top-0 inset-x-0 h-44"
-          style={{
-            background: 'linear-gradient(180deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.02) 40%, transparent 100%)'
-          }}
-        />
-        {/* Subtle Edge Vignette (desktop only, never on mobile/tabs) */}
-        <div
-          className="absolute inset-0"
-          style={{
-            background: 'radial-gradient(ellipse at center, transparent 40%, rgba(0, 0, 0, 0.5) 85%, rgba(0, 0, 0, 0.85) 100%)'
-          }}
-        />
-      </div>
+    <div className="app-screen fixed inset-0 overflow-hidden font-sans">
+      {isRefreshing && <div role="status" className="pointer-events-none fixed inset-x-0 top-[calc(var(--safe-inset-top)+0.5rem)] z-[100] mx-auto w-fit rounded-full border border-sky-200 bg-white px-4 py-2 text-sm font-semibold text-sky-800 shadow-sm">Refreshing...</div>}
 
       {/* 3. Unified Responsive Header: Only shown on Home tab */}
       {isSignedIn && activeTab === 'home' ? (
@@ -1410,7 +1387,7 @@ export function App() {
       )}
 
       {/* 4. Mobile & Tablet Content (Explore Slider + Pure White Cards based on activeTab; Menu has all content cleared) */}
-      <main className={`explore-slider-wrapper ${isSignedIn && activeTab === 'home' ? 'top-header-2rows' : 'top-header-1row'} fixed inset-x-0 top-[7.5rem] sm:top-32 bottom-20 sm:bottom-6 overflow-y-auto overflow-x-hidden flex flex-col items-center justify-start pointer-events-none z-20 px-4 sm:px-6 sm:pl-24 pb-8 space-y-3.5`}>
+      <main className={`explore-slider-wrapper ${isSignedIn && activeTab === 'home' ? 'top-header-2rows' : 'top-header-1row'} fixed inset-x-0 top-[7.5rem] sm:top-32 bottom-20 sm:bottom-6 overflow-y-auto overflow-x-hidden flex flex-col items-center justify-start z-20 px-4 sm:px-6 sm:pl-24 pb-8 space-y-3.5`}>
         {isSignedIn && activeTab === 'home' && homesLoadFailed && (
           <div role="alert" className="pointer-events-auto w-full max-w-lg rounded-2xl bg-white p-4 text-sm text-slate-800 shadow-sm">
             <p>Couldn?t load your locations. Check your connection and try again.</p>
@@ -2086,6 +2063,7 @@ export function App() {
 
       {/* 13. Add Device Screen Flow */}
       <AddDeviceScreen
+        refreshRevision={refreshRevision}
         isOpen={isAddDeviceOpen || isCatalogOpen}
         catalogOnly={isCatalogOpen}
         onClose={() => { setIsAddDeviceOpen(false); setIsCatalogOpen(false); }}
@@ -2117,7 +2095,7 @@ export function App() {
 
       {/* 14. Create Room Modal (Direct DB persistence via homeApi.createRoom) */}
       {isCreateRoomOpen && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in select-none">
+        <div className="fixed inset-0 z-50 bg-slate-300/55 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in select-none">
           <div className="bg-white rounded-[32px] w-full max-w-sm p-5 sm:p-6 shadow-2xl border border-white/80 space-y-4">
             <div className="flex items-center justify-between pb-2 border-b border-slate-100">
               <div className="flex items-center gap-2.5">
@@ -2196,7 +2174,7 @@ export function App() {
 
       {/* 15. Create / Edit Routine Modal (Scene & Time Schedule Automations) */}
       {isRoutineModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in select-none">
+        <div className="fixed inset-0 z-50 bg-slate-300/55 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in select-none">
           <div className="bg-white rounded-t-[32px] sm:rounded-3xl w-full max-w-lg p-5 sm:p-6 shadow-2xl border border-white/90 max-h-[92vh] flex flex-col justify-between overflow-hidden">
             {/* Header */}
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 flex-shrink-0">
@@ -2552,17 +2530,10 @@ export function App() {
 
         return (
           <div
-            className="fixed inset-0 z-50 overflow-y-auto overflow-x-hidden flex flex-col select-none pointer-events-auto animate-in fade-in slide-in-from-right-3 duration-200"
-            style={{
-              backgroundColor: '#d4edf4',
-              backgroundImage: `
-                radial-gradient(circle at 10% 10%, rgba(255, 255, 255, 0.95) 0%, transparent 50%),
-                radial-gradient(circle at 90% 90%, rgba(255, 255, 255, 0.90) 0%, transparent 50%)
-              `,
-            }}
+            className="app-screen fixed inset-0 z-50 overflow-y-auto overflow-x-hidden flex flex-col pointer-events-auto animate-in fade-in slide-in-from-right-3 duration-200"
           >
             {/* Top Navigation Bar: Back Button, Room Name (Left), Online Status (Right) */}
-            <header className="dedicated-device-header sticky top-0 z-30 w-full bg-[#d4edf4]/95 backdrop-blur-xl px-3 sm:px-6 py-2.5 sm:py-3 flex items-center justify-between border-b border-sky-200/60 shadow-xs flex-shrink-0 gap-2">
+            <header className="dedicated-device-header sticky top-0 z-30 w-full bg-[var(--app-background)] backdrop-blur-xl px-3 sm:px-6 py-2.5 sm:py-3 flex items-center justify-between border-b border-sky-200/60 shadow-xs flex-shrink-0 gap-2">
               <div className="flex items-center gap-2.5 min-w-0 flex-1">
                 {/* Compact Round Back Button */}
                 <button
@@ -2607,7 +2578,7 @@ export function App() {
             <main className="w-full max-w-2xl mx-auto px-3.5 sm:px-6 py-3 sm:py-4 flex-1 flex flex-col gap-3 pb-[calc(3.5rem+max(var(--android-nav-bottom,0px),env(safe-area-inset-bottom,0px)))]">
               {/* Device Custom Name (8 Gang Image & Model Name Badge Removed) */}
               <div className="px-1 py-1">
-                <h1 className="text-base sm:text-lg font-extrabold text-slate-900 tracking-tight leading-tight truncate">
+                <h1 className="text-base sm:text-lg font-extrabold text-slate-900 tracking-tight leading-tight break-words">
                   {selectedDeviceForControl.custom_name}
                 </h1>
               </div>
@@ -2682,6 +2653,7 @@ export function App() {
                 <fieldset disabled={selectedDeviceForControl.can_control === false} className="min-w-0 border-0 p-0">
                   <div className={selectedDeviceForControl.can_control === false ? 'pointer-events-none' : ''}>
                 <DynamicDeviceLayout
+                  key={selectedDeviceForControl.id}
                   modelCode={selectedDeviceForControl.model_code || 'TP8'}
                   deviceName={selectedDeviceForControl.custom_name}
                   deviceId={selectedDeviceForControl.device_id || selectedDeviceForControl.id}
@@ -2737,49 +2709,13 @@ export function App() {
         }}
       />
 
-      {/* 8. Light Blue Energy Symbol Cursor (Red replaced with Light Blue #38bdf8 / #7dd3fc) */}
-      {isHovered && (
-        <div
-          className="cursor-pointer-custom fixed pointer-events-none z-50"
-          style={{
-            left: `${mousePos.x}px`,
-            top: `${mousePos.y}px`,
-            transform: `translate(-50%, -20%) scale(${isClicking ? 0.9 : 1})`,
-            transition: 'transform 0.08s ease',
-          }}
-        >
-          <svg
-            className="w-5 h-5"
-            viewBox="0 0 24 24"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-          >
-            <polygon
-              points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"
-              fill={
-                isHoveringLight
-                  ? '#0284c7'
-                  : isHoveringElement
-                  ? '#38bdf8'
-                  : 'transparent'
-              }
-              stroke={isHoveringLight ? '#0284c7' : '#7dd3fc'}
-              strokeWidth="1.25"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              style={{ transition: 'fill 0.15s ease, stroke 0.15s ease' }}
-            />
-          </svg>
-        </div>
-      )}
-
       {helpTopic && <HelpCenter topic={helpTopic} onSelect={setHelpTopic} onClose={() => setHelpTopic(undefined)} />}
       {showNotifications && isSignedIn && <NotificationCenter notifications={notifications} onClose={() => setShowNotifications(false)} />}
 
       {historyView === 'routines' && activeHome && canManageLocation &&
-        <HistoryPanel key={activeHome.id} kind="routines" id={activeHome.id} canManage onClose={() => setHistoryView(undefined)} />}
+        <HistoryPanel refreshRevision={refreshRevision} key={activeHome.id} kind="routines" id={activeHome.id} canManage onClose={() => setHistoryView(undefined)} />}
       {historyView && historyView !== 'routines' && selectedDeviceForControl && (
-        <HistoryPanel key={selectedDeviceForControl.id + historyView} kind={historyView} id={selectedDeviceForControl.id}
+        <HistoryPanel refreshRevision={refreshRevision} key={selectedDeviceForControl.id + historyView} kind={historyView} id={selectedDeviceForControl.id}
           canManage={canManageLocation} onClose={() => setHistoryView(undefined)} />
       )}
       {recoveryOpen && selectedDeviceForControl && <DeviceRecovery name={selectedDeviceForControl.custom_name}

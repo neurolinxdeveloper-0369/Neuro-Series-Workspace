@@ -570,10 +570,10 @@ public class MainActivity extends BridgeActivity {
             @Override
             public void run() {
                 try {
-                    // Set status bar and navigation bar background color to light blue theme #d4edf4
+                    // Set status bar and navigation bar background color to light blue theme #eaf5fa
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                        getWindow().setStatusBarColor(android.graphics.Color.parseColor("#d4edf4"));
-                        getWindow().setNavigationBarColor(android.graphics.Color.parseColor("#d4edf4"));
+                        getWindow().setStatusBarColor(android.graphics.Color.parseColor("#eaf5fa"));
+                        getWindow().setNavigationBarColor(android.graphics.Color.parseColor("#eaf5fa"));
                     }
 
                     // Android 11+ (API 30+) WindowInsetsController
