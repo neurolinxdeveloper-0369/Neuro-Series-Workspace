@@ -1,7 +1,8 @@
+import { PermissionEditor, type AccessDevice } from './PermissionEditor';
 import { useEffect, useState, type FormEvent } from 'react';
 import { Capacitor } from '@capacitor/core';
 import QRCode from 'qrcode';
-import { homeApi, type Home, type HomeInvitation } from '../services/home';
+import { homeApi, type Home, type HomeInvitation, type HomeMember, type MemberAccess, type Room } from '../services/home';
 
 function shareUrl(code: string) {
   const url = new URL(Capacitor.isNativePlatform() ? 'https://neurolinx.in/neuro-series/' : window.location.href);
@@ -9,11 +10,13 @@ function shareUrl(code: string) {
   return url.toString();
 }
 
-export function InviteMemberModal({ home, onClose }: { home: Home; onClose: () => void }) {
+export function InviteMemberModal({ home, onClose, rooms, devices }: { home: Home; onClose: () => void; rooms: Room[]; devices: AccessDevice[] }) {
   const [email, setEmail] = useState('');
+  const [inviteAccess, setInviteAccess] = useState<MemberAccess>({ role: 'view', roomIds: null, deviceIds: null });
+  const [editing, setEditing] = useState<{ id: string; access: MemberAccess }>();
   const [invite, setInvite] = useState<{ id: string; code: string; url: string; qr: string } | null>(null);
   const [pending, setPending] = useState<HomeInvitation[]>([]);
-  const [members, setMembers] = useState<{ id: string; full_name: string | null }[]>([]);
+  const [members, setMembers] = useState<HomeMember[]>([]);
   const [memberToRemove, setMemberToRemove] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -37,10 +40,10 @@ export function InviteMemberModal({ home, onClose }: { home: Home; onClose: () =
     setError('');
     setNotice('');
     try {
-      const result = await homeApi.createInvitation(home.id, email.trim() || undefined);
+      const result = await homeApi.createInvitation(home.id, email.trim() || undefined, inviteAccess);
       const url = shareUrl(result.code);
       setInvite({ id: result.id, code: result.code, url, qr: '' });
-      setPending(items => [{ id: result.id, home_id: home.id, invited_by: home.owner_id, email, access_level: 'Device control', status: 'pending' }, ...items]);
+      setPending(items => [{ id: result.id, home_id: home.id, invited_by: home.owner_id, email, access_level: inviteAccess.role === 'view' ? 'View only' : 'Device control', status: 'pending' }, ...items]);
       const qr = await QRCode.toDataURL(url, { width: 240, margin: 2 });
       setInvite({ id: result.id, code: result.code, url, qr });
     } catch {
@@ -61,6 +64,24 @@ export function InviteMemberModal({ home, onClose }: { home: Home; onClose: () =
       setNotice('Invitation revoked.');
     } catch {
       setError('Could not revoke the invitation. It may already have been accepted.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function saveMember() {
+    if (!editing) return;
+    setBusy(true);
+    setError('');
+    try {
+      await homeApi.updateMember(home.id, editing.id, editing.access);
+      setMembers(items => items.map(member => member.id === editing.id ? {
+        ...member, role: editing.access.role, room_ids: editing.access.roomIds, device_ids: editing.access.deviceIds,
+      } : member));
+      setEditing(undefined);
+      setNotice('Member access updated.');
+    } catch {
+      setError('Could not update access. Check the selected rooms or devices.');
     } finally {
       setBusy(false);
     }
@@ -90,7 +111,7 @@ export function InviteMemberModal({ home, onClose }: { home: Home; onClose: () =
           <button className="min-h-11 font-semibold text-slate-700" onClick={onClose}>Close</button>
         </header>
         <p className="mt-2 text-sm leading-relaxed text-slate-700">
-          Members can view rooms and control devices. Each invitation can be used once and expires in seven days.
+          Choose what the recipient can view or control. Each invitation can be used once and expires in seven days.
         </p>
         <form onSubmit={create} className="mt-4 grid gap-3">
           <label className="grid gap-1.5 text-sm font-medium">
@@ -99,7 +120,8 @@ export function InviteMemberModal({ home, onClose }: { home: Home; onClose: () =
               className="min-h-11 rounded-xl border border-slate-300 px-3 text-base" />
           </label>
           <p className="text-xs text-slate-600">Adding an email restricts the invitation to the account with that address.</p>
-          <button type="submit" disabled={busy} className="min-h-11 rounded-xl bg-sky-700 px-4 font-semibold text-white disabled:opacity-50">Create invitation</button>
+          <PermissionEditor value={inviteAccess} onChange={setInviteAccess} rooms={rooms} devices={devices} />
+          <button type="submit" disabled={busy || (inviteAccess.roomIds !== null && !inviteAccess.roomIds.length && !inviteAccess.deviceIds?.length)} className="min-h-11 rounded-xl bg-sky-700 px-4 font-semibold text-white disabled:opacity-50">Create invitation</button>
         </form>
         {invite && (
           <div className="mt-4 space-y-3 rounded-2xl bg-slate-50 p-4 text-sm">
@@ -133,7 +155,12 @@ export function InviteMemberModal({ home, onClose }: { home: Home; onClose: () =
             <ul className="mt-2 divide-y divide-slate-100">
               {members.map(member => (
                 <li key={member.id} className="flex flex-wrap items-center justify-between gap-2">
-                  <span>{member.full_name || 'Neuro Series member'}</span>
+                  <div className="min-w-0">
+                    <p>{member.full_name || 'Neuro Series member'}</p>
+                    <p className="text-xs text-slate-600">{member.role === 'view' ? 'View only' : 'Device control'} ? {member.room_ids || member.device_ids ? 'Selected rooms or devices' : 'Entire location'}</p>
+                  </div>
+                  <button type="button" className="min-h-11 font-semibold text-sky-800" disabled={busy}
+                    onClick={() => setEditing({ id: member.id, access: { role: member.role, roomIds: member.room_ids, deviceIds: member.device_ids } })}>Edit access</button>
                   {memberToRemove === member.id ? (
                     <div className="flex gap-3">
                       <button className="min-h-11" disabled={busy} onClick={() => setMemberToRemove(null)}>Cancel</button>
@@ -147,6 +174,14 @@ export function InviteMemberModal({ home, onClose }: { home: Home; onClose: () =
             </ul>
           </section>
         )}
+        {editing && <section className="mt-4 space-y-2">
+          <h3 className="font-semibold">Edit member access</h3>
+          <PermissionEditor value={editing.access} onChange={access => setEditing({ id: editing.id, access })} rooms={rooms} devices={devices} />
+          <div className="flex gap-2">
+            <button type="button" className="min-h-11 px-3 font-semibold" onClick={() => setEditing(undefined)}>Cancel</button>
+            <button type="button" disabled={busy || (editing.access.roomIds !== null && !editing.access.roomIds.length && !editing.access.deviceIds?.length)} className="min-h-11 rounded-xl bg-sky-700 px-3 font-semibold text-white" onClick={() => void saveMember()}>Save access</button>
+          </div>
+        </section>}
         {notice && <p role="status" className="mt-3 text-sm text-emerald-800">{notice}</p>}
         {error && <p role="alert" className="mt-3 text-sm text-rose-800">{error}</p>}
       </section>

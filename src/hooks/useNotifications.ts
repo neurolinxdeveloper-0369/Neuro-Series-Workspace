@@ -6,6 +6,7 @@ export interface DeviceNotification {
   id: string;
   device_name: string;
   home_name: string;
+  detail?: string;
   kind: 'offline' | 'online' | 'alert';
   created_at: string;
   read: boolean;

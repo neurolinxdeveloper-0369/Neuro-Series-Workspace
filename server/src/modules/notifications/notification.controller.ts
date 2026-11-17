@@ -1,3 +1,4 @@
+import { memberDeviceScope } from '../homes/home.access.js';
 import { Router } from 'express';
 import { db } from '../../config/database.js';
 import { authenticateToken, type AuthenticatedRequest } from '../auth/auth.middleware.js';
@@ -6,7 +7,7 @@ export const notificationRouter = Router();
 notificationRouter.use(authenticateToken);
 
 const access = `(h.owner_id = $1 OR EXISTS (
-  SELECT 1 FROM home_members m WHERE m.home_id = h.id AND m.user_id = $1
+  SELECT 1 FROM home_members m WHERE m.home_id = h.id AND m.user_id = $1 AND ${memberDeviceScope}
 ))`;
 
 export async function initializeNotifications() {
@@ -18,6 +19,8 @@ export async function initializeNotifications() {
       kind TEXT NOT NULL CHECK (kind IN ('offline', 'online', 'alert')),
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
+    ALTER TABLE device_notifications ADD COLUMN IF NOT EXISTS device_id UUID REFERENCES devices(id) ON DELETE SET NULL;
+    ALTER TABLE device_notifications ADD COLUMN IF NOT EXISTS detail TEXT;
     CREATE INDEX IF NOT EXISTS device_notifications_home_id ON device_notifications(home_id, id DESC);
     CREATE TABLE IF NOT EXISTS notification_reads (
       notification_id BIGINT REFERENCES device_notifications(id) ON DELETE CASCADE,
@@ -28,15 +31,15 @@ export async function initializeNotifications() {
     BEGIN
       IF NEW.home_id IS NULL THEN RETURN NEW; END IF;
       IF OLD.is_online IS DISTINCT FROM NEW.is_online AND (OLD.last_seen_at IS NOT NULL OR COALESCE(NEW.is_online, false)) THEN
-        INSERT INTO device_notifications (home_id, device_name, kind)
-          VALUES (NEW.home_id, NEW.custom_name, CASE WHEN NEW.is_online THEN 'online' ELSE 'offline' END);
+        INSERT INTO device_notifications (home_id, device_id, device_name, kind)
+          VALUES (NEW.home_id, NEW.id, NEW.custom_name, CASE WHEN NEW.is_online THEN 'online' ELSE 'offline' END);
       END IF;
       IF (NULLIF(NEW.trip_reason, '') IS NOT NULL AND NEW.trip_reason IS DISTINCT FROM OLD.trip_reason)
          OR EXISTS (
            SELECT 1 FROM jsonb_each(CASE WHEN jsonb_typeof(NEW.alerts) = 'object' THEN NEW.alerts ELSE '{}'::jsonb END) a
            WHERE a.value = 'true'::jsonb AND OLD.alerts -> a.key IS DISTINCT FROM 'true'::jsonb
          ) THEN
-        INSERT INTO device_notifications (home_id, device_name, kind) VALUES (NEW.home_id, NEW.custom_name, 'alert');
+        INSERT INTO device_notifications (home_id, device_id, device_name, kind) VALUES (NEW.home_id, NEW.id, NEW.custom_name, 'alert');
       END IF;
       RETURN NEW;
     END
@@ -49,9 +52,9 @@ export async function initializeNotifications() {
 notificationRouter.get('/', async (req: AuthenticatedRequest, res, next) => {
   try {
     const result = await db.query(`
-      SELECT n.id::text, n.device_name, n.kind, n.created_at, h.name AS home_name,
+      SELECT n.id::text, n.device_name, n.kind, n.detail, n.created_at, h.name AS home_name,
              r.notification_id IS NOT NULL AS read
-      FROM device_notifications n JOIN homes h ON h.id = n.home_id
+      FROM device_notifications n JOIN homes h ON h.id = n.home_id LEFT JOIN devices d ON d.id = n.device_id
       LEFT JOIN notification_reads r ON r.notification_id = n.id AND r.user_id = $1
       WHERE ${access} AND n.created_at > NOW() - INTERVAL '30 days'
       ORDER BY n.id DESC LIMIT 50
@@ -70,7 +73,7 @@ notificationRouter.post('/read', async (req: AuthenticatedRequest, res, next) =>
   try {
     await db.query(`
       INSERT INTO notification_reads (notification_id, user_id)
-      SELECT n.id, $1 FROM device_notifications n JOIN homes h ON h.id = n.home_id
+      SELECT n.id, $1 FROM device_notifications n JOIN homes h ON h.id = n.home_id LEFT JOIN devices d ON d.id = n.device_id
       WHERE n.id = ANY($2::bigint[]) AND ${access} ON CONFLICT DO NOTHING
     `, [req.user!.id, ids]);
     return res.json({ success: true });

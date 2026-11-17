@@ -24,6 +24,7 @@ export function NotificationCenter({ notifications, onClose }: { notifications: 
           <li key={item.id} className="flex items-center justify-between gap-3 py-3">
             <div>
               <p className={item.read ? 'text-sm' : 'text-sm font-semibold'}>{item.device_name} {messages[item.kind]}</p>
+              {item.detail && <p className="text-sm text-slate-700">{item.detail}</p>}
               <p className="mt-1 text-xs text-slate-600">{item.home_name} ? <time dateTime={item.created_at}>{new Date(item.created_at).toLocaleString()}</time></p>
             </div>
             {!item.read && (

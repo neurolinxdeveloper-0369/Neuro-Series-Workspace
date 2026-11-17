@@ -1,3 +1,4 @@
+import { memberDeviceScope } from '../homes/home.access.js';
 import { WebSocketServer, WebSocket } from 'ws';
 import type { Server } from 'http';
 import { verifySessionToken } from '../auth/auth.middleware.js';
@@ -37,7 +38,7 @@ class SocketManager {
     const recipients = [...this.sessions];
     void db.query(
       `SELECT h.owner_id AS user_id FROM devices d JOIN homes h ON h.id = d.home_id WHERE d.device_id = $1
-       UNION SELECT m.user_id FROM devices d JOIN home_members m ON m.home_id = d.home_id WHERE d.device_id = $1`,
+       UNION SELECT m.user_id FROM devices d JOIN home_members m ON m.home_id = d.home_id WHERE d.device_id = $1 AND ${memberDeviceScope}`,
       [deviceId]
     ).then(result => {
       const allowed = new Set(result.rows.map(row => row.user_id));

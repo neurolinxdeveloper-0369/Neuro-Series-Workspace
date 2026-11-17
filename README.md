@@ -31,3 +31,11 @@ Specialized functions such as IR temperature, lighting color, curtain position, 
 Connection transitions and protection alerts appear in the account?s in-app notification history. Optional system alerts work while the app can refresh its feed. Delivery to a closed or suspended app requires a push provider and background registration.
 
 Biometric app lock uses native device authentication on Android 10 or later and supported iOS devices with enrolled biometrics. The browser uses normal account sign-in. Use a physical device to verify enrollment, background and resume, notification permissions, and hardware pairing before release.
+
+## History, recovery, and sharing
+
+In device details, Device activity shows requested commands, matching state reports, failures, and reported switch changes. Routine history lists manual and scheduled runs and their per-device outcomes. Matching telemetry is an observation because the current device protocol does not include command acknowledgments with correlation IDs.
+
+Connection help shows the last contact time and Wi-Fi recovery steps. Owners can limit an invitation or an existing membership by role and selected rooms or devices. View-only members can read the devices in their scope. Existing memberships retain their previous control access until edited.
+
+Energy history groups observed cumulative meter increases into daily and monthly buckets in Indian Standard Time. Counter resets establish a new baseline. Owners can set a power threshold in watts to generate a notification when the meter crosses it. History starts when this version is deployed.

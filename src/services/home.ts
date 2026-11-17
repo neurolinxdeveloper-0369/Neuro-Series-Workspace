@@ -39,6 +39,14 @@ export interface Room {
   created_at?: string;
 }
 
+export interface MemberAccess {
+  role: 'view' | 'control';
+  roomIds: string[] | null;
+  deviceIds: string[] | null;
+}
+
+export type HomeMember = { id: string; full_name: string | null; role: MemberAccess['role']; room_ids: string[] | null; device_ids: string[] | null };
+
 export interface HomeInvitation {
   id: string;
   home_id: string;
@@ -131,8 +139,8 @@ export const homeApi = {
   },
 
   // Create a shareable invitation, optionally restricted by recipient email
-  createInvitation: async (homeId: string, email?: string) =>
-    api.post<{ success: boolean; code: string; id: string; expiresAt: string }>(`/homes/${homeId}/invitations`, { email }),
+  createInvitation: async (homeId: string, email?: string, access?: MemberAccess) =>
+    api.post<{ success: boolean; code: string; id: string; expiresAt: string }>(`/homes/${homeId}/invitations`, { email, access }),
 
   getInvitations: async (homeId: string) =>
     (await api.get<{ invitations: HomeInvitation[] }>(`/homes/${homeId}/invitations`)).invitations,
@@ -141,7 +149,10 @@ export const homeApi = {
     api.del(`/homes/${homeId}/invitations/${inviteId}`),
 
   getMembers: async (homeId: string) =>
-    (await api.get<{ members: { id: string; full_name: string | null }[] }>(`/homes/${homeId}/members`)).members,
+    (await api.get<{ members: HomeMember[] }>(`/homes/${homeId}/members`)).members,
+
+  updateMember: async (homeId: string, userId: string, access: MemberAccess) =>
+    api.patch(`/homes/${homeId}/members/${userId}`, access),
 
   removeMember: async (homeId: string, userId: string) =>
     api.del(`/homes/${homeId}/members/${userId}`),

@@ -179,7 +179,7 @@ homeRouter.post('/join', async (req: AuthenticatedRequest, res, next) => {
 homeRouter.get('/:id/rooms', async (req: AuthenticatedRequest, res: Response) => {
   try {
     const homeId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-    const rooms = await homeService.getRoomsByHome(homeId);
+    const rooms = await homeService.getRoomsByHome(homeId, req.user!.id);
     return res.json({ success: true, rooms });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Failed to fetch rooms';
@@ -224,7 +224,7 @@ homeRouter.post('/:id/invitations', async (req: AuthenticatedRequest, res) => {
     const homeId = String(req.params.id);
     const email = req.body?.email;
     if (email != null && typeof email !== 'string') return res.status(400).json({ success: false, error: 'Invalid email' });
-    const invitation = await homeService.createInvite(homeId, req.user!.id, email);
+    const invitation = await homeService.createInvite(homeId, req.user!.id, email, req.body?.access);
     res.setHeader('Cache-Control', 'no-store');
     return res.status(201).json({ success: true, ...invitation });
   } catch (error) {
@@ -270,5 +270,14 @@ homeRouter.delete('/:id/members/:userId', async (req, res, next) => {
     return res.json({ success: true });
   } catch (error) {
     next(error);
+  }
+});
+
+homeRouter.patch('/:id/members/:userId', async (req, res) => {
+  try {
+    const updated = await homeService.updateMember(String(req.params.id), String(req.params.userId), req.body);
+    return res.status(updated ? 200 : 404).json({ success: updated });
+  } catch (error) {
+    return res.status(400).json({ error: error instanceof Error ? error.message : 'Invalid member access' });
   }
 });

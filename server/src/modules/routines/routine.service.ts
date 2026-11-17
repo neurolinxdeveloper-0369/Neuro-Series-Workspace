@@ -270,23 +270,33 @@ export const routineService = {
     }
   },
 
-  dispatchActions: async (routine: RoutineRecord, override?: boolean) => {
+  dispatchActions: async (routine: RoutineRecord, override?: boolean, scheduledAt?: Date) => {
     const actions = Array.isArray(routine.actions) ? routine.actions : [];
     let executedActions = 0;
     let failedActions = 0;
     if (!routine.user_id || (routine.home_id && !await ownsHome(routine.user_id, routine.home_id))) {
       return { success: false, executedActions, failedActions: actions.length };
     }
+    const { rows } = await db.query(
+      'INSERT INTO routine_history (home_id, user_id, name, scheduled_at) VALUES ($1, $2, $3, $4) RETURNING id',
+      [routine.home_id, routine.user_id, routine.name, scheduledAt ?? null]
+    );
+    const runId = rows[0].id;
+    const results = [];
     for (const action of actions) {
       try {
         await routineService.validateActions(routine.user_id, routine.home_id, [action]);
         const target = override ?? action.targetState;
-        await deviceService.controlSwitch(action.deviceId, action.channel, target ? 'on' : 'off');
+        await deviceService.controlSwitch(action.deviceId, action.channel, target ? 'on' : 'off', runId);
+        results.push({ device: action.deviceName, channel: action.channel, sent: true });
         executedActions++;
-      } catch {
+      } catch (error) {
+        results.push({ device: action?.deviceName, channel: action?.channel, sent: false,
+          reason: error instanceof Error ? error.message : 'Command failed' });
         failedActions++;
       }
     }
+    await db.query('UPDATE routine_history SET results = $2::jsonb WHERE id = $1', [runId, JSON.stringify(results)]);
     return { success: executedActions > 0 && failedActions === 0, executedActions, failedActions };
   },
 
@@ -324,7 +334,7 @@ export const routineService = {
               [routine.id, scheduledMinute, target]
             );
             if (!claim.rowCount) continue;
-            const outcome = await routineService.dispatchActions(routine, target);
+            const outcome = await routineService.dispatchActions(routine, target, scheduledMinute);
             if (!outcome.success) console.warn('Scheduled routine did not complete', routine.id, outcome);
           }
         }

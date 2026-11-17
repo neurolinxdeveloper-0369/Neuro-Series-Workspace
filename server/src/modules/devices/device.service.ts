@@ -1,3 +1,5 @@
+import { markObserved } from '../history/history.service.js';
+import { memberDeviceScope } from '../homes/home.access.js';
 import { normalizeReadings, normalizeSwitches } from './telemetry.js';
 import { emqxService } from '../mqtt/emqx.client.js';
 import { socketManager } from '../websocket/socket.server.js';
@@ -353,7 +355,7 @@ class DeviceService {
     };
   }
 
-  public async getDevicesByHome(homeId: string): Promise<Array<DeviceRecord & { endpoints: DeviceEndpointRecord[] }>> {
+  public async getDevicesByHome(homeId: string, userId?: string): Promise<Array<DeviceRecord & { endpoints: DeviceEndpointRecord[] }>> {
     // Automatically mark devices offline if last_seen_at is older than 12 seconds
     await db.query(
       `UPDATE devices 
@@ -361,8 +363,12 @@ class DeviceService {
        WHERE is_online = true AND (last_seen_at IS NULL OR last_seen_at < CURRENT_TIMESTAMP - INTERVAL '12 seconds')`
     ).catch(() => {});
 
-    const devQuery = `SELECT * FROM devices WHERE home_id = $1 ORDER BY created_at DESC`;
-    const devResult = await db.query(devQuery, [homeId]);
+    const devQuery = `SELECT d.*, ($2::uuid IS NULL OR h.owner_id = $2 OR m.role = 'control') AS can_control
+      FROM devices d JOIN homes h ON h.id = d.home_id
+      LEFT JOIN home_members m ON m.home_id = h.id AND m.user_id = $2
+      WHERE d.home_id = $1 AND ($2::uuid IS NULL OR h.owner_id = $2 OR (m.user_id IS NOT NULL AND ${memberDeviceScope}))
+      ORDER BY d.created_at DESC`;
+    const devResult = await db.query(devQuery, [homeId, userId ?? null]);
     const devices: DeviceRecord[] = devResult.rows;
 
     const list = [];
@@ -509,6 +515,8 @@ class DeviceService {
         );
       }
 
+      if (Object.keys(switches).length) await markObserved(deviceId, switches);
+
       // 3. Broadcast to all connected WebSocket clients in real time
       const wsBroadcastPayload = {
         deviceId,
@@ -590,7 +598,8 @@ class DeviceService {
   public async controlSwitch(
     identifier: string,
     channel: number,
-    action: 'on' | 'off' | 'toggle'
+    action: 'on' | 'off' | 'toggle',
+    runId?: string
   ): Promise<{
     deviceId: string;
     channel: number;
@@ -602,7 +611,7 @@ class DeviceService {
     }
     // 1. Resolve the control channel from the registered device capabilities.
     const devRes = await db.query(
-      `SELECT d.device_id, d.switches, d.is_online, d.last_seen_at
+      `SELECT d.id, d.device_id, d.switches, d.is_online, d.last_seen_at
        FROM devices d JOIN device_endpoints e ON e.device_id = d.device_id
        WHERE (d.id::text = $1 OR d.device_id = $1) AND e.endpoint_type = 'RELAY'
          AND CASE WHEN d.model_code IN ('EMS1', 'EMS3') THEN $2::int = 1 ELSE e.endpoint_index = $2 END
@@ -615,10 +624,6 @@ class DeviceService {
 
     const device = devRes.rows[0];
     const isOnline = device.is_online && device.last_seen_at && Date.now() - new Date(device.last_seen_at).getTime() <= 12000;
-    if (!isOnline) {
-      throw new Error(`Device ${device.device_id} is offline. Switches cannot be controlled.`);
-    }
-
     const deviceId = device.device_id;
     const currentSwitches = (device.switches as Record<string, boolean>) || {};
     const currentVal = Boolean(currentSwitches[String(channel)]);
@@ -630,7 +635,19 @@ class DeviceService {
     else targetState = !currentVal;
 
     // 2. Publish to EMQX MQTT using official hardware specification
-    await emqxService.sendSwitchCommand(deviceId, channel, targetState);
+    const { rows } = await db.query(
+      'INSERT INTO device_activity (device_id, run_id, channel, target) VALUES ($1, $2, $3, $4) RETURNING id',
+      [device.id, runId ?? null, channel, targetState]
+    );
+    try {
+      if (!isOnline) throw new Error('Device offline');
+      await emqxService.sendSwitchCommand(deviceId, channel, targetState);
+    } catch (error) {
+      const reason = isOnline ? 'The broker did not accept the command' : 'Device offline';
+      await db.query("UPDATE device_activity SET status = 'failed', failure = $2 WHERE id = $1", [rows[0].id, reason]);
+      throw new Error(reason, { cause: error });
+    }
+    await db.query("UPDATE device_activity SET status = 'sent' WHERE id = $1", [rows[0].id]);
 
     // Confirmed state comes from firmware telemetry. This response describes the requested command.
     const updatedSwitches = { ...currentSwitches, [String(channel)]: targetState };

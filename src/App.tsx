@@ -1,3 +1,5 @@
+import { HistoryPanel } from './components/HistoryPanel';
+import { DeviceRecovery } from './components/DeviceRecovery';
 import { HelpCenter, type HelpTopic } from './components/HelpCenter';
 import { NotificationCenter } from './components/NotificationCenter';
 import { LockedScreen } from './components/LockedScreen';
@@ -76,6 +78,8 @@ export function App() {
   const biometricLock = useBiometricLock(accountId);
   const notifications = useNotifications(biometricLock.locked ? undefined : accountId);
   const [helpTopic, setHelpTopic] = useState<HelpTopic>();
+  const [historyView, setHistoryView] = useState<'device' | 'routines' | 'energy'>();
+  const [recoveryOpen, setRecoveryOpen] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
   const [isInitializing, setIsInitializing] = useState<boolean>(() => authStorage.isAuthenticated());
 
@@ -1615,6 +1619,12 @@ export function App() {
           </section>
         )}
 
+        {activeTab === 'routines' && canManageLocation && (
+          <button type="button" onClick={() => setHistoryView('routines')}
+            className="min-h-11 self-center rounded-xl bg-white px-4 text-sm font-semibold text-sky-800 shadow-sm pointer-events-auto">
+            Routine history
+          </button>
+        )}
         {activeTab === 'routines' && routineRunError && (
           <p role="alert" className="w-full max-w-lg rounded-xl bg-rose-50 p-3 text-sm text-rose-800">{routineRunError}</p>
         )}
@@ -2053,7 +2063,7 @@ export function App() {
       />
 
       {isInviteMemberOpen && activeHome && canManageLocation && (
-        <InviteMemberModal key={activeHome.id} home={activeHome} onClose={() => setIsInviteMemberOpen(false)} />
+        <InviteMemberModal key={activeHome.id} home={activeHome} rooms={rooms} devices={devices} onClose={() => setIsInviteMemberOpen(false)} />
       )}
       {isJoinOpen && isSignedIn && !isInitializing && (
         <JoinHomeDialog
@@ -2659,6 +2669,18 @@ export function App() {
 
               {/* Dynamic Switch Controls (Without nested white background card) */}
               <div className="w-full">
+                <p className="mb-2 text-sm text-slate-700">
+                  {selectedDeviceForControl.last_seen_at ? 'Last seen ' + new Date(selectedDeviceForControl.last_seen_at).toLocaleString() : 'No connection reported yet'}
+                </p>
+                <div className="mb-3 flex flex-wrap gap-2">
+                  <button type="button" className="min-h-11 rounded-xl bg-white px-3 text-sm font-semibold" onClick={() => setHistoryView('device')}>Device activity</button>
+                  <button type="button" className="min-h-11 rounded-xl bg-white px-3 text-sm font-semibold" onClick={() => setRecoveryOpen(true)}>Connection help</button>
+                  {['EM1','EMS1','EM3','EMS3'].includes(selectedDeviceForControl.model_code) &&
+                    <button type="button" className="min-h-11 rounded-xl bg-white px-3 text-sm font-semibold" onClick={() => setHistoryView('energy')}>Energy history</button>}
+                </div>
+                {selectedDeviceForControl.can_control === false && <p className="mb-2 text-sm font-semibold">View-only access</p>}
+                <fieldset disabled={selectedDeviceForControl.can_control === false} className="min-w-0 border-0 p-0">
+                  <div className={selectedDeviceForControl.can_control === false ? 'pointer-events-none' : ''}>
                 <DynamicDeviceLayout
                   modelCode={selectedDeviceForControl.model_code || 'TP8'}
                   deviceName={selectedDeviceForControl.custom_name}
@@ -2668,6 +2690,9 @@ export function App() {
                   isOnline={selectedDeviceForControl.is_online !== false}
                   device={selectedDeviceForControl}
                 />
+                  </div>
+                </fieldset>
+
                 {canManageLocation && <DeviceManagement
                   key={selectedDeviceForControl.id}
                   device={selectedDeviceForControl}
@@ -2750,6 +2775,23 @@ export function App() {
 
       {helpTopic && <HelpCenter topic={helpTopic} onSelect={setHelpTopic} onClose={() => setHelpTopic(undefined)} />}
       {showNotifications && isSignedIn && <NotificationCenter notifications={notifications} onClose={() => setShowNotifications(false)} />}
+
+      {historyView === 'routines' && activeHome && canManageLocation &&
+        <HistoryPanel key={activeHome.id} kind="routines" id={activeHome.id} canManage onClose={() => setHistoryView(undefined)} />}
+      {historyView && historyView !== 'routines' && selectedDeviceForControl && (
+        <HistoryPanel key={selectedDeviceForControl.id + historyView} kind={historyView} id={selectedDeviceForControl.id}
+          canManage={canManageLocation} onClose={() => setHistoryView(undefined)} />
+      )}
+      {recoveryOpen && selectedDeviceForControl && <DeviceRecovery name={selectedDeviceForControl.custom_name}
+        lastSeen={selectedDeviceForControl.last_seen_at} online={!!selectedDeviceForControl.is_online}
+        onClose={() => setRecoveryOpen(false)} onRefresh={async () => {
+          const selected = selectedDeviceForControl;
+          const items = await deviceApi.getDevicesByHome(selected.home_id);
+          const updated = items.find(item => item.id === selected.id);
+          if (!updated) throw new Error('Device not found');
+          setSelectedDeviceForControl((current: typeof selectedDeviceForControl) => current?.id === selected.id ? updated : current);
+          setDevices(current => current.map(item => item.id === selected.id ? updated : item));
+        }} />}
 
     </div>
   );

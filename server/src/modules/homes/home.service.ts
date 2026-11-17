@@ -7,6 +7,29 @@ function digestInvite(code: string) {
   return createHash('sha256').update(code).digest('hex');
 }
 
+async function parsePermission(homeId: string, value: unknown) {
+  if (value === undefined) return { role: 'control', roomIds: null, deviceIds: null };
+  if (!value || typeof value !== 'object') throw new Error('Invalid access settings');
+  const { role, roomIds, deviceIds } = value as Record<string, unknown>;
+  if (role !== 'view' && role !== 'control') throw new Error('Select a valid role');
+  if (roomIds == null && deviceIds == null) return { role, roomIds: null, deviceIds: null };
+  function ids(input: unknown): string[] {
+    if (!Array.isArray(input) || input.length > 100 || input.some(item => typeof item !== 'string' ||
+      !/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(item))) throw new Error('Invalid location selection');
+    return [...new Set(input.map(item => item.toLowerCase()))];
+  }
+  const rooms = ids(roomIds ?? []);
+  const devices = ids(deviceIds ?? []);
+  if (!rooms.length && !devices.length) throw new Error('Select at least one room or device');
+  const result = await db.query(
+    `SELECT (SELECT count(*) FROM rooms WHERE home_id = $1 AND id = ANY($2::uuid[]))
+         + (SELECT count(*) FROM devices WHERE home_id = $1 AND id = ANY($3::uuid[])) AS count`,
+    [homeId, rooms, devices]
+  );
+  if (Number(result.rows[0].count) !== rooms.length + devices.length) throw new Error('Selection is outside this location');
+  return { role, roomIds: rooms, deviceIds: devices };
+}
+
 export const homeService = {
   /**
    * Ensures the homes, rooms, and invitations tables exist in PostgreSQL.
@@ -61,6 +84,12 @@ export const homeService = {
         PRIMARY KEY (home_id, user_id)
       );
       CREATE INDEX IF NOT EXISTS idx_home_members_user ON home_members(user_id);
+      ALTER TABLE home_members ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'control' CHECK (role IN ('view', 'control'));
+      ALTER TABLE home_members ADD COLUMN IF NOT EXISTS room_ids UUID[];
+      ALTER TABLE home_members ADD COLUMN IF NOT EXISTS device_ids UUID[];
+      ALTER TABLE home_invitations ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'control' CHECK (role IN ('view', 'control'));
+      ALTER TABLE home_invitations ADD COLUMN IF NOT EXISTS room_ids UUID[];
+      ALTER TABLE home_invitations ADD COLUMN IF NOT EXISTS device_ids UUID[];
     `;
     try {
       await db.query(query);
@@ -117,18 +146,19 @@ export const homeService = {
     return [...owned, ...result.rows];
   },
 
-  createInvite: async (homeId: string, ownerId: string, email?: string) => {
+  createInvite: async (homeId: string, ownerId: string, email?: string, access?: unknown) => {
+    const permission = await parsePermission(homeId, access);
     const targetEmail = email?.trim().toLowerCase() ?? '';
     if (targetEmail && (targetEmail.length > 255 || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(targetEmail))) {
       throw new Error('Enter a valid email address');
     }
     const code = randomBytes(24).toString('base64url');
     const result = await db.query(
-      `INSERT INTO home_invitations (home_id, invited_by, email, access_level, code_digest, expires_at)
-       SELECT id, owner_id, $3, 'Device control', $4, NOW() + INTERVAL '7 days'
+      `INSERT INTO home_invitations (home_id, invited_by, email, access_level, code_digest, expires_at, role, room_ids, device_ids)
+       SELECT id, owner_id, $3, CASE WHEN $5 = 'view' THEN 'View only' ELSE 'Device control' END, $4, NOW() + INTERVAL '7 days', $5, $6, $7
        FROM homes WHERE id = $1 AND owner_id = $2
        RETURNING id, expires_at`,
-      [homeId, ownerId, targetEmail, digestInvite(code)]
+      [homeId, ownerId, targetEmail, digestInvite(code), permission.role, permission.roomIds, permission.deviceIds]
     );
     if (!result.rowCount) throw new Error('Location not found');
     return { id: result.rows[0].id, code, expiresAt: result.rows[0].expires_at };
@@ -143,10 +173,10 @@ export const homeService = {
          WHERE i.code_digest = $1 AND i.status = 'pending' AND i.expires_at > NOW()
            AND u.id = $2 AND h.id = i.home_id AND h.owner_id <> u.id
            AND (i.email = '' OR LOWER(u.email) = i.email)
-         RETURNING i.home_id
+         RETURNING i.home_id, i.role, i.room_ids, i.device_ids
        ), membership AS (
-         INSERT INTO home_members (home_id, user_id)
-         SELECT home_id, $2 FROM redeemed ON CONFLICT DO NOTHING
+         INSERT INTO home_members (home_id, user_id, role, room_ids, device_ids)
+         SELECT home_id, $2, role, room_ids, device_ids FROM redeemed ON CONFLICT DO NOTHING
        )
        SELECT home_id FROM redeemed`,
       [digestInvite(code), userId]
@@ -156,10 +186,19 @@ export const homeService = {
 
   listMembers: async (homeId: string) => {
     const result = await db.query(
-      'SELECT u.id, u.full_name FROM home_members m JOIN users u ON u.id = m.user_id WHERE m.home_id = $1 ORDER BY u.full_name',
+      'SELECT u.id, u.full_name, m.role, m.room_ids, m.device_ids FROM home_members m JOIN users u ON u.id = m.user_id WHERE m.home_id = $1 ORDER BY u.full_name',
       [homeId]
     );
     return result.rows;
+  },
+
+  updateMember: async (homeId: string, userId: string, access: unknown) => {
+    const permission = await parsePermission(homeId, access);
+    const result = await db.query(
+      'UPDATE home_members SET role = $3, room_ids = $4, device_ids = $5 WHERE home_id = $1 AND user_id::text = $2',
+      [homeId, userId, permission.role, permission.roomIds, permission.deviceIds]
+    );
+    return Boolean(result.rowCount);
   },
 
   removeMember: async (homeId: string, userId: string): Promise<boolean> => {
@@ -378,10 +417,15 @@ export const homeService = {
   /**
    * Get all rooms for a home
    */
-  getRoomsByHome: async (homeId: string): Promise<Room[]> => {
+  getRoomsByHome: async (homeId: string, userId?: string): Promise<Room[]> => {
     const result = await db.query(
-      'SELECT id, home_id, name, created_at, updated_at FROM rooms WHERE home_id = $1 ORDER BY created_at ASC',
-      [homeId]
+      `SELECT r.id, r.home_id, r.name, r.created_at, r.updated_at FROM rooms r
+       JOIN homes h ON h.id = r.home_id WHERE r.home_id = $1 AND ($2::uuid IS NULL OR h.owner_id = $2 OR EXISTS (
+         SELECT 1 FROM home_members m WHERE m.home_id = r.home_id AND m.user_id = $2 AND (
+           m.room_ids IS NULL AND m.device_ids IS NULL OR r.id = ANY(m.room_ids)
+           OR EXISTS (SELECT 1 FROM devices d WHERE d.home_id = r.home_id AND d.room_id = r.id AND d.id = ANY(m.device_ids))
+         )
+       )) ORDER BY r.created_at ASC`, [homeId, userId ?? null]
     );
     return result.rows;
   },

@@ -6,7 +6,7 @@ import express from 'express';
 
 test('owner can invite, grant access to one home, and revoke membership', {
   skip: !process.env.NEURO_TEST_DATABASE_URL,
-}, async () => {
+}, async context => {
   process.env.DATABASE_URL = process.env.NEURO_TEST_DATABASE_URL;
   process.env.JWT_SECRET = randomBytes(32).toString('hex');
 
@@ -22,12 +22,18 @@ test('owner can invite, grant access to one home, and revoke membership', {
   await homeService.ensureTableExists();
   await deviceService.ensureTablesExist();
   await initializeNotifications();
+  const { initializeHistory } = await import('../dist/modules/history/history.service.js');
+  const { routineRouter } = await import('../dist/modules/routines/routine.controller.js');
+  const { routineService } = await import('../dist/modules/routines/routine.service.js');
+  await routineService.ensureTableExists();
+  await initializeHistory();
 
   const app = express();
   app.use(express.json());
   app.use('/homes', homeRouter);
   app.use('/devices', deviceRouter);
   app.use('/notifications', notificationRouter);
+  app.use('/routines', routineRouter);
   const server = app.listen(0, '127.0.0.1');
   await once(server, 'listening');
   const url = 'http://127.0.0.1:' + server.address().port;
@@ -110,6 +116,54 @@ test('owner can invite, grant access to one home, and revoke membership', {
     assert.equal((await request(member, '/notifications/read', 'POST', { ids: items.map(item => item.id) })).status, 200);
     assert.ok((await (await request(member, '/notifications')).json()).notifications.every(item => item.read));
     assert.ok((await (await request(owner, '/notifications')).json()).notifications.every(item => !item.read));
+    const scope = { role: 'view', roomIds: [], deviceIds: [panel.device.id] };
+    assert.equal((await request(owner, '/homes/' + sharedHome + '/members/' + member, 'PATCH', scope)).status, 200);
+    const scoped = (await (await request(member, '/devices/home/' + sharedHome)).json()).devices;
+    assert.deepEqual(scoped.map(device => [device.id, device.can_control]), [[panel.device.id, false]]);
+    assert.equal((await request(member, '/devices/' + sensor.deviceId + '/activity')).status, 404);
+    assert.equal((await request(member, '/devices/' + panel.deviceId + '/action', 'POST', { action: 'on', channel: 1 })).status, 404);
+    assert.equal((await (await request(member, '/notifications')).json()).notifications.length, 0);
+    assert.equal((await request(owner, '/devices/' + panel.deviceId + '/action', 'POST', { action: 'on', channel: 1 })).status, 400);
+    await deviceService.handleTelemetryUpdate(panel.deviceId, { switches: { '1': true } });
+    const activity = (await (await request(owner, '/devices/' + panel.deviceId + '/activity')).json()).entries;
+    assert.ok(activity.some(entry => entry.outcome === 'reported' && entry.target === true));
+    assert.ok(activity.some(entry => entry.outcome === 'failed' && entry.failure === 'Device offline'));
+    const { emqxService } = await import('../dist/modules/mqtt/emqx.client.js');
+    const publish = context.mock.method(emqxService, 'sendSwitchCommand', async () => {});
+    assert.equal((await request(owner, '/devices/' + panel.deviceId + '/action', 'POST', { action: 'off', channel: 1 })).status, 200);
+    assert.equal(publish.mock.calls.length, 1);
+    const sent = (await (await request(owner, '/devices/' + panel.deviceId + '/activity')).json()).entries;
+    assert.equal(sent[0].outcome, 'sent');
+    await deviceService.handleTelemetryUpdate(panel.deviceId, { switches: { '1': false } });
+    const observed = (await (await request(owner, '/devices/' + panel.deviceId + '/activity')).json()).entries;
+    assert.equal(observed[0].outcome, 'observed');
+    assert.ok(observed[0].observed_at);
+
+    const meter = await deviceService.provisionDevice({
+      homeId: sharedHome, roomId: room.id, deviceId: 'energy-' + suffix, modelCode: 'EM1',
+      customName: 'Fixture energy meter', wifiSsid: 'Fixture Wi-Fi',
+    });
+    assert.equal((await request(owner, '/devices/' + meter.deviceId + '/energy-threshold', 'PUT', { watts: 100 })).status, 200);
+    await deviceService.handleTelemetryUpdate(meter.deviceId, { energy_kwh: 10, power: 80 });
+    await deviceService.handleTelemetryUpdate(meter.deviceId, { energy_kwh: 10.25, power: 120 });
+    await deviceService.handleTelemetryUpdate(meter.deviceId, { energy_kwh: 10.4, power: 130 });
+    await deviceService.handleTelemetryUpdate(meter.deviceId, { energy_kwh: 0, power: 130 });
+    const energy = (await (await request(owner, '/devices/' + meter.deviceId + '/energy?period=month')).json());
+    assert.equal(energy.periods[0].kwh, 0.4);
+    assert.equal(energy.watts, 100);
+    const daily = await (await request(owner, '/devices/' + meter.deviceId + '/energy?period=day')).json();
+    assert.equal(daily.periods[0].kwh, 0.4);
+    const alertFeed = (await (await request(owner, '/notifications')).json()).notifications;
+    assert.equal(alertFeed.filter(item => item.detail?.includes('configured limit')).length, 1);
+
+    await routineService.dispatchActions({
+      name: 'Fixture schedule', home_id: sharedHome, user_id: owner,
+      actions: [{ deviceId: meter.deviceId, deviceName: 'Fixture energy meter', channel: 1, targetState: true }],
+    }, true, new Date());
+    const historyResult = (await (await request(owner, '/routines/history/' + sharedHome)).json()).runs;
+    assert.equal(historyResult[0].results[0].device, 'Fixture energy meter');
+    assert.equal(historyResult[0].results[0].sent, false);
+    assert.ok(historyResult[0].scheduled_at);
     assert.equal((await request(owner, '/homes/' + sharedHome + '/members/' + member, 'DELETE')).status, 200);
     assert.equal((await request(member, '/devices/home/' + sharedHome)).status, 404);
     assert.equal((await (await request(member, '/notifications')).json()).notifications.length, 0);

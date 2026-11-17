@@ -16,13 +16,16 @@ export async function canAccessHome(userId: string, homeId: string): Promise<boo
   return Boolean(result.rowCount);
 }
 
-export async function findOwnedDevice(userId: string, deviceId: string, includeMembers = false): Promise<{ device_id: string; home_id: string } | undefined> {
+export const memberDeviceScope = "(m.room_ids IS NULL AND m.device_ids IS NULL OR d.room_id = ANY(m.room_ids) OR d.id = ANY(m.device_ids))";
+
+export async function findOwnedDevice(userId: string, deviceId: string, includeMembers = false, control = false): Promise<{ device_id: string; home_id: string } | undefined> {
   const result = await db.query(
     `SELECT d.device_id, d.home_id FROM devices d JOIN homes h ON h.id = d.home_id
      WHERE (h.owner_id = $1 OR ($3::boolean AND EXISTS (
        SELECT 1 FROM home_members m WHERE m.home_id = h.id AND m.user_id = $1
+         AND ${memberDeviceScope} AND (NOT $4::boolean OR m.role = 'control')
      ))) AND (d.id::text = $2 OR d.device_id = $2)`,
-    [userId, deviceId, includeMembers]
+    [userId, deviceId, includeMembers, control]
   );
   return result.rows[0];
 }

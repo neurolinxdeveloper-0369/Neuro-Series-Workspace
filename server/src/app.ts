@@ -1,3 +1,4 @@
+import { initializeHistory } from './modules/history/history.service.js';
 import { initializeNotifications, notificationRouter } from './modules/notifications/notification.controller.js';
 import express from 'express';
 import cors from 'cors';
@@ -21,6 +22,7 @@ export async function initializeDatabase() {
   await deviceService.ensureTablesExist();
   await routineService.ensureTableExists();
   await initializeNotifications();
+  await initializeHistory();
   routineService.startSchedulerEngine();
 }
 

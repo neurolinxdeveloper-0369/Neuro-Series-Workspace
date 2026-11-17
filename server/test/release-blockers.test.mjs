@@ -41,7 +41,7 @@ test('home and device lookups are scoped to the owner', async context => {
 test('scheduled off overrides an on action and the failure count is accurate', async context => {
   context.mock.method(db, 'query', async (sql, params) => sql.includes('JOIN homes')
     ? { rows: [{ device_id: params[1], home_id: homeId }] }
-    : { rowCount: 1 });
+    : { rowCount: 1, rows: [{ id: 'test-run' }] });
   const send = context.mock.method(deviceService, 'controlSwitch', async id => {
     if (id === 'offline') throw new Error('Device is offline');
   });
@@ -56,8 +56,8 @@ test('scheduled off overrides an on action and the failure count is accurate', a
     failedActions: 1,
   });
   assert.deepEqual(send.mock.calls.map(call => call.arguments), [
-    ['panel', 1, 'off'],
-    ['offline', 1, 'off'],
+    ['panel', 1, 'off', 'test-run'],
+    ['offline', 1, 'off', 'test-run'],
   ]);
 });
 

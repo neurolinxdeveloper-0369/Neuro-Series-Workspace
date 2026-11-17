@@ -1,3 +1,5 @@
+import { db } from '../../config/database.js';
+import { activityOutcome } from '../history/history.service.js';
 import { ownsHome } from '../homes/home.access.js';
 import { Router, type Response } from 'express';
 import { routineService } from './routine.service.js';
@@ -21,6 +23,22 @@ routineRouter.get('/', async (req: AuthenticatedRequest, res: Response) => {
     const message = error instanceof Error ? error.message : 'Failed to fetch routines';
     return res.status(500).json({ success: false, error: message });
   }
+});
+
+routineRouter.get('/history/:homeId', async (req: AuthenticatedRequest, res, next) => {
+  try {
+    const homeId = String(req.params.homeId);
+    if (!await ownsHome(req.user!.id, homeId)) return res.status(404).json({ error: 'Location not found' });
+    const runs = await db.query(`
+      SELECT r.id, r.name, r.created_at, r.scheduled_at, r.results,
+           COALESCE((SELECT jsonb_agg(to_jsonb(detail) ORDER BY detail.id)
+             FROM (SELECT a.id, d.custom_name AS device, a.channel, a.target, a.failure, a.observed_at, ${activityOutcome}
+                   FROM device_activity a JOIN devices d ON d.id = a.device_id WHERE a.run_id = r.id) detail
+           ), '[]'::jsonb) AS commands
+      FROM routine_history r WHERE r.home_id = $1 AND r.user_id = $2 ORDER BY r.created_at DESC LIMIT 50
+    `, [homeId, req.user!.id]);
+    return res.json({ runs: runs.rows });
+  } catch (error) { next(error); }
 });
 
 // GET /api/routines/:id - Get routine by ID

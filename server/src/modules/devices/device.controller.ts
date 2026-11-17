@@ -1,3 +1,4 @@
+import { activityOutcome } from '../history/history.service.js';
 import { db } from '../../config/database.js';
 import { ENV } from '../../config/env.js';
 import { authenticateToken, type AuthenticatedRequest } from '../auth/auth.middleware.js';
@@ -23,7 +24,7 @@ deviceRouter.param('homeId', async (req: AuthenticatedRequest, res, next, homeId
 deviceRouter.param('id', async (req: AuthenticatedRequest, res: Response, next: NextFunction, id: string) => {
   try {
     const includeMembers = req.method === 'GET' || (req.method === 'POST' && req.path.replace(/\/$/, '').endsWith('/action'));
-    const device = req.user && await findOwnedDevice(req.user.id, id, includeMembers);
+    const device = req.user && await findOwnedDevice(req.user.id, id, includeMembers, req.method !== 'GET');
     if (!device) return res.status(404).json({ success: false, error: 'Device not found' });
     req.params.id = device.device_id;
     next();
@@ -35,7 +36,7 @@ deviceRouter.param('id', async (req: AuthenticatedRequest, res: Response, next: 
 deviceRouter.get('/', async (req: AuthenticatedRequest, res, next) => {
   try {
     const homes = await homeService.getAccessibleHomes(req.user!.id);
-    const devices = (await Promise.all(homes.map(home => deviceService.getDevicesByHome(home.id)))).flat();
+    const devices = (await Promise.all(homes.map(home => deviceService.getDevicesByHome(home.id, req.user!.id)))).flat();
     return res.json({ success: true, devices });
   } catch (error) {
     next(error);
@@ -91,10 +92,10 @@ deviceRouter.post('/provision', async (req: AuthenticatedRequest, res) => {
 });
 
 // GET /api/devices/home/:homeId - Get all devices with endpoints for a home
-deviceRouter.get('/home/:homeId', async (req, res) => {
+deviceRouter.get('/home/:homeId', async (req: AuthenticatedRequest, res) => {
   try {
     const homeId = Array.isArray(req.params.homeId) ? req.params.homeId[0] : req.params.homeId;
-    const devices = await deviceService.getDevicesByHome(homeId);
+    const devices = await deviceService.getDevicesByHome(homeId, req.user!.id);
     return res.json({ success: true, devices });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Failed to fetch home devices';
@@ -200,4 +201,57 @@ deviceRouter.post(['/:id/reset-energy', '/:id/reset_energy'], async (req, res) =
     const message = error instanceof Error ? error.message : 'Failed to reset energy counter';
     return res.status(500).json({ success: false, error: message });
   }
+});
+
+deviceRouter.get('/:id/activity', async (req, res, next) => {
+  try {
+    const result = await db.query(
+      `SELECT a.id::text, a.channel, a.target, a.created_at, a.observed_at, a.failure, ${activityOutcome}
+       FROM device_activity a JOIN devices d ON d.id = a.device_id
+       WHERE d.device_id = $1 ORDER BY a.id DESC LIMIT 100`, [req.params.id]
+    );
+    res.json({ entries: result.rows });
+  } catch (error) { next(error); }
+});
+
+deviceRouter.get('/:id/energy', async (req, res, next) => {
+  try {
+    const monthly = req.query.period === 'month';
+    const result = await db.query(
+      `SELECT to_char(date_trunc(CASE WHEN $2 THEN 'month' ELSE 'day' END, u.day::timestamp),
+            CASE WHEN $2 THEN 'YYYY-MM' ELSE 'YYYY-MM-DD' END) AS period, SUM(u.kwh)::float AS kwh
+         FROM energy_usage u JOIN devices d ON d.id = u.device_id
+         WHERE d.device_id = $1 AND u.day >= (NOW() AT TIME ZONE 'Asia/Kolkata')::date -
+            CASE WHEN $2 THEN INTERVAL '11 months' + (EXTRACT(DAY FROM (NOW() AT TIME ZONE 'Asia/Kolkata')) - 1) * INTERVAL '1 day'
+            ELSE INTERVAL '29 days' END
+         GROUP BY 1 ORDER BY 1`, [req.params.id, monthly]
+    );
+    const thresholds = await db.query(
+      'SELECT t.watts::float FROM energy_thresholds t JOIN devices d ON d.id = t.device_id WHERE d.device_id = $1',
+      [req.params.id]
+    );
+    res.json({ periods: result.rows, watts: thresholds.rows[0]?.watts ?? null });
+  } catch (error) { next(error); }
+});
+
+deviceRouter.put('/:id/energy-threshold', async (req, res, next) => {
+  const watts: unknown = req.body?.watts;
+  if (watts !== null && (typeof watts !== 'number' || !Number.isFinite(watts) || watts <= 0 || watts > 1e9)) {
+    return res.status(400).json({ error: 'Enter a positive power threshold in watts' });
+  }
+  try {
+    if (watts === null) {
+      await db.query('DELETE FROM energy_thresholds t USING devices d WHERE d.id = t.device_id AND d.device_id = $1', [req.params.id]);
+    } else {
+      const saved = await db.query(
+        `INSERT INTO energy_thresholds (device_id, watts, above)
+         SELECT id, $2, COALESCE(power >= $2, false) FROM devices
+         WHERE device_id = $1 AND model_code IN ('EM1','EMS1','EM3','EMS3')
+         ON CONFLICT (device_id) DO UPDATE SET watts = EXCLUDED.watts, above = EXCLUDED.above
+         RETURNING device_id`, [req.params.id, watts]
+      );
+      if (!saved.rowCount) return res.status(404).json({ error: 'Energy meter not found' });
+    }
+    return res.json({ success: true });
+  } catch (error) { next(error); }
 });
