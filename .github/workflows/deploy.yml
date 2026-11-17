@@ -110,4 +110,32 @@ jobs:
         run: |
           WEBHOOK_URL="${SECRET_WEBHOOK:-https://portainer.neurolinx.in/api/stacks/webhooks/995f07b2-8d4f-4801-94f2-cde4005505ff}"
           echo "Triggering Portainer stack redeployment to VPS..."
-          curl -k -X POST "$WEBHOOK_URL" || echo "Portainer redeployment webhook triggered."
+          curl --fail --silent --show-error --max-time 30 -X POST "$WEBHOOK_URL"
+
+      - name: Verify live API and WebSocket
+        run: |
+          set -euo pipefail
+          base="https://neurolinx.in/neuro-series"
+          api_status=unavailable
+          ws_status=unavailable
+          for attempt in {1..18}; do
+            if health=$(curl --fail --silent --max-time 8 "$base/api/health") &&
+              jq -e '.status == "healthy" and .service == "Neuro Series Smart Workspace API"' <<< "$health" >/dev/null; then
+              api_status=healthy
+            else
+              api_status=unavailable
+            fi
+
+            # A successful upgrade can leave curl waiting for WebSocket frames.
+            ws_status=$(curl --silent --http1.1 --max-time 3 --output /dev/null --write-out '%{http_code}' \
+              --header 'Connection: Upgrade' --header 'Upgrade: websocket' \
+              --header 'Sec-WebSocket-Version: 13' --header 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' \
+              "$base/ws" || true)
+            if [ "$api_status" = healthy ] && [ "$ws_status" = 101 ]; then
+              echo "Live API health and WebSocket upgrade verified."
+              exit 0
+            fi
+            if [ "$attempt" -lt 18 ]; then sleep 10; fi
+          done
+          echo "::error::Live route checks failed (API: $api_status, WebSocket HTTP: $ws_status)."
+          exit 1

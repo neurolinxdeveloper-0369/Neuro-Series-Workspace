@@ -7,7 +7,7 @@ import { useNotifications } from './hooks/useNotifications';
 import { useBiometricLock } from './hooks/useBiometricLock';
 import { DeviceManagement } from './components/DeviceManagement';
 import { Capacitor } from '@capacitor/core';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Home,
   LayoutPanelTop,
@@ -83,6 +83,9 @@ export function App() {
   const [showNotifications, setShowNotifications] = useState(false);
   const [isInitializing, setIsInitializing] = useState<boolean>(() => authStorage.isAuthenticated());
 
+  const [activeTab, setActiveTab] = useState<'home' | 'devices' | 'explore' | 'routines' | 'menu'>('home');
+  const [homesLoadFailed, setHomesLoadFailed] = useState(false);
+
   // Home Properties State & Onboarding
   const [homes, setHomes] = useState<UserHome[]>([]);
   const [activeHome, setActiveHome] = useState<UserHome | null>(null);
@@ -91,6 +94,7 @@ export function App() {
   const [isSetupHomeOpen, setIsSetupHomeOpen] = useState(false);
   const [allowSetupHomeClose, setAllowSetupHomeClose] = useState(false);
   const [inviteCode, setInviteCode] = useState(() => new URLSearchParams(window.location.hash.slice(1)).get('invite') ?? '');
+  const initialInviteCode = useRef(inviteCode);
   const [isJoinOpen, setIsJoinOpen] = useState(Boolean(inviteCode));
   const [isInviteMemberOpen, setIsInviteMemberOpen] = useState(false);
   const [isAddDeviceOpen, setIsAddDeviceOpen] = useState(false);
@@ -282,70 +286,57 @@ export function App() {
     return () => clearInterval(interval);
   }, []);
 
-  // Load user homes and trigger onboarding if 0 homes exist
-  const loadHomes = async (openSetupIfEmpty = true) => {
+  const loadHomes = useCallback(async (openSetupIfEmpty = true) => {
+    const token = authStorage.getToken();
+    if (!token) return;
+    setIsInitializing(true);
+    setHomesLoadFailed(false);
     try {
       const userHomes = await homeApi.getHomes();
-      setHomes(userHomes);
-      if (userHomes.length === 0) {
-        if (openSetupIfEmpty) {
-          setIsSetupHomeOpen(true);
-          setAllowSetupHomeClose(false);
-        }
-      } else {
-        const storedId = homeStorage.getActiveHomeId();
-        const found = userHomes.find((h) => h.id === storedId);
-        const active = found || userHomes[0];
-        setActiveHome(active);
-        homeStorage.setActiveHomeId(active.id);
-        setIsSetupHomeOpen(false);
-      }
-    } catch (err) {
-      console.error('Failed to load homes:', err);
-    }
-  };
+      if (authStorage.getToken() !== token) return;
 
-  // Sync profile & homes on mount if authenticated with 1s interval
-  useEffect(() => {
-    if (inviteCode && !authStorage.isAuthenticated()) setIsSignInOpen(true);
-    if (authStorage.isAuthenticated()) {
-      setIsInitializing(true);
-      Promise.all([
-        authApi.getProfile(),
-        homeApi.getHomes().catch(() => []),
-        new Promise((resolve) => setTimeout(resolve, 1000)),
-      ])
-        .then(([profile, userHomes]) => {
-          if (!authStorage.isAuthenticated()) {
-            setCurrentUser(null);
-            setIsSignedIn(false);
-            homeStorage.clearActiveHomeId();
-            if (inviteCode) setIsSignInOpen(true);
-            return;
-          }
-          if (profile) {
-            setCurrentUser(profile);
-            setIsSignedIn(true);
-          }
-          if (Array.isArray(userHomes)) {
-            setHomes(userHomes);
-            if (userHomes.length === 0) {
-              setIsSetupHomeOpen(true);
-              setAllowSetupHomeClose(false);
-            } else {
-              const storedId = homeStorage.getActiveHomeId();
-              const found = userHomes.find((h) => h.id === storedId);
-              const active = found || userHomes[0];
-              setActiveHome(active);
-              homeStorage.setActiveHomeId(active.id);
-            }
-          }
-        })
-        .finally(() => {
-          setIsInitializing(false);
-        });
+      setHomes(userHomes);
+      const storedId = homeStorage.getActiveHomeId();
+      const active = userHomes.find(home => home.id === storedId) ?? userHomes[0] ?? null;
+      setActiveHome(active);
+      setActiveTab('home');
+      if (active) homeStorage.setActiveHomeId(active.id);
+      else homeStorage.clearActiveHomeId();
+
+      setAllowSetupHomeClose(false);
+      setIsSetupHomeOpen(!active && openSetupIfEmpty);
+    } catch {
+      if (authStorage.getToken() === token) {
+        setActiveTab('home');
+        setHomesLoadFailed(true);
+      }
+    } finally {
+      if (authStorage.getToken() === token) setIsInitializing(false);
     }
   }, []);
+
+  useEffect(() => {
+    const token = authStorage.getToken();
+    if (!token) {
+      if (initialInviteCode.current) setIsSignInOpen(true);
+      return;
+    }
+
+    void authApi.getProfile().then(profile => {
+      const currentToken = authStorage.getToken();
+      if (currentToken && currentToken !== token) return;
+      if (!currentToken) {
+        setCurrentUser(null);
+        setIsSignedIn(false);
+        homeStorage.clearActiveHomeId();
+        if (initialInviteCode.current) setIsSignInOpen(true);
+        setIsInitializing(false);
+        return;
+      }
+      if (profile) setCurrentUser(profile);
+      void loadHomes();
+    });
+  }, [loadHomes]);
 
   // Automatically dismiss native splash screen once dashboard has finished loading
   useEffect(() => {
@@ -434,7 +425,6 @@ export function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   // Total 5 navigation items as requested
-  const [activeTab, setActiveTab] = useState<'home' | 'devices' | 'explore' | 'routines' | 'menu'>('home');
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
@@ -1421,6 +1411,13 @@ export function App() {
 
       {/* 4. Mobile & Tablet Content (Explore Slider + Pure White Cards based on activeTab; Menu has all content cleared) */}
       <main className={`explore-slider-wrapper ${isSignedIn && activeTab === 'home' ? 'top-header-2rows' : 'top-header-1row'} fixed inset-x-0 top-[7.5rem] sm:top-32 bottom-20 sm:bottom-6 overflow-y-auto overflow-x-hidden flex flex-col items-center justify-start pointer-events-none z-20 px-4 sm:px-6 sm:pl-24 pb-8 space-y-3.5`}>
+        {isSignedIn && activeTab === 'home' && homesLoadFailed && (
+          <div role="alert" className="pointer-events-auto w-full max-w-lg rounded-2xl bg-white p-4 text-sm text-slate-800 shadow-sm">
+            <p>Couldn?t load your locations. Check your connection and try again.</p>
+            <button type="button" onClick={() => void loadHomes()} className="mt-2 min-h-11 rounded-xl bg-sky-700 px-4 font-semibold text-white">Retry loading locations</button>
+          </div>
+        )}
+
         {activeTab === 'home' && (
           <>
             {/* Real-time Clock View & User Details */}
@@ -2021,7 +2018,8 @@ export function App() {
         onSignInSuccess={(user) => {
           setCurrentUser(user);
           setIsSignedIn(true);
-          loadHomes(true);
+          setActiveTab('home');
+          void loadHomes();
         }}
       />
 
@@ -2055,6 +2053,8 @@ export function App() {
         allowClose={allowSetupHomeClose}
         onClose={() => setIsSetupHomeOpen(false)}
         onSuccess={(createdHome) => {
+          setActiveTab('home');
+          setHomesLoadFailed(false);
           setHomes((prev) => [...prev, createdHome]);
           setActiveHome(createdHome);
           homeStorage.setActiveHomeId(createdHome.id);

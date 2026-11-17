@@ -79,7 +79,8 @@ export const homeApi = {
   // Fetch all homes for current user
   getHomes: async (): Promise<Home[]> => {
     const res = await api.get<{ success: boolean; homes: Home[] }>('/homes');
-    return res.success && Array.isArray(res.homes) ? res.homes : [];
+    if (!res.success || !Array.isArray(res.homes)) throw new Error('Could not load locations.');
+    return res.homes;
   },
 
   // Create a new home property

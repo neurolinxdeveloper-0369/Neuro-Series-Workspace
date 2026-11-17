@@ -99,8 +99,15 @@ export async function secureApiCall<T>(endpoint: string, options: ApiRequestOpti
     });
 
     if (!response.ok) {
-      const errorText = await response.text().catch(() => '');
-      throw new Error(`API Error [${response.status}]: ${errorText || response.statusText}`);
+      const body = response.headers.get('content-type')?.includes('application/json')
+        ? await response.json().catch(() => null)
+        : null;
+      const detail = typeof body?.error === 'string'
+        ? body.error
+        : response.status === 404 || response.status >= 500
+          ? 'The service is unavailable. Try again shortly.'
+          : 'The request could not be completed.';
+      throw new Error(`API Error [${response.status}]: ${detail}`);
     }
 
     const contentType = response.headers.get('content-type') || '';
