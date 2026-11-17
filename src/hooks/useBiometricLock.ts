@@ -23,14 +23,17 @@ export function useBiometricLock(account?: string) {
     const change = (active: boolean) => {
       if (!disposed && !active && !authenticating.current) setUnlockedAccount(undefined);
     };
-    const listener = NativeApp.addListener('appStateChange', ({ isActive }) => change(isActive));
+    const listeners = [
+      NativeApp.addListener('appStateChange', ({ isActive }) => change(isActive)),
+      NativeApp.addListener('pause', () => { if (!disposed) setUnlockedAccount(undefined); }),
+    ];
     const hide = () => { if (document.hidden) change(false); };
     document.addEventListener('visibilitychange', hide);
-    void listener.catch(() => {});
+    listeners.forEach(listener => { void listener.catch(() => {}); });
     return () => {
       disposed = true;
       document.removeEventListener('visibilitychange', hide);
-      void listener.then(handle => handle.remove(), () => {});
+      listeners.forEach(listener => { void listener.then(handle => handle.remove(), () => {}); });
     };
   }, [account, enabled]);
 
@@ -62,5 +65,10 @@ export function useBiometricLock(account?: string) {
     unlock: () => authenticate(),
     setEnabled: (value: boolean) => authenticate(value),
     resetUnlock: () => setUnlockedAccount(undefined),
+    resetForAccountRecovery: () => {
+      if (account) localStorage.removeItem(key(account));
+      setPreference({ account, enabled: false });
+      setUnlockedAccount(undefined);
+    },
   };
 }

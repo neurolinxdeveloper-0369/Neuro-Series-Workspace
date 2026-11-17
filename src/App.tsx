@@ -201,18 +201,15 @@ export function App() {
             ? { ...endpoint, state: { ...endpoint.state, reading: { ...reading, reportedAt: nowIso } } }
             : endpoint;
         });
-      // Hardware telemetry with RSSI or heartbeat signifies device is online
-      const isOnline = incomingState.is_online !== undefined
-        ? Boolean(incomingState.is_online)
-        : true;
+      const isOnline = typeof incomingState.is_online === 'boolean' ? incomingState.is_online : undefined;
 
       setDevices(prev => prev.map(dev => {
         if (dev.device_id === deviceId || dev.id === deviceId) {
           return {
             ...dev,
-            is_online: isOnline,
-            rssi: incomingState.rssi !== undefined ? incomingState.rssi : dev.rssi,
-            last_seen_at: incomingState.last_seen_at || nowIso,
+            is_online: isOnline ?? dev.is_online,
+            rssi: incomingState.rssi ?? dev.rssi,
+            last_seen_at: incomingState.last_seen_at ?? dev.last_seen_at,
             switches: incomingState.switches ? { ...dev.switches, ...incomingState.switches } : dev.switches,
             switch_configs: incomingState.switchConfigs || dev.switch_configs,
             endpoints: mergeReadings(dev.endpoints),
@@ -225,9 +222,9 @@ export function App() {
         if (prev && (prev.device_id === deviceId || prev.id === deviceId)) {
           return {
             ...prev,
-            is_online: isOnline,
-            rssi: incomingState.rssi !== undefined ? incomingState.rssi : prev.rssi,
-            last_seen_at: incomingState.last_seen_at || nowIso,
+            is_online: isOnline ?? prev.is_online,
+            rssi: incomingState.rssi ?? prev.rssi,
+            last_seen_at: incomingState.last_seen_at ?? prev.last_seen_at,
             switches: incomingState.switches ? { ...prev.switches, ...incomingState.switches } : prev.switches,
             switch_configs: incomingState.switchConfigs || prev.switch_configs,
             endpoints: mergeReadings(prev.endpoints),
@@ -315,7 +312,7 @@ export function App() {
         new Promise((resolve) => setTimeout(resolve, 1000)),
       ])
         .then(([profile, userHomes]) => {
-          if (!profile && !authStorage.isAuthenticated()) {
+          if (!authStorage.isAuthenticated()) {
             setCurrentUser(null);
             setIsSignedIn(false);
             homeStorage.clearActiveHomeId();
@@ -1246,8 +1243,8 @@ export function App() {
   );
 
   if (biometricLock.locked) return <LockedScreen lock={biometricLock} onSignOut={() => {
-    biometricLock.resetUnlock();
     authApi.logout();
+    biometricLock.resetForAccountRecovery();
     homeStorage.clearActiveHomeId();
     setCurrentUser(null);
     setIsSignedIn(false);

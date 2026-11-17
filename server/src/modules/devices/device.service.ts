@@ -532,7 +532,6 @@ class DeviceService {
       };
 
       socketManager.broadcastDeviceUpdate(deviceId, wsBroadcastPayload);
-      console.log(`✅ [DB & WS UPDATED] Hardware Telemetry for ${deviceId}:`, wsBroadcastPayload);
     } catch (err) {
       console.error(`❌ Failed to process telemetry update for ${deviceId}:`, err);
     }
