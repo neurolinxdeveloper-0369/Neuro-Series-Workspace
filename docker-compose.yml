@@ -16,7 +16,7 @@ services:
       - NODE_ENV=production
       - VITE_BASE_PATH=/neuro-series/
       - VITE_API_BASE_URL=/neuro-series/api
-      - VITE_GOOGLE_CLIENT_ID=${GOOGLE_WEB_CLIENT_ID}
+      - VITE_GOOGLE_CLIENT_ID=${GOOGLE_WEB_CLIENT_ID:-}
     logging:
       driver: "json-file"
       options:
@@ -38,17 +38,17 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3056
-      - DATABASE_URL=postgresql://neurolinx_admin:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@smart-workspace-db:5432/neurolinx_smart_workspace
+      - DATABASE_URL=postgresql://neurolinx_admin:${POSTGRES_PASSWORD:-NeurolinxDb2026!}@smart-workspace-db:5432/neurolinx_smart_workspace
       - MQTT_USERNAME=${MQTT_USERNAME:-}
       - MQTT_PASSWORD=${MQTT_PASSWORD:-}
       - MQTT_DEVICE_USERNAME=${MQTT_DEVICE_USERNAME:-}
       - MQTT_USE_LEGACY_COMMAND_TOPICS=${MQTT_USE_LEGACY_COMMAND_TOPICS:-false}
       - MQTT_DEVICE_PASSWORD=${MQTT_DEVICE_PASSWORD:-}
       - OPENWA_API_KEY=${OPENWA_API_KEY:-}
-      - JWT_SECRET=${JWT_SECRET:?Set JWT_SECRET}
-      - GOOGLE_WEB_CLIENT_ID=${GOOGLE_WEB_CLIENT_ID}
-      - GOOGLE_ANDROID_CLIENT_ID=${GOOGLE_ANDROID_CLIENT_ID}
-      - GOOGLE_IOS_CLIENT_ID=${GOOGLE_IOS_CLIENT_ID}
+      - JWT_SECRET=${JWT_SECRET:-neuro_jwt_secret_key_2026_neurolinx}
+      - GOOGLE_WEB_CLIENT_ID=${GOOGLE_WEB_CLIENT_ID:-}
+      - GOOGLE_ANDROID_CLIENT_ID=${GOOGLE_ANDROID_CLIENT_ID:-}
+      - GOOGLE_IOS_CLIENT_ID=${GOOGLE_IOS_CLIENT_ID:-}
       - MQTT_BROKER_URL=mqtt://smart-workspace-emqx:1883
       - SMTP_HOST=${SMTP_HOST:-smtp.gmail.com}
       - SMTP_PORT=${SMTP_PORT:-587}
@@ -70,7 +70,7 @@ services:
     environment:
       POSTGRES_DB: neurolinx_smart_workspace
       POSTGRES_USER: neurolinx_admin
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-NeurolinxDb2026!}
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
