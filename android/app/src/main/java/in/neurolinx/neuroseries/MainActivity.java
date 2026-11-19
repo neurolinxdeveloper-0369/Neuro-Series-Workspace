@@ -86,11 +86,16 @@ public class MainActivity extends BridgeActivity {
 
         @JavascriptInterface
         public String getScanResults() {
+            return getSetupScanResults(true);
+        }
+
+        @JavascriptInterface
+        public String getSetupScanResults(boolean refresh) {
             try {
                 WifiManager wm = (WifiManager) context.getApplicationContext().getSystemService(Context.WIFI_SERVICE);
                 if (wm != null) {
                     try {
-                        wm.startScan();
+                        if (refresh) wm.startScan();
                     } catch (Exception ignored) {}
                     List<ScanResult> results = wm.getScanResults();
                     JSONArray arr = new JSONArray();
@@ -155,10 +160,21 @@ public class MainActivity extends BridgeActivity {
             }
         }
 
-        private ConnectivityManager.NetworkCallback activeNetworkCallback = null;
+        private volatile ConnectivityManager.NetworkCallback activeNetworkCallback = null;
+        private volatile Network setupNetwork = null;
+        private volatile String setupSsid = "";
+        private volatile String setupState = "unavailable";
+
+        @JavascriptInterface
+        public String getSetupConnectionState(String ssid) {
+            return setupSsid.equals(ssid) ? setupState : "unavailable";
+        }
 
         @JavascriptInterface
         public void connectToWifi(String ssid, String password) {
+            unbindProcessFromNetwork();
+            setupSsid = ssid;
+            setupState = "connecting";
             try {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                     android.net.wifi.WifiNetworkSpecifier.Builder builder = new android.net.wifi.WifiNetworkSpecifier.Builder()
@@ -184,20 +200,33 @@ public class MainActivity extends BridgeActivity {
                         activeNetworkCallback = new ConnectivityManager.NetworkCallback() {
                             @Override
                             public void onAvailable(Network network) {
-                                super.onAvailable(network);
-                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                                    cm.bindProcessToNetwork(network);
-                                    android.util.Log.d("AndroidWifiBridge", "Process bound to specifier network: " + network);
-                                }
+                                if (activeNetworkCallback != this) return;
+                                setupNetwork = network;
+                                setupState = "connected";
+                                // The setup HTTP bridge uses this network directly. Keep
+                                // the process on the normal route for authenticated API calls.
+                            }
+
+                            @Override
+                            public void onLost(Network network) {
+                                if (activeNetworkCallback != this) return;
+                                setupState = "unavailable";
+                                setupNetwork = null;
+                            }
+
+                            @Override
+                            public void onUnavailable() {
+                                if (activeNetworkCallback == this) setupState = "unavailable";
                             }
                         };
-                        cm.requestNetwork(request, activeNetworkCallback);
+                        cm.requestNetwork(request, activeNetworkCallback, 18000);
                         return;
                     }
                 }
             } catch (Exception e) {
                 e.printStackTrace();
             }
+            setupState = "unavailable";
             openWifiSettings();
         }
 
@@ -223,6 +252,9 @@ public class MainActivity extends BridgeActivity {
 
         @JavascriptInterface
         public boolean unbindProcessFromNetwork() {
+            setupNetwork = null;
+            setupSsid = "";
+            setupState = "unavailable";
             try {
                 ConnectivityManager cm = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
                 if (cm != null) {
@@ -250,8 +282,8 @@ public class MainActivity extends BridgeActivity {
             android.util.Log.d("AndroidWifiBridge", "httpPost requested for: " + urlString);
             try {
                 ConnectivityManager cm = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
-                Network wifiNetwork = null;
-                if (cm != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                Network wifiNetwork = setupNetwork;
+                if (wifiNetwork == null && cm != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                     for (Network net : cm.getAllNetworks()) {
                         NetworkCapabilities caps = cm.getNetworkCapabilities(net);
                         if (caps != null && caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) {
@@ -325,8 +357,8 @@ public class MainActivity extends BridgeActivity {
             android.util.Log.d("AndroidWifiBridge", "httpGet requested for: " + urlString);
             try {
                 ConnectivityManager cm = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
-                Network wifiNetwork = null;
-                if (cm != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                Network wifiNetwork = setupNetwork;
+                if (wifiNetwork == null && cm != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                     for (Network net : cm.getAllNetworks()) {
                         NetworkCapabilities caps = cm.getNetworkCapabilities(net);
                         if (caps != null && caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) {

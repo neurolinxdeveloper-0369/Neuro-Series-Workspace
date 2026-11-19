@@ -91,23 +91,11 @@ export interface ProvisionInput {
 }
 
 export interface ProvisionResult {
+  verificationFrom: string;
   success: boolean;
   deviceId: string;
-  device: {
-    id: string;
-    device_id: string;
-    custom_name: string;
-    model_code: string;
-    mac_4: string;
-    wifi_ssid: string;
-    firmware_version: string;
-  };
-  endpoints: Array<{
-    id: string;
-    endpoint_index: number;
-    name: string;
-    endpoint_type: string;
-  }>;
+  device: Device;
+  endpoints: DeviceEndpoint[];
 }
 
 export interface PairingConfig {
@@ -120,12 +108,7 @@ export interface PairingConfig {
 export const deviceApi = {
   getPairingConfig: async (homeId: string): Promise<PairingConfig> => {
     const path = `/devices/home/${encodeURIComponent(homeId)}/pairing-config`;
-    const bridge = typeof window !== 'undefined' ? (window as any).AndroidWifiBridge : undefined;
-    if (!bridge?.nativeApiCall) return api.get<PairingConfig>(path);
-    const token = localStorage.getItem('neuro_auth_token') || '';
-    const response = JSON.parse(bridge.nativeApiCall('https://neurolinx.in/neuro-series/api' + path, 'GET', '', token));
-    if (!response.ok) throw new Error('Pairing configuration is unavailable. Check your internet connection and try again.');
-    return JSON.parse(response.body);
+    return api.get<PairingConfig>(path);
   },
 
   getDevices: async (): Promise<SmartDevice[]> => {
@@ -139,33 +122,16 @@ export const deviceApi = {
   },
 
   provisionDevice: async (input: ProvisionInput): Promise<ProvisionResult> => {
-    // 1. Check if on native Android bridge
-    const androidBridge = typeof window !== 'undefined' ? (window as any).AndroidWifiBridge : null;
-    if (androidBridge?.nativeApiCall) {
-      const token = typeof window !== 'undefined' ? localStorage.getItem('neuro_auth_token') || '' : '';
-      const rawRes = androidBridge.nativeApiCall(
-        'https://neurolinx.in/neuro-series/api/devices/provision',
-        'POST',
-        JSON.stringify(input),
-        token
-      );
-      const parsed = JSON.parse(rawRes || '{}');
-      if (parsed.ok || (parsed.status >= 200 && parsed.status < 300)) {
-        const bodyData = typeof parsed.body === 'string' ? JSON.parse(parsed.body) : parsed.body;
-        if (bodyData && bodyData.success && bodyData.deviceId) {
-          return bodyData;
-        }
-        throw new Error(bodyData?.error || 'Backend rejected device provisioning');
-      } else {
-        throw new Error(parsed.error || `Native API call failed with status ${parsed.status}`);
-      }
-    }
-
     const res = await api.post<ProvisionResult>('/devices/provision', input);
     if (!res.success || !res.deviceId) {
       throw new Error('Failed to provision device');
     }
     return res;
+  },
+
+  getPairingStatus: async (id: string, after: string): Promise<{ online: boolean; lastSeenAt: string | null }> => {
+    const path = `/devices/${encodeURIComponent(id)}/pairing-status?after=${encodeURIComponent(after)}`;
+    return api.get<{ online: boolean; lastSeenAt: string | null }>(path, { timeoutMs: 2500 });
   },
 
   updateDetails: async (id: string, name: string, roomId: string | null) => {

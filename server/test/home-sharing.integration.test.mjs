@@ -73,11 +73,27 @@ test('owner can invite, grant access to one home, and revoke membership', {
       [owner]
     )).rows[0].id;
     const room = await homeService.createRoom(sharedHome, 'Office');
-    const panel = await deviceService.provisionDevice({
+    const provisionResponse = await request(owner, '/devices/provision', 'POST', {
       homeId: sharedHome, roomId: room.id, deviceId: 'test-' + suffix, modelCode: 'TP4',
       customName: 'Fixture panel', wifiSsid: 'Fixture Wi-Fi',
     });
+    assert.equal(provisionResponse.status, 201);
+    const panel = await provisionResponse.json();
     assert.equal(panel.device.is_online, false);
+    assert.equal(panel.device.ip_address, null);
+    const statusPath = '/devices/' + panel.deviceId + '/pairing-status?after=' + encodeURIComponent(panel.verificationFrom);
+    const status = async () => (await (await request(owner, statusPath)).json()).online;
+    assert.equal(await status(), false);
+    assert.equal((await request(other, statusPath)).status, 404);
+    assert.equal((await request(owner, '/devices/' + panel.deviceId + '/pairing-status?after=invalid')).status, 400);
+    await db.query("UPDATE devices SET is_online=TRUE,last_seen_at=$2::timestamptz-INTERVAL '1 second' WHERE device_id=$1", [panel.deviceId, panel.verificationFrom]);
+    assert.equal(await status(), false);
+    await db.query("UPDATE devices SET last_seen_at=clock_timestamp() WHERE device_id=$1", [panel.deviceId]);
+    assert.equal(await status(), true);
+    const stalePath = '/devices/' + panel.deviceId + '/pairing-status?after=2000-01-01';
+    await db.query("UPDATE devices SET last_seen_at=clock_timestamp()-INTERVAL '20 seconds' WHERE device_id=$1", [panel.deviceId]);
+    assert.equal((await (await request(owner, stalePath)).json()).online, false);
+    await db.query("UPDATE devices SET is_online=FALSE,last_seen_at=NULL WHERE device_id=$1", [panel.deviceId]);
     const inviteResponse = await request(owner, '/homes/' + sharedHome + '/invitations', 'POST', { email: addresses[1] });
     assert.equal(inviteResponse.status, 201);
     const { code } = await inviteResponse.json();
