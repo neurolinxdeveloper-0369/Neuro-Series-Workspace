@@ -140,7 +140,9 @@ test('owner can invite, grant access to one home, and revoke membership', {
     assert.deepEqual(scoped.map(device => [device.id, device.can_control]), [[panel.device.id, false]]);
     assert.equal((await request(member, '/devices/' + sensor.deviceId + '/activity')).status, 404);
     assert.equal((await request(member, '/devices/' + panel.deviceId + '/action', 'POST', { action: 'on', channel: 1 })).status, 404);
-    assert.equal((await (await request(member, '/notifications')).json()).notifications.length, 0);
+    const scopedNotifications = (await (await request(member, '/notifications')).json()).notifications;
+    const panelNotificationIds = items.filter(item => item.device_name !== 'Fixture sensor').map(item => item.id).sort();
+    assert.deepEqual(scopedNotifications.map(item => item.id).sort(), panelNotificationIds);
     assert.equal((await request(owner, '/devices/' + panel.deviceId + '/action', 'POST', { action: 'on', channel: 1 })).status, 400);
     await deviceService.handleTelemetryUpdate(panel.deviceId, { switches: { '1': true } });
     const activity = (await (await request(owner, '/devices/' + panel.deviceId + '/activity')).json()).entries;
