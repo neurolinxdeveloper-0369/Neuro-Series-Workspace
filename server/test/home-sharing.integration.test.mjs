@@ -127,7 +127,9 @@ test('owner can invite, grant access to one home, and revoke membership', {
     assert.equal(endpoint.state.reading.unit, '?C');
     assert.ok(endpoint.state.reading.reportedAt);
     const items = (await (await request(member, '/notifications')).json()).notifications;
-    assert.deepEqual(items.map(item => item.kind).sort(), ['alert', 'online']);
+    // Pairing-status checks also create real online/offline notifications for the panel.
+    const sensorItems = items.filter(item => item.device_name === 'Fixture sensor');
+    assert.deepEqual(sensorItems.map(item => item.kind).sort(), ['alert', 'online']);
     assert.equal((await (await request(other, '/notifications')).json()).notifications.length, 0);
     assert.equal((await request(member, '/notifications/read', 'POST', { ids: items.map(item => item.id) })).status, 200);
     assert.ok((await (await request(member, '/notifications')).json()).notifications.every(item => item.read));
