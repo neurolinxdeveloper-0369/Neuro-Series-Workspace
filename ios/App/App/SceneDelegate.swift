@@ -46,18 +46,17 @@ final class DeviceFeaturesPlugin: CAPPlugin, CAPBridgedPlugin {
 
     @objc func biometricStatus(_ call: CAPPluginCall) {
         let context = LAContext()
-        call.resolve(["available": context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: nil)])
+        call.resolve(["available": context.canEvaluatePolicy(.deviceOwnerAuthentication, error: nil)])
     }
 
     @objc func authenticate(_ call: CAPPluginCall) {
         DispatchQueue.main.async {
             let context = LAContext()
-            context.localizedFallbackTitle = ""
-            guard context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: nil) else {
-                call.reject("Enable Face ID or Touch ID in Settings.")
+            guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: nil) else {
+                call.reject("Set a device passcode or enable Face ID or Touch ID in Settings.")
                 return
             }
-            context.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, localizedReason: "Unlock Neuro Series") { success, error in
+            context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "Unlock Neuro Touch") { success, error in
                 context.invalidate()
                 if success { call.resolve() }
                 else { call.reject(error?.localizedDescription ?? "Authentication cancelled") }

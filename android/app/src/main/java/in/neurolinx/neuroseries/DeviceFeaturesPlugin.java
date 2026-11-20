@@ -31,7 +31,7 @@ public class DeviceFeaturesPlugin extends Plugin {
         BiometricManager manager = getContext().getSystemService(BiometricManager.class);
         if (manager == null) return false;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            return manager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_WEAK) == BiometricManager.BIOMETRIC_SUCCESS;
+            return manager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_WEAK | BiometricManager.Authenticators.DEVICE_CREDENTIAL) == BiometricManager.BIOMETRIC_SUCCESS;
         }
         return manager.canAuthenticate() == BiometricManager.BIOMETRIC_SUCCESS;
     }
@@ -53,12 +53,13 @@ public class DeviceFeaturesPlugin extends Plugin {
             try {
                 AtomicBoolean finished = new AtomicBoolean();
                 BiometricPrompt.Builder builder = new BiometricPrompt.Builder(getActivity())
-                    .setTitle("Unlock Neuro Series")
-                    .setNegativeButton("Cancel", getContext().getMainExecutor(), (dialog, which) -> {
+                    .setTitle("Unlock Neuro Touch");
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    builder.setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_WEAK | BiometricManager.Authenticators.DEVICE_CREDENTIAL);
+                } else {
+                    builder.setNegativeButton("Cancel", getContext().getMainExecutor(), (dialog, which) -> {
                         if (finished.compareAndSet(false, true)) call.reject("Authentication cancelled");
                     });
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                    builder.setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_WEAK);
                 }
                 builder.build().authenticate(new CancellationSignal(), getContext().getMainExecutor(), new BiometricPrompt.AuthenticationCallback() {
                     @Override public void onAuthenticationSucceeded(BiometricPrompt.AuthenticationResult result) {

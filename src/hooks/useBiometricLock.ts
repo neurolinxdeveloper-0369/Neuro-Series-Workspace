@@ -23,16 +23,12 @@ export function useBiometricLock(account?: string) {
     const change = (active: boolean) => {
       if (!disposed && !active && !authenticating.current) setUnlockedAccount(undefined);
     };
-    const listeners = [
-      NativeApp.addListener('appStateChange', ({ isActive }) => change(isActive)),
-      NativeApp.addListener('pause', () => { if (!disposed) setUnlockedAccount(undefined); }),
-    ];
-    const hide = () => { if (document.hidden) change(false); };
-    document.addEventListener('visibilitychange', hide);
+    // Android onPause also runs for Wi-Fi and biometric system dialogs.
+    // appStateChange uses onStop for actual backgrounding instead.
+    const listeners = [NativeApp.addListener('appStateChange', ({ isActive }) => change(isActive))];
     listeners.forEach(listener => { void listener.catch(() => {}); });
     return () => {
       disposed = true;
-      document.removeEventListener('visibilitychange', hide);
       listeners.forEach(listener => { void listener.then(handle => handle.remove(), () => {}); });
     };
   }, [account, enabled]);
@@ -53,7 +49,7 @@ export function useBiometricLock(account?: string) {
       }
       setUnlockedAccount(account);
     } catch {
-      setError('Unlock failed. Check facial recognition or fingerprint enrollment in system settings, then try again.');
+      setError('Could not unlock. Try your fingerprint, face, or device PIN/passcode again.');
     } finally {
       authenticating.current = false;
       setBusy(false);

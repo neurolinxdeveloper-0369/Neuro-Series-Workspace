@@ -1,3 +1,4 @@
+import { DevicesToolbar } from './components/DevicesToolbar';
 import { QuickControls } from './components/QuickControls';
 import { SmartHomeOverview } from './components/SmartHomeOverview';
 import { HomeDeviceCard } from './components/HomeDeviceCard';
@@ -141,6 +142,7 @@ export function App() {
   const [activeRoomTab, setActiveRoomTab] = useState<string>('__initial__');
   const roomSelectionHome = useRef<string | null>(null);
   const [deviceView, setDeviceView] = useState<'grid' | 'list'>('grid');
+  const [deviceStatusFilter, setDeviceStatusFilter] = useState<'all' | 'online' | 'offline'>('all');
   const [isExploreDismissed, setIsExploreDismissed] = useState(() => {
     return typeof window !== 'undefined' && sessionStorage.getItem('neuro_explore_dismissed') === 'true';
   });
@@ -1154,7 +1156,7 @@ export function App() {
   };
   useScreenGestures(canGoBack && !biometricLock.locked, goBack, () => { void refreshScreen(); });
 
-  if (biometricLock.locked) return <LockedScreen lock={biometricLock} onSignOut={() => {
+  const lockScreen = biometricLock.locked ? <LockedScreen lock={biometricLock} onSignOut={() => {
     authApi.logout();
     biometricLock.resetForAccountRecovery();
     homeStorage.clearActiveHomeId();
@@ -1165,10 +1167,11 @@ export function App() {
     setHomes([]);
     setActiveTab('home');
     setIsSignInOpen(true);
-  }} />;
+  }} /> : null;
 
-  return (
-    <div className="app-screen fixed inset-0 overflow-hidden font-sans">
+  return (<>
+    <div inert={biometricLock.locked} aria-hidden={biometricLock.locked || undefined}
+      style={{ visibility: biometricLock.locked ? 'hidden' : undefined }} className="app-screen fixed inset-0 overflow-hidden font-sans">
       {isRefreshing && <div role="status" className="pointer-events-none fixed inset-x-0 top-[calc(var(--safe-inset-top)+0.5rem)] z-[100] mx-auto w-fit rounded-full border border-sky-200 bg-white px-4 py-2 text-sm font-semibold text-sky-800 shadow-sm">Refreshing...</div>}
 
       {/* 3. Unified Responsive Header: Only shown on Home tab */}
@@ -1397,27 +1400,9 @@ export function App() {
 
         {activeTab === 'devices' && (
           <>
-            {/* Dedicated Top Action Bar for Devices & Rooms */}
-            <div className="w-full max-w-sm sm:max-w-md md:max-w-2xl lg:max-w-5xl pointer-events-auto pt-2">
-              <div className="flex items-center justify-between bg-white/35 backdrop-blur-2xl rounded-3xl p-3 sm:p-4 border border-white/60 shadow-xs mb-3">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-10 h-10 rounded-2xl bg-sky-50 text-[#0284c7] flex items-center justify-center border border-sky-100 shadow-xs">
-                    <LayoutPanelTop className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h2 className="text-sm sm:text-base font-extrabold text-slate-900 tracking-tight leading-tight">
-                      All Devices & Rooms
-                    </h2>
-                    <p className="text-[11px] text-slate-500 font-medium">
-                      {devices.length} Devices &bull; {rooms.length} Rooms
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Room Tabs & Search Bar for filtering devices */}
-              {renderRoomTabsBar()}
-            </div>
+            <DevicesToolbar rooms={rooms} room={activeRoomTab} onRoom={setActiveRoomTab}
+              search={searchQuery} onSearch={setSearchQuery} status={deviceStatusFilter} onStatus={setDeviceStatusFilter}
+              view={deviceView} onView={setDeviceView} />
 
             {devices.length === 0 ? (
               <QuickDevicesCard
@@ -1428,6 +1413,7 @@ export function App() {
             ) : (
               (() => {
                 const filtered = devices
+                  .filter(d => deviceStatusFilter === 'all' || (deviceStatusFilter === 'online' ? d.is_online === true : !d.is_online))
                   .filter(d => activeRoomTab === 'all' || (rooms.find(r => r.name === activeRoomTab)?.id === d.room_id))
                   .filter(d => !searchQuery.trim() ||
                     d.custom_name.toLowerCase().includes(searchQuery.trim().toLowerCase()) ||
@@ -1442,22 +1428,22 @@ export function App() {
                 return (
                   <div className="w-full max-w-sm sm:max-w-md md:max-w-2xl lg:max-w-5xl space-y-3 pointer-events-auto mb-2">
                     {/* Quick controls and scoped device list */}
-                    {renderQuickControls()}
-                    {renderDeviceHeading(filtered.length)}
+
+                    <h2 className="px-1 text-base font-extrabold text-slate-900">Devices <span className="text-sm font-semibold text-slate-500">({filtered.length})</span></h2>
 
                     {filtered.length === 0 ? (
                       <div className="bg-white/80 backdrop-blur-md rounded-3xl p-6 text-center border border-white/80 shadow-xs space-y-1.5">
-                        {searchQuery.trim() ? (
+                        {searchQuery.trim() || deviceStatusFilter !== 'all' ? (
                           <>
                             <Search className="w-8 h-8 text-slate-400 mx-auto mb-1" />
                             <p className="text-sm font-semibold text-slate-800">No devices found</p>
-                            <p className="text-xs text-slate-500">No devices matched "{searchQuery}"</p>
+                            <p className="text-xs text-slate-500">No devices match these filters.</p>
                             <button
                               type="button"
-                              onClick={() => setSearchQuery('')}
+                              onClick={() => { setSearchQuery(''); setDeviceStatusFilter('all'); }}
                               className="mt-2 inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-bold bg-[#0284c7] text-white hover:bg-sky-600 transition-colors cursor-pointer"
                             >
-                              Clear search
+                              Clear filters
                             </button>
                           </>
                         ) : (
@@ -2643,7 +2629,8 @@ export function App() {
         }} />}
 
     </div>
-  );
+    {lockScreen}
+  </>);
 }
 
 export default App;
