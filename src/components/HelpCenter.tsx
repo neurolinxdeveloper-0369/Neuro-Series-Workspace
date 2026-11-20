@@ -78,6 +78,7 @@ export function HelpCenter({ topic, onSelect, onClose }: { topic: HelpTopic; onS
               <a href="https://wa.me/917995558994" target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 items-center rounded-xl bg-sky-700 px-3 font-semibold text-white">Open WhatsApp support</a>
             </div>
           )}
+          {topic === 'privacy' && <a href="https://neurolinx.in/neuro-series/privacypolicy" target="_blank" rel="noopener noreferrer" className="mt-3 inline-flex min-h-11 items-center text-sm font-semibold text-sky-700">Read the full Privacy Policy</a>}
           <button type="button" onClick={() => onSelect('index')} className="mt-3 min-h-11 text-sm font-semibold text-sky-700">All help topics</button>
         </>
       )}
