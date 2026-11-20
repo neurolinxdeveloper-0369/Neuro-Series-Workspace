@@ -63,6 +63,7 @@ export const SignInScreen = ({ isOpen, onClose, onSignInSuccess, onHelp }: SignI
   const [resendCooldown, setResendCooldown] = useState(0);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const displayError = errorMessage?.replace(/^API Error \[\d{3}\]:\s*/i, '');
   const otpInputsRef = useRef<(HTMLInputElement | null)[]>([]);
 
   // Cooldown countdown timer for OTP resend
@@ -408,7 +409,7 @@ export const SignInScreen = ({ isOpen, onClose, onSignInSuccess, onHelp }: SignI
             {errorMessage && (
               <div className="w-full mb-4 p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs sm:text-sm flex items-start gap-2.5 animate-in fade-in duration-150">
                 <AlertCircle className="w-4 h-4 text-rose-600 flex-shrink-0 mt-0.5" />
-                <div className="flex-1 font-medium leading-relaxed">{errorMessage}</div>
+                <div className="flex-1 font-medium leading-relaxed">{displayError}</div>
               </div>
             )}
 
@@ -591,7 +592,7 @@ export const SignInScreen = ({ isOpen, onClose, onSignInSuccess, onHelp }: SignI
             {errorMessage && (
               <div className="w-full mb-4 p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs sm:text-sm flex items-start gap-2.5 animate-in fade-in duration-150">
                 <AlertCircle className="w-4 h-4 text-rose-600 flex-shrink-0 mt-0.5" />
-                <div className="flex-1 font-medium leading-relaxed">{errorMessage}</div>
+                <div className="flex-1 font-medium leading-relaxed">{displayError}</div>
               </div>
             )}
 
