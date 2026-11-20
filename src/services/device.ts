@@ -1,4 +1,5 @@
 import { api } from './api';
+import { Capacitor } from '@capacitor/core';
 
 export interface DeviceReading {
   channel: number;
@@ -122,6 +123,9 @@ export const deviceApi = {
   },
 
   provisionDevice: async (input: ProvisionInput): Promise<ProvisionResult> => {
+    if (!Capacitor.isNativePlatform()) {
+      throw new Error('Use the installed Neuro Touch app to add devices.');
+    }
     const res = await api.post<ProvisionResult>('/devices/provision', input);
     if (!res.success || !res.deviceId) {
       throw new Error('Failed to provision device');

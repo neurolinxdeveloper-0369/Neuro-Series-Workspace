@@ -183,6 +183,12 @@ export const AddDeviceScreen = ({
   onDeviceAdded,
   onRoomAdded,
 }: AddDeviceScreenProps) => {
+  const nativeProvisioning = Capacitor.isNativePlatform();
+  const mobileBrowser = !nativeProvisioning && (
+    /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+  );
+  const [browserQrResult, setBrowserQrResult] = useState('');
   const [currentView, setCurrentView] = useState<ScreenView>(catalogOnly ? 'catalog' : 'main');
   const view = catalogOnly ? 'catalog' : currentView;
   const [selectedCategory, setSelectedCategory] = useState<CategoryType>('All');
@@ -197,6 +203,8 @@ export const AddDeviceScreen = ({
   // Camera & QR Scanner State
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
+  const cameraStreamRef = useRef<MediaStream | null>(null);
+  const cameraRequest = useRef(0);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [isTorchOn, setIsTorchOn] = useState(false);
   const [showWhereIsQr, setShowWhereIsQr] = useState(false);
@@ -385,6 +393,7 @@ export const AddDeviceScreen = ({
 
   // Setup device configuration sheet
   const initiateDeviceSetup = (model: DeviceModelItem, customMac?: string, loadSavedWifi = true) => {
+    if (!nativeProvisioning) return;
     const m4 = customMac || getRandomMac4();
     const devId = createDeviceId(m4, model.modelCode);
     setActiveModel(model);
@@ -490,6 +499,7 @@ export const AddDeviceScreen = ({
   };
 
   const handleSetUpDevice = async (ssid: string) => {
+    if (!nativeProvisioning) return;
     if (setupInFlight.current) return;
     setProvisionError(null);
     if (!homeId) {
@@ -532,6 +542,12 @@ export const AddDeviceScreen = ({
   // SSID Layout Resolver: extracts model notation from SSID and resolves layout before room assignment
   const initiateDeviceFromSsid = (ssidString: string, loadSavedWifi = true) => {
     if (!ssidString) return;
+    if (!nativeProvisioning) {
+      setBrowserQrResult(ssidString);
+      stopCamera();
+      setCurrentView('main');
+      return;
+    }
     const resolved = resolveDeviceFromSsid(ssidString);
     const matched = DEVICE_CATALOG.find(d => d.modelCode.toUpperCase() === resolved.modelCode.toUpperCase()) || {
       id: `dev_${resolved.modelCode.toLowerCase()}`,
@@ -690,6 +706,7 @@ export const AddDeviceScreen = ({
   };
 
   const startCamera = async () => {
+    const request = ++cameraRequest.current;
     setCameraError(null);
     try {
       // 1. Native platform camera permissions prompt (Android & iOS)
@@ -709,10 +726,17 @@ export const AddDeviceScreen = ({
       }
 
       // 2. Browser MediaDevices stream
+      if (request !== cameraRequest.current) return;
       if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
         const stream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: { ideal: 'environment' } }
         });
+        if (request !== cameraRequest.current) {
+          stream.getTracks().forEach(track => track.stop());
+          return;
+        }
+        cameraStreamRef.current?.getTracks().forEach(track => track.stop());
+        cameraStreamRef.current = stream;
         setCameraStream(stream);
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
@@ -723,16 +747,19 @@ export const AddDeviceScreen = ({
         setCameraError('Camera API not available on this device.');
       }
     } catch (err: any) {
+      if (request !== cameraRequest.current) return;
       console.error('Camera stream error:', err);
-      setCameraError('Camera permission not granted or device camera is busy. You can proceed with "Add without QR code".');
+      setCameraError(nativeProvisioning
+        ? 'Camera permission not granted or device camera is busy. You can proceed with "Add without QR code".'
+        : 'Allow camera access in your browser settings, then try scanning again.');
     }
   };
 
   const stopCamera = () => {
-    if (cameraStream) {
-      cameraStream.getTracks().forEach(track => track.stop());
-      setCameraStream(null);
-    }
+    cameraRequest.current++;
+    cameraStreamRef.current?.getTracks().forEach(track => track.stop());
+    cameraStreamRef.current = null;
+    setCameraStream(null);
   };
 
   const toggleTorch = async () => {
@@ -817,6 +844,7 @@ export const AddDeviceScreen = ({
   };
 
   const handleContinueProvisioning = async () => {
+    if (!nativeProvisioning) return;
     if (isProvisioning || !wifiSsid.trim() || !homeId ||
         (selectedHotspot && !hotspotReady && !confirmedPairing.current)) return;
     setIsProvisioning(true);
@@ -907,6 +935,52 @@ export const AddDeviceScreen = ({
   }, [isOpen]);
 
   if (!isOpen) return null;
+
+  if (!nativeProvisioning) return (
+    <div className="app-screen screen-top-container fixed inset-0 z-50 flex flex-col overflow-y-auto">
+      <section className="mx-auto flex w-full max-w-md flex-1 flex-col p-5 sm:p-6">
+        <header className="mb-6 flex items-center gap-4">
+          <button type="button" aria-label="Back" data-screen-back onClick={() => {
+            if (currentView === 'qr_scanner') { stopCamera(); setCurrentView('main'); }
+            else onClose();
+          }} className="grid size-11 shrink-0 place-items-center rounded-full bg-white">
+            <ChevronLeft />
+          </button>
+          <h1 className="text-xl font-bold">{currentView === 'qr_scanner' && mobileBrowser ? 'Scan QR code' : 'Add device'}</h1>
+        </header>
+        <div className="my-auto space-y-5 pb-8">
+          <div className="rounded-3xl border border-slate-200 bg-white p-5 text-center">
+            <h2 className="text-lg font-bold">Device setup is unsupported in this browser</h2>
+            <p className="mt-2 text-sm leading-relaxed text-slate-600">
+              Use the installed Neuro Touch app to add devices and connect them to Wi-Fi.
+              {mobileBrowser && ' You can scan a QR code here to read its details.'}
+            </p>
+          </div>
+          {mobileBrowser && currentView === 'qr_scanner' && (
+            <div className="space-y-3">
+              <video ref={videoRef} autoPlay playsInline muted
+                aria-label="QR camera preview" className="aspect-square w-full rounded-3xl bg-slate-100 object-cover" />
+              {cameraError && <p role="alert" className="rounded-xl bg-rose-50 p-3 text-sm text-rose-700">{cameraError}</p>}
+              <p className="text-center text-sm text-slate-600">Point the camera at the QR code on your device.</p>
+            </div>
+          )}
+          {mobileBrowser && currentView !== 'qr_scanner' && (
+            <button type="button" onClick={() => { setBrowserQrResult(''); setCurrentView('qr_scanner'); }}
+              className="flex min-h-12 w-full items-center justify-center gap-2 rounded-full bg-sky-700 px-4 font-semibold text-white">
+              <QrCode className="size-5" />Scan QR code
+            </button>
+          )}
+          {mobileBrowser && browserQrResult && currentView !== 'qr_scanner' && (
+            <div role="status" className="rounded-2xl bg-white p-4">
+              <h2 className="font-semibold">QR code scanned</h2>
+              <p className="mt-2 break-all text-sm text-slate-700">{browserQrResult}</p>
+              <p className="mt-3 text-sm text-slate-600">Open the installed Neuro Touch app to finish adding this device.</p>
+            </div>
+          )}
+        </div>
+      </section>
+    </div>
+  );
 
   return (
     <div 
