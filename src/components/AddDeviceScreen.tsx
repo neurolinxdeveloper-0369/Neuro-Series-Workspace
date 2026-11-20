@@ -374,6 +374,9 @@ export const AddDeviceScreen = ({
       if (bridge?.httpPost) {
         const reply = JSON.parse(bridge.httpPost(url, body) || '{}');
         status = reply.status || 0;
+        if (!status && /EPERM|Operation not permitted/i.test(String(reply.error || ''))) {
+          throw new Error('Android blocked access to the device Wi-Fi. Pause any VPN or enable local-network access in its settings, then reconnect to the device Wi-Fi and retry.');
+        }
         try { responseBody = JSON.parse(reply.body); } catch { responseBody = null; }
       } else if (Capacitor.getPlatform() === 'ios') {
         const reply = await CapacitorHttp.post({ url, data: JSON.parse(body), headers: { 'Content-Type': 'application/json' }, connectTimeout: 4000, readTimeout: 8000, disableRedirects: true });

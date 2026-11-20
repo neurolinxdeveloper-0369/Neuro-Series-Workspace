@@ -57,7 +57,8 @@ public class MainActivity extends BridgeActivity {
                         Network activeNetwork = cm.getActiveNetwork();
                         if (activeNetwork != null) {
                             NetworkCapabilities capabilities = cm.getNetworkCapabilities(activeNetwork);
-                            if (capabilities != null && capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) {
+                            if (capabilities != null && capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
+                                    && capabilities.getTransportInfo() instanceof WifiInfo) {
                                 WifiInfo wifiInfo = (WifiInfo) capabilities.getTransportInfo();
                                 if (wifiInfo != null && wifiInfo.getSSID() != null) {
                                     String ssid = wifiInfo.getSSID().replace("\"", "").trim();
@@ -246,7 +247,8 @@ public class MainActivity extends BridgeActivity {
                 if (cm != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                     for (Network net : cm.getAllNetworks()) {
                         NetworkCapabilities caps = cm.getNetworkCapabilities(net);
-                        if (caps != null && caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) {
+                        if (caps != null && caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
+                                && !caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) {
                             boolean bound = cm.bindProcessToNetwork(net);
                             android.util.Log.d("AndroidWifiBridge", "bindProcessToNetwork result: " + bound + " for net: " + net);
                             return bound;
@@ -295,7 +297,8 @@ public class MainActivity extends BridgeActivity {
                 if (wifiNetwork == null && cm != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                     for (Network net : cm.getAllNetworks()) {
                         NetworkCapabilities caps = cm.getNetworkCapabilities(net);
-                        if (caps != null && caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) {
+                        if (caps != null && caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
+                                && !caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) {
                             wifiNetwork = net;
                             break;
                         }
@@ -370,7 +373,8 @@ public class MainActivity extends BridgeActivity {
                 if (wifiNetwork == null && cm != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                     for (Network net : cm.getAllNetworks()) {
                         NetworkCapabilities caps = cm.getNetworkCapabilities(net);
-                        if (caps != null && caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) {
+                        if (caps != null && caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
+                                && !caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) {
                             wifiNetwork = net;
                             break;
                         }
