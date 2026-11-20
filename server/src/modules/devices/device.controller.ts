@@ -45,7 +45,7 @@ deviceRouter.get('/', async (req: AuthenticatedRequest, res, next) => {
 
 deviceRouter.get('/home/:homeId/pairing-config', (_req, res) => {
   if (!ENV.MQTT_DEVICE_USERNAME || !ENV.MQTT_DEVICE_PASSWORD) {
-    return res.status(503).json({ success: false, error: 'Device pairing is temporarily unavailable' });
+    return res.status(503).json({ success: false, error: 'Device setup is not configured. Please contact support.' });
   }
   res.setHeader('Cache-Control', 'no-store');
   return res.json({

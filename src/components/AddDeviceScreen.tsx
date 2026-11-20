@@ -539,7 +539,9 @@ export const AddDeviceScreen = ({
     } catch (error) {
       if (selectedHotspotRef.current !== ssid || generation !== setupGeneration.current) return;
       const reason = error instanceof Error ? error.message.replace(/^API Error \[\d{3}\]:\s*/i, '') : 'Setup is unavailable.';
-      setProvisionError(reason + ' Reconnect your phone to the internet and retry.');
+      setProvisionError(reason.includes('Device pairing is temporarily unavailable') || reason.includes('Device setup is not configured')
+        ? 'Device setup is not configured on the server. Please contact support before retrying.'
+        : reason + ' Check your connection and retry.');
     } finally {
       if (generation === setupGeneration.current) {
         setupInFlight.current = false;
