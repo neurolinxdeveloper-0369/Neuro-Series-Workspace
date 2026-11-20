@@ -1,3 +1,4 @@
+import { RoutinesScreen } from './components/RoutinesScreen';
 import { ExploreScreen } from './components/ExploreScreen';
 import { DevicesToolbar } from './components/DevicesToolbar';
 import { QuickControls } from './components/QuickControls';
@@ -42,9 +43,7 @@ import {
   User,
   ArrowLeft,
   Zap,
-  Edit2,
   Trash2,
-  Play,
   CheckCircle2,
   FolderPlus,
   ChevronRight
@@ -144,6 +143,8 @@ export function App() {
   const roomSelectionHome = useRef<string | null>(null);
   const [deviceView, setDeviceView] = useState<'grid' | 'list'>('grid');
   const [deviceStatusFilter, setDeviceStatusFilter] = useState<'all' | 'online' | 'offline'>('all');
+  const [deviceRoomFilter, setDeviceRoomFilter] = useState('all');
+  const [deviceSearch, setDeviceSearch] = useState('');
   const [isExploreDismissed, setIsExploreDismissed] = useState(() => {
     return typeof window !== 'undefined' && sessionStorage.getItem('neuro_explore_dismissed') === 'true';
   });
@@ -1285,7 +1286,7 @@ export function App() {
       )}
 
       {/* 4. Mobile & Tablet Content (Explore Slider + Pure White Cards based on activeTab; Menu has all content cleared) */}
-      <main className={`explore-slider-wrapper ${activeTab === 'explore' ? 'explore-page-content' : activeTab === 'menu' ? 'menu-page-content' : ''} ${isSignedIn && activeTab === 'home' ? 'top-header-2rows' : 'top-header-1row'} fixed inset-x-0 top-[7.5rem] sm:top-32 bottom-20 sm:bottom-6 overflow-y-auto overflow-x-hidden flex flex-col items-center justify-start z-20 px-4 sm:px-6 sm:pl-24 pb-8 space-y-3.5`}>
+      <main className={`explore-slider-wrapper ${activeTab === 'explore' ? 'explore-page-content' : activeTab === 'menu' ? 'menu-page-content' : activeTab === 'routines' ? 'routines-page-content' : ''} ${isSignedIn && activeTab === 'home' ? 'top-header-2rows' : 'top-header-1row'} fixed inset-x-0 top-[7.5rem] sm:top-32 bottom-20 sm:bottom-6 overflow-y-auto overflow-x-hidden flex flex-col items-center justify-start z-20 px-4 sm:px-6 sm:pl-24 pb-8 space-y-3.5`}>
         {isSignedIn && activeTab === 'home' && homesLoadFailed && (
           <div role="alert" className="pointer-events-auto w-full max-w-lg rounded-2xl bg-white p-4 text-sm text-slate-800 shadow-sm">
             <p>Couldn?t load your locations. Check your connection and try again.</p>
@@ -1401,8 +1402,8 @@ export function App() {
 
         {activeTab === 'devices' && (
           <>
-            <DevicesToolbar rooms={rooms} room={activeRoomTab} onRoom={setActiveRoomTab}
-              search={searchQuery} onSearch={setSearchQuery} status={deviceStatusFilter} onStatus={setDeviceStatusFilter}
+            <DevicesToolbar rooms={rooms} room={deviceRoomFilter} onRoom={setDeviceRoomFilter}
+              search={deviceSearch} onSearch={setDeviceSearch} status={deviceStatusFilter} onStatus={setDeviceStatusFilter}
               view={deviceView} onView={setDeviceView} />
 
             {devices.length === 0 ? (
@@ -1415,12 +1416,12 @@ export function App() {
               (() => {
                 const filtered = devices
                   .filter(d => deviceStatusFilter === 'all' || (deviceStatusFilter === 'online' ? d.is_online === true : !d.is_online))
-                  .filter(d => activeRoomTab === 'all' || (rooms.find(r => r.name === activeRoomTab)?.id === d.room_id))
-                  .filter(d => !searchQuery.trim() ||
-                    d.custom_name.toLowerCase().includes(searchQuery.trim().toLowerCase()) ||
-                    d.model_code.toLowerCase().includes(searchQuery.trim().toLowerCase()) ||
-                    (d.device_id && d.device_id.toLowerCase().includes(searchQuery.trim().toLowerCase())) ||
-                    (rooms.find(r => r.id === d.room_id)?.name.toLowerCase().includes(searchQuery.trim().toLowerCase()))
+                  .filter(d => deviceRoomFilter === 'all' || (rooms.find(r => r.name === deviceRoomFilter)?.id === d.room_id))
+                  .filter(d => !deviceSearch.trim() ||
+                    d.custom_name.toLowerCase().includes(deviceSearch.trim().toLowerCase()) ||
+                    d.model_code.toLowerCase().includes(deviceSearch.trim().toLowerCase()) ||
+                    (d.device_id && d.device_id.toLowerCase().includes(deviceSearch.trim().toLowerCase())) ||
+                    (rooms.find(r => r.id === d.room_id)?.name.toLowerCase().includes(deviceSearch.trim().toLowerCase()))
                   );
 
 
@@ -1434,14 +1435,14 @@ export function App() {
 
                     {filtered.length === 0 ? (
                       <div className="bg-white/80 backdrop-blur-md rounded-3xl p-6 text-center border border-white/80 shadow-xs space-y-1.5">
-                        {searchQuery.trim() || deviceStatusFilter !== 'all' ? (
+                        {deviceSearch.trim() || deviceStatusFilter !== 'all' ? (
                           <>
                             <Search className="w-8 h-8 text-slate-400 mx-auto mb-1" />
                             <p className="text-sm font-semibold text-slate-800">No devices found</p>
                             <p className="text-xs text-slate-500">No devices match these filters.</p>
                             <button
                               type="button"
-                              onClick={() => { setSearchQuery(''); setDeviceStatusFilter('all'); }}
+                              onClick={() => { setDeviceSearch(''); setDeviceStatusFilter('all'); }}
                               className="mt-2 inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-bold bg-[#0284c7] text-white hover:bg-sky-600 transition-colors cursor-pointer"
                             >
                               Clear filters
@@ -1449,7 +1450,7 @@ export function App() {
                           </>
                         ) : (
                           <>
-                            <p className="text-sm font-semibold text-slate-700">No devices in {activeRoomTab}</p>
+                            <p className="text-sm font-semibold text-slate-700">No devices in {deviceRoomFilter}</p>
                             <p className="text-xs text-slate-400 mt-1">Assign devices to this room or add a new device</p>
                             <button
                               onClick={() => handleProtectedAction(() => setIsAddDeviceOpen(true))}
@@ -1478,257 +1479,13 @@ export function App() {
 
         {activeTab === 'explore' && <ExploreScreen />}
 
-        {activeTab === 'routines' && canManageLocation && (
-          <button type="button" onClick={() => setHistoryView('routines')}
-            className="min-h-11 self-center rounded-xl bg-white px-4 text-sm font-semibold text-sky-800 shadow-sm pointer-events-auto">
-            Routine history
-          </button>
-        )}
-        {activeTab === 'routines' && routineRunError && (
-          <p role="alert" className="w-full max-w-lg rounded-xl bg-rose-50 p-3 text-sm text-rose-800">{routineRunError}</p>
-        )}
-        {activeTab === 'routines' && (
-          <>
-            <div className="w-full max-w-sm sm:max-w-md md:max-w-2xl lg:max-w-5xl space-y-3 pointer-events-auto pt-2">
-              {/* Routines Top Header Bar (Transparent Glassmorphism) */}
-              <div className="flex items-center justify-between bg-white/35 backdrop-blur-2xl rounded-3xl p-3 sm:p-4 border border-white/60 shadow-xs">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-10 h-10 rounded-2xl bg-amber-50 text-amber-500 flex items-center justify-center border border-amber-100 shadow-xs">
-                    <Sparkles className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h2 className="text-sm sm:text-base font-extrabold text-slate-900 tracking-tight leading-tight">
-                      Smart Automations & Scenes
-                    </h2>
-                    <p className="text-[11px] text-slate-500 font-medium">
-                      {routines.length} Routines &bull; {rooms.length || 1} Rooms &bull; {devices.length} Devices ({devices.filter(d => Boolean(d.is_online)).length} Live)
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Room Filter Pills Bar: "All Devices" + List of Rooms */}
-              <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
-                <button
-                  type="button"
-                  onClick={() => setRoutineRoomFilter('all')}
-                  className={`px-3.5 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
-                    routineRoomFilter === 'all'
-                      ? 'bg-[#0284c7] text-white shadow-xs'
-                      : 'bg-white/40 text-slate-700 hover:bg-white/60 border border-white/60 backdrop-blur-md'
-                  }`}
-                >
-                  All Devices
-                </button>
-                {rooms.map(r => {
-                  const isSelected = routineRoomFilter === r.id;
-                  return (
-                    <button
-                      key={r.id}
-                      type="button"
-                      onClick={() => setRoutineRoomFilter(r.id)}
-                      className={`flex items-center gap-1 px-3.5 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
-                        isSelected
-                          ? 'bg-[#0284c7] text-white shadow-xs'
-                          : 'bg-white/40 text-slate-700 hover:bg-white/60 border border-white/60 backdrop-blur-md'
-                      }`}
-                    >
-                      <span>{getRoomEmoji(r.name)}</span>
-                      <span>{r.name}</span>
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Routines 2x2 Grid (Side-by-side on mobile screens) or Real-Time Space Overview */}
-              {(() => {
-                const filteredRoutines = routines.filter(r =>
-                  routineRoomFilter === 'all' || r.roomId === 'all' || r.roomId === routineRoomFilter
-                );
-
-                if (filteredRoutines.length === 0) {
-                  const onlineCount = devices.filter(d => Boolean(d.is_online)).length;
-                  const offlineCount = devices.filter(d => !d.is_online).length;
-
-                  return (
-                    <div className="w-full bg-white/40 backdrop-blur-2xl rounded-3xl p-5 border border-white/70 shadow-sm space-y-4">
-                      {/* Top: Space & User Live Identity */}
-                      <div className="flex items-center justify-between pb-3 border-b border-slate-200/50">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-2xl bg-[#0284c7] text-white flex items-center justify-center font-extrabold text-sm shadow-xs">
-                            {(currentUser?.full_name || currentUser?.email || 'N')[0].toUpperCase()}
-                          </div>
-                          <div>
-                            <h3 className="text-sm font-bold text-slate-900 leading-tight">
-                              {currentUser?.full_name || currentUser?.email || 'Smart Workspace User'}
-                            </h3>
-                            <p className="text-[11px] text-slate-500 font-medium">
-                              {activeHome?.name || 'Neurolinx Space'} &bull; {activeHome?.property_type || 'Residential'}
-                            </p>
-                          </div>
-                        </div>
-
-                        <div className="text-right">
-                          <span className="text-xs font-mono font-bold text-slate-800 block">
-                            {timeFormatted}
-                          </span>
-                          <span className="text-[10px] text-slate-500 block">
-                            {dateFormatted}
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Real-time Device Live Counters */}
-                      <div className="grid grid-cols-3 gap-2">
-                        <div className="bg-white/70 rounded-2xl p-2.5 text-center border border-white/80 shadow-2xs">
-                          <span className="text-xs font-bold text-slate-800 block">{devices.length}</span>
-                          <span className="text-[10px] text-slate-500 font-medium">Total Devices</span>
-                        </div>
-                        <div className="bg-white/70 rounded-2xl p-2.5 text-center border border-white/80 shadow-2xs">
-                          <div className="flex items-center justify-center gap-1">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_6px_#10b981]" />
-                            <span className="text-xs font-bold text-emerald-600">{onlineCount}</span>
-                          </div>
-                          <span className="text-[10px] text-slate-500 font-medium">Live Online</span>
-                        </div>
-                        <div className="bg-white/70 rounded-2xl p-2.5 text-center border border-white/80 shadow-2xs">
-                          <span className="text-xs font-bold text-slate-800 block">{offlineCount}</span>
-                          <span className="text-[10px] text-slate-500 font-medium">Inactive</span>
-                        </div>
-                      </div>
-
-                      {/* Subtle Database Status Notice */}
-                      <div className="py-2 text-center text-slate-400 space-y-0.5">
-                        <p className="text-xs font-semibold text-slate-600">No scenes or schedules saved in database</p>
-                        <p className="text-[11px] text-slate-400">Use the + button at the top right to create a Scene or Schedule</p>
-                      </div>
-                    </div>
-                  );
-                }
-
-                return (
-                  <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2.5 sm:gap-3.5">
-                    {filteredRoutines.map((routine) => {
-                      const isRunning = runningRoutineId === routine.id;
-                      const roomObj = rooms.find(r => r.id === routine.roomId);
-                      const targetLabel = routine.roomId === 'all' ? 'All Rooms' : (roomObj ? roomObj.name : 'Custom Room');
-
-                      const IconCmp = routine.icon === 'moon' ? Moon
-                        : routine.icon === 'sparkles' ? Sparkles
-                        : routine.icon === 'zap' ? Zap
-                        : routine.icon === 'clock' ? Clock
-                        : Sun;
-
-                      const iconBg = routine.icon === 'moon' ? 'bg-indigo-50 border-indigo-100 text-indigo-500'
-                        : routine.icon === 'sparkles' ? 'bg-emerald-50 border-emerald-100 text-emerald-500'
-                        : routine.icon === 'zap' ? 'bg-amber-50 border-amber-100 text-amber-500'
-                        : routine.icon === 'clock' ? 'bg-sky-50 border-sky-100 text-sky-500'
-                        : 'bg-amber-50 border-amber-100 text-amber-500';
-
-                      return (
-                        <div
-                          key={routine.id}
-                          className="group relative bg-white/70 backdrop-blur-xl rounded-2xl sm:rounded-3xl p-3 sm:p-4 shadow-xs border border-white/80 hover:border-sky-300 hover:shadow-md transition-all flex flex-col justify-between"
-                        >
-                          <div>
-                            {/* Card Top Row: Icon + Type Badge + Edit Button */}
-                            <div className="flex items-center justify-between mb-2">
-                              <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-2xl flex items-center justify-center border shadow-xs flex-shrink-0 ${iconBg}`}>
-                                <IconCmp className="w-5 h-5" />
-                              </div>
-
-                              <div className="flex items-center gap-1">
-                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-50 text-[#0284c7] border border-sky-100 font-mono">
-                                  {routine.type === 'schedule' && routine.icon === 'clock' && routine.scheduleTime
-                                    ? `ON ${formatScheduleTimeToIst(routine.scheduleTime)}`
-                                    : 'Scene'}
-                                </span>
-
-                                <button
-                                  type="button"
-                                  onClick={() => handleProtectedAction(() => handleOpenEditRoutine(routine))}
-                                  className="w-7 h-7 rounded-full hover:bg-slate-100 text-slate-400 hover:text-[#0284c7] flex items-center justify-center transition-colors cursor-pointer"
-                                  title="Edit / Modify Routine"
-                                >
-                                  <Edit2 className="w-3.5 h-3.5" />
-                                </button>
-                              </div>
-                            </div>
-
-                            {/* Title & Description */}
-                            <h4 className="text-xs sm:text-sm font-bold text-slate-900 group-hover:text-[#0284c7] transition-colors leading-tight line-clamp-1">
-                              {routine.name}
-                            </h4>
-
-                            <p className="text-[10px] sm:text-[11px] text-slate-400 line-clamp-1 mt-0.5">
-                              {routine.type === 'schedule' && routine.icon === 'clock' && routine.scheduleOffTime
-                                ? `ON ${formatScheduleTimeToIst(routine.scheduleTime)} • OFF ${formatScheduleTimeToIst(routine.scheduleOffTime)}`
-                                : routine.actions && routine.actions.length > 0
-                                  ? `${targetLabel} • ${routine.actions.length} action(s)`
-                                  : (routine.description || `${targetLabel} • Instant`)}
-                            </p>
-                          </div>
-
-                          {/* Bottom Action: Auto Run Toggle & Run Button */}
-                          <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between">
-                            {routine.type === 'schedule' && routine.icon === 'clock' ? (
-                              <button
-                                type="button"
-                                onClick={() => handleProtectedAction(() => handleToggleRoutineActive(routine))}
-                                className="flex items-center gap-1.5 cursor-pointer group/toggle p-0.5"
-                                title={routine.isActive !== false ? 'Auto Run is Active (Tap to pause)' : 'Auto Run is Paused (Tap to enable)'}
-                              >
-                                <div className={`w-7 h-4 rounded-full transition-colors relative p-0.5 flex items-center ${
-                                  routine.isActive !== false ? 'bg-emerald-500' : 'bg-slate-300'
-                                }`}>
-                                  <div className={`w-3 h-3 rounded-full bg-white shadow-xs transition-transform ${
-                                    routine.isActive !== false ? 'translate-x-3' : 'translate-x-0'
-                                  }`} />
-                                </div>
-                                <span className={`text-[10px] font-mono font-bold ${
-                                  routine.isActive !== false ? 'text-emerald-600' : 'text-slate-400'
-                                }`}>
-                                  {routine.isActive !== false ? 'Auto Run' : 'Paused'}
-                                </span>
-                              </button>
-                            ) : (
-                              <span className="text-[10px] font-mono text-slate-400">
-                                One-tap
-                              </span>
-                            )}
-
-                            <button
-                              type="button"
-                              disabled={isRunning}
-                              onClick={() => handleProtectedAction(() => handleRunRoutine(routine))}
-                              className={`px-3 py-1 rounded-full text-xs font-bold transition-all shadow-xs flex items-center gap-1 active:scale-95 cursor-pointer ${
-                                isRunning
-                                  ? 'bg-emerald-500 text-white'
-                                  : 'bg-sky-50 hover:bg-[#0284c7] text-[#0284c7] hover:text-white border border-sky-200/80'
-                              }`}
-                            >
-                              {isRunning ? (
-                                <>
-                                  <Check className="w-3 h-3" />
-                                  <span>Done!</span>
-                                </>
-                              ) : (
-                                <>
-                                  <Play className="w-3 h-3 fill-current" />
-                                  <span>{routine.type === 'schedule' && routine.icon === 'clock' ? 'Run Now' : 'Run'}</span>
-                                </>
-                              )}
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                );
-              })()}
-            </div>
-          </>
-        )}
+        {activeTab === 'routines' && <>
+          {routineRunError && <p role="alert" className="w-full max-w-lg rounded-xl bg-rose-50 p-3 text-sm text-rose-800">{routineRunError}</p>}
+          <RoutinesScreen routines={routines} rooms={rooms} roomFilter={routineRoomFilter} onRoomFilter={setRoutineRoomFilter}
+            canManage={canManageLocation} runningId={runningRoutineId} onCreate={() => handleOpenCreateRoutine('scene')}
+            onEdit={handleOpenEditRoutine} onToggle={handleToggleRoutineActive} onRun={handleRunRoutine}
+            onHistory={() => setHistoryView('routines')} />
+        </>}
 
         {activeTab === 'menu' && (
           <MenuTabContent
@@ -1765,7 +1522,7 @@ export function App() {
 
       {/* 7. Responsive Navigation Bar: Horizontal on Mobile (< 640px), Vertical on Tabs & Desktop (>= 640px) */}
       <nav
-        className={'nav-bar-responsive fixed z-40 transition-all duration-300 rounded-full flex flex-row sm:flex-col items-center justify-between sm:justify-center ' + (activeTab === 'explore' || activeTab === 'menu' ? 'explore-bottom-nav' : '')}
+        className={'nav-bar-responsive fixed z-40 transition-all duration-300 rounded-full flex flex-row sm:flex-col items-center justify-between sm:justify-center ' + (activeTab === 'explore' || activeTab === 'menu' || activeTab === 'routines' ? 'explore-bottom-nav' : '')}
         style={{
           background: 'linear-gradient(135deg, rgba(142, 197, 252, 0.78) 0%, rgba(120, 182, 252, 0.58) 100%)',
           backdropFilter: 'blur(28px) saturate(190%)',
@@ -1975,6 +1732,7 @@ export function App() {
             });
           }
           setActiveRoomTab(roomName);
+          setDeviceRoomFilter(roomName);
           setActiveTab('devices');
         }}
         onRoomAdded={(newRoom) => {

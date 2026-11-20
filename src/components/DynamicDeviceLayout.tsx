@@ -1,3 +1,4 @@
+import { SwitchCommandState } from '../../server/src/utils/switch-command-state';
 import { DeviceEndpointControls } from './DeviceEndpointControls';
 import { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
@@ -190,6 +191,7 @@ interface TouchPanelProps {
   initialSwitches?: Record<string, boolean>;
   switchConfigs?: Array<{ index: number; name: string; iconPath?: string }>;
   isOnline?: boolean;
+  lastSeenAt?: string;
 }
 
 export interface SwitchItemConfig {
@@ -202,7 +204,8 @@ export interface SwitchItemConfig {
 export const TouchPanelLayout = ({ 
   switchCount, 
   modelCode, 
-  deviceName: _deviceName, 
+  deviceName: _deviceName,
+  lastSeenAt,
   deviceId, 
   initialSwitches,
   switchConfigs,
@@ -269,94 +272,60 @@ export const TouchPanelLayout = ({
     }
   }, [switchConfigs]);
 
-  // Track pending rollback timers by channel number
-  const rollbackTimersRef = useRef<Map<number, NodeJS.Timeout>>(new Map());
-
-  // Cleanup pending rollback timers on unmount
+  const commandState = useRef<SwitchCommandState | null>(null);
+  const [switchErrors, setSwitchErrors] = useState<Record<number, string>>({});
   useEffect(() => {
-    return () => {
-      rollbackTimersRef.current.forEach(timer => clearTimeout(timer));
-      rollbackTimersRef.current.clear();
-    };
-  }, []);
+    const initial = Object.fromEntries(switches.map((sw, index) => [String(index + 1), initialSwitches?.[String(index + 1)] ?? sw.state]));
+    const controller = new SwitchCommandState(initial, {
+      send: async (channel, target) => {
+        if (!deviceId) throw new Error('Device unavailable');
+        const result = await deviceApi.controlSwitch(deviceId, channel, target ? 'on' : 'off');
+        if (!result.success) throw new Error('Command rejected');
+      },
+      display: (channel, state) => {
+        setSwitches(previous => previous.map((sw, index) => index + 1 === channel ? { ...sw, state } : sw));
+        setSwitchErrors(previous => {
+          if (!(channel in previous)) return previous;
+          const next = { ...previous }; delete next[channel]; return next;
+        });
+      },
+      fail: (channel, reason) => setSwitchErrors(previous => ({ ...previous, [channel]: reason })),
+    });
+    commandState.current = controller;
+    return () => { controller.dispose(); if (commandState.current === controller) commandState.current = null; };
+  }, [deviceId, switchCount]);
 
-  // Sync state when initialSwitches from server changes
   useEffect(() => {
-    if (initialSwitches) {
-      setSwitches(prev => prev.map((sw, i) => {
-        const chKey = String(i + 1);
-        if (initialSwitches[chKey] !== undefined) {
-          return { ...sw, state: Boolean(initialSwitches[chKey]) };
-        }
-        return sw;
-      }));
+    const stamp = lastSeenAt ? Date.parse(lastSeenAt) : NaN;
+    for (const [channel, state] of Object.entries(initialSwitches ?? {})) {
+      if (typeof state === 'boolean') commandState.current?.observe(Number(channel), state, Number.isFinite(stamp) ? stamp : undefined);
     }
-  }, [initialSwitches]);
+  }, [initialSwitches, lastSeenAt]);
 
-  // Real-time synchronization when physical hardware publishes telemetry over MQTT/WebSocket
+  useEffect(() => {
+    if (!isOnline) commandState.current?.cancel('Device is offline. Reconnect it before trying again.');
+  }, [isOnline]);
+
   useEffect(() => {
     if (!deviceId) return;
-    const unsubscribe = realtimeSocket.subscribe((incomingDeviceId, incomingState) => {
-      if (incomingDeviceId === deviceId && incomingState) {
-        // Handle switchConfigs updates across browser and app!
-        if (incomingState?.switchConfigs && Array.isArray(incomingState.switchConfigs)) {
-          setSwitches(prev => {
-            const updated = prev.map((sw, i) => {
-              const cfg = incomingState.switchConfigs.find((c: any) => c.index === i);
-              if (cfg) {
-                return {
-                  ...sw,
-                  name: cfg.name || sw.name,
-                  iconPath: cfg.iconPath !== undefined ? cfg.iconPath : sw.iconPath,
-                };
-              }
-              return sw;
-            });
-            try {
-              if (deviceId) {
-                localStorage.setItem(`neuro_switch_configs_${deviceId}`, JSON.stringify(updated));
-              }
-            } catch {}
-            return updated;
-          });
+    return realtimeSocket.subscribe((incomingDeviceId, state) => {
+      if (incomingDeviceId !== deviceId || !state) return;
+      if (Array.isArray(state.switchConfigs)) {
+        setSwitches(previous => previous.map((sw, index) => {
+          const config = state.switchConfigs.find((item: any) => item.index === index);
+          return config ? { ...sw, name: config.name || sw.name, iconPath: config.iconPath ?? sw.iconPath } : sw;
+        }));
+      }
+      const stamp = state.last_seen_at ? Date.parse(state.last_seen_at) : NaN;
+      const switches = state.switches || state.payload || (typeof state.state === 'object' ? state.state : null);
+      if (switches && typeof switches === 'object') {
+        for (const [channel, value] of Object.entries(switches)) {
+          if (typeof value === 'boolean') commandState.current?.observe(Number(channel), value, Number.isFinite(stamp) ? stamp : undefined);
         }
-
-        const switchMap = incomingState.switches || incomingState.payload || (typeof incomingState.state === 'object' ? incomingState.state : null);
-        if (switchMap && typeof switchMap === 'object') {
-          // Acknowledged by hardware: clear rollback timer for each updated channel
-          Object.keys(switchMap).forEach(chKey => {
-            const chNum = parseInt(chKey, 10);
-            if (rollbackTimersRef.current.has(chNum)) {
-              clearTimeout(rollbackTimersRef.current.get(chNum)!);
-              rollbackTimersRef.current.delete(chNum);
-            }
-          });
-
-          setSwitches(prev => prev.map((sw, i) => {
-            const chKey = String(i + 1);
-            if (switchMap[chKey] !== undefined) {
-              return { ...sw, state: Boolean(switchMap[chKey]) };
-            }
-            return sw;
-          }));
-        } else if (incomingState.channel !== undefined && incomingState.state !== undefined) {
-          const chNum = parseInt(String(incomingState.channel), 10);
-          if (rollbackTimersRef.current.has(chNum)) {
-            clearTimeout(rollbackTimersRef.current.get(chNum)!);
-            rollbackTimersRef.current.delete(chNum);
-          }
-          if (!isNaN(chNum)) {
-            setSwitches(prev => prev.map((sw, i) => {
-              if (i + 1 === chNum) {
-                return { ...sw, state: Boolean(incomingState.state) };
-              }
-              return sw;
-            }));
-          }
-        }
+      } else if (state.channel !== undefined && typeof state.state === 'boolean') {
+        commandState.current?.observe(Number(state.channel), state.state, Number.isFinite(stamp) ? stamp : undefined);
       }
     });
-    return unsubscribe;
   }, [deviceId]);
 
   // Long press timer & flag
@@ -384,93 +353,18 @@ export const TouchPanelLayout = ({
     }
   };
 
-  const toggleSwitch = async (index: number) => {
-    if (!isOnline) {
-      console.warn('Switch toggle ignored: device is offline.');
+  const requestSwitch = (index: number, target?: boolean) => {
+    const channel = index + 1;
+    if (!isOnline || !navigator.onLine) {
+      setSwitchErrors(previous => ({ ...previous, [channel]: !navigator.onLine ? 'No internet connection. Reconnect and try again.' : 'Device is offline. Reconnect it before trying again.' }));
       return;
     }
-
-    const currentState = switches[index]?.state || false;
-    const targetState = !currentState;
-    const channel = index + 1;
-
-    // Clear any existing rollback timer for this channel
-    if (rollbackTimersRef.current.has(channel)) {
-      clearTimeout(rollbackTimersRef.current.get(channel)!);
-      rollbackTimersRef.current.delete(channel);
-    }
-
-    // 1. Optimistic UI update
-    const updated = switches.map((sw, i) => 
-      i === index ? { ...sw, state: targetState } : sw
-    );
-    persistSwitches(updated);
-
-    // 2. Set 3.5s watchdog timeout: if hardware confirmation state does not arrive in time, flip back!
-    const timer = setTimeout(() => {
-      console.warn(`⏱️ Switch state confirmation timeout for channel ${channel}. Flipping back to ${currentState}`);
-      setSwitches(prev => {
-        const reverted = prev.map((sw, i) => i === index ? { ...sw, state: currentState } : sw);
-        try {
-          localStorage.setItem(`neuro_touch_panel_${modelCode}_${switchCount}`, JSON.stringify(reverted));
-        } catch {}
-        return reverted;
-      });
-      rollbackTimersRef.current.delete(channel);
-    }, 3500);
-
-    rollbackTimersRef.current.set(channel, timer);
-
-    // 3. Call backend switch control API (publishes to devices/{deviceId}/set via MQTT)
-    if (deviceId) {
-      try {
-        const res = await deviceApi.controlSwitch(deviceId, channel, targetState ? 'on' : 'off');
-        if (res && res.switches) {
-          const chKey = String(channel);
-          if (res.switches[chKey] === targetState) {
-            // Confirmation arrived! Cancel rollback timer
-            if (rollbackTimersRef.current.has(channel)) {
-              clearTimeout(rollbackTimersRef.current.get(channel)!);
-              rollbackTimersRef.current.delete(channel);
-            }
-          } else if (res.switches[chKey] !== undefined) {
-            // Hardware returned mismatched state -> flip back to what hardware reported
-            if (rollbackTimersRef.current.has(channel)) {
-              clearTimeout(rollbackTimersRef.current.get(channel)!);
-              rollbackTimersRef.current.delete(channel);
-            }
-            setSwitches(prev => prev.map((sw, i) => i === index ? { ...sw, state: Boolean(res.switches[chKey]) } : sw));
-          }
-        }
-      } catch (err) {
-        console.warn(`Failed to control switch channel ${channel}, flipping back:`, err);
-        // API call failed -> IMMEDIATELY flip back to previous state!
-        if (rollbackTimersRef.current.has(channel)) {
-          clearTimeout(rollbackTimersRef.current.get(channel)!);
-          rollbackTimersRef.current.delete(channel);
-        }
-        setSwitches(prev => {
-          const reverted = prev.map((sw, i) => i === index ? { ...sw, state: currentState } : sw);
-          try {
-            localStorage.setItem(`neuro_touch_panel_${modelCode}_${switchCount}`, JSON.stringify(reverted));
-          } catch {}
-          return reverted;
-        });
-      }
-    }
+    setSwitchErrors(previous => { const next = { ...previous }; delete next[channel]; return next; });
+    if (target === undefined) commandState.current?.toggle(channel);
+    else commandState.current?.set(channel, target);
   };
-
-  const allOff = async () => {
-    if (!isOnline) return;
-    persistSwitches(switches.map(sw => ({ ...sw, state: false })));
-    if (deviceId) {
-      for (let i = 0; i < switches.length; i++) {
-        try {
-          await deviceApi.controlSwitch(deviceId, i + 1, 'off');
-        } catch {}
-      }
-    }
-  };
+  const toggleSwitch = (index: number) => requestSwitch(index);
+  const allOff = () => { for (let index = 0; index < switchCount; index++) requestSwitch(index, false); };
 
   // Long-press start
   const handleTouchStart = (index: number) => {
@@ -659,7 +553,7 @@ export const TouchPanelLayout = ({
         <img 
           src={getAssetUrl('ICONS/' + encodeURIComponent(sw.iconPath))}
           alt=""
-          className="h-full w-full object-contain pointer-events-none"
+          className="h-full w-full object-contain pointer-events-none brightness-0 invert"
         />
       );
     }
@@ -740,7 +634,7 @@ export const TouchPanelLayout = ({
                   <img 
                     src={getAssetUrl('ICONS/' + encodeURIComponent(draftIconPath))}
                     alt="Preview" 
-                    className="w-[88%] h-[88%] object-contain"
+                    className="w-[88%] h-[88%] object-contain brightness-0 invert"
                   />
                 ) : (
                   <Power className="w-9 h-9 text-white drop-shadow-[0_0_10px_rgba(56,189,248,1)]" />
@@ -882,7 +776,7 @@ export const TouchPanelLayout = ({
                 className={`aspect-square rounded-2xl p-1.5 flex flex-col items-center justify-center transition-all cursor-pointer border ${
                   !draftIconPath
                     ? 'bg-[#0284c7] border-white ring-2 ring-[#0284c7] shadow-[0_0_14px_rgba(2,132,199,0.45)] scale-105'
-                    : 'bg-[#5f9eb9] border-sky-200 hover:bg-[#368fad]'
+                    : 'bg-[#0284c7] border-sky-200 hover:bg-[#0377ad]'
                 }`}
                 title="Default Power Icon"
               >
@@ -899,14 +793,14 @@ export const TouchPanelLayout = ({
                     className={`aspect-square rounded-2xl p-1.5 flex items-center justify-center transition-all cursor-pointer relative group border ${
                       isSelected
                         ? 'bg-[#0284c7] border-white ring-2 ring-[#0284c7] shadow-[0_0_14px_rgba(2,132,199,0.45)] scale-105'
-                        : 'bg-[#5f9eb9] border-sky-200 hover:bg-[#368fad] hover:border-[#0284c7]'
+                        : 'bg-[#0284c7] border-sky-200 hover:bg-[#0377ad] hover:border-[#0284c7]'
                     }`}
                     title={iconName} aria-label={iconName} aria-pressed={isSelected}
                   >
                     <img 
                       src={getAssetUrl('ICONS/' + encodeURIComponent(iconName))}
                       alt={iconName}
-                      className="w-full h-full object-contain"
+                      className="w-full h-full object-contain brightness-0 invert"
                       loading="lazy"
                     />
                     {isSelected && (
@@ -982,9 +876,9 @@ export const TouchPanelLayout = ({
       )}
 
       {/* Circular Switches Rows (3 in line 1, 3 in line 2, 2 in line 3 for 8-gang) */}
-      <div className="flex flex-col items-center gap-4 sm:gap-6 py-2 my-2">
+      <div className="flex flex-col items-center gap-6 sm:gap-7 py-3 my-3">
         {switchRows.map((rowIndices, rowIdx) => (
-          <div key={rowIdx} className="flex items-center justify-center gap-3 sm:gap-6 w-full">
+          <div key={rowIdx} className="flex items-center justify-center gap-5 sm:gap-7 w-full">
             {rowIndices.map((idx) => {
               const sw = switches[idx];
               if (!sw) return null;
@@ -1009,7 +903,7 @@ export const TouchPanelLayout = ({
                         ? 'cursor-not-allowed pointer-events-none bg-[#7babc0] border-2 border-slate-300'
                         : isOn
                           ? 'cursor-pointer active:scale-95 bg-[#168db7] border-2 border-white ring-4 ring-sky-400 shadow-md shadow-sky-200'
-                          : 'cursor-pointer active:scale-95 bg-[#6eabc3] hover:bg-[#559bb7] border-2 border-sky-200 shadow-sm'
+                          : 'cursor-pointer active:scale-95 bg-gradient-to-br from-[#baddec] to-[#8bbbd0] hover:to-[#7eafc4] border-2 border-[#c9e4f0] shadow-sm'
                     }`}
                     title={!isOnline ? 'Device is offline - switch disabled' : `${sw.name || `Switch ${idx + 1}`} • Tap to toggle, Long-press to edit`}
                   >
@@ -1035,13 +929,14 @@ export const TouchPanelLayout = ({
         ))}
       </div>
 
+      {Object.entries(switchErrors).map(([channel, message]) => <p key={channel} role="alert" className="mt-3 rounded-xl bg-rose-50 p-3 text-xs text-rose-700">Switch {channel}: {message}</p>)}
       {/* Footer Status Hint */}
-      <div className="mt-5 pt-3 border-t border-sky-100/80 flex items-center justify-between text-xs text-slate-500 font-sans">
+      <div className="mt-6 mb-4 rounded-2xl border border-sky-100/70 bg-white/45 px-3 py-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 text-xs text-slate-500 font-sans">
         <span className="flex items-center gap-1.5 text-slate-600">
           <Info className="w-3.5 h-3.5 text-[#0284c7]" />
           <span>Tap circle to toggle &bull; Long-press to customize</span>
         </span>
-        <span className="font-mono font-bold text-[#0284c7]">
+        <span className="whitespace-nowrap font-mono font-bold text-[#0284c7]">
           {switches.filter(s => s.state).length} / {switchCount} ON
         </span>
       </div>
@@ -1918,6 +1813,8 @@ export const DynamicDeviceLayout = ({
     case 'touch_panel':
       return (
         <TouchPanelLayout
+          key={deviceId}
+          lastSeenAt={device?.last_seen_at}
           switchCount={registered.switchCount || 8}
           modelCode={modelCode}
           deviceName={deviceName}

@@ -48,7 +48,7 @@ export function DeviceManagement({ device, rooms, onSaved, onRemoved }: DeviceMa
   }
 
   return (
-    <details className="rounded-2xl border border-slate-200 bg-white p-4 text-sm shadow-sm sm:p-5">
+    <details className="mt-5 rounded-2xl border border-slate-200 bg-white p-4 text-sm shadow-sm sm:p-5">
       <summary className="cursor-pointer font-semibold text-slate-900">Manage device</summary>
       <form onSubmit={save} className="mt-4 grid gap-3">
         <label className="grid gap-1.5 font-medium text-slate-800">

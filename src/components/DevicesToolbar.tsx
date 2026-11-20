@@ -1,3 +1,4 @@
+import './DevicesToolbar.css';
 import { Filter, LayoutGrid, List, Search, X } from 'lucide-react';
 import type { Room } from '../services/home';
 
@@ -7,7 +8,7 @@ export function DevicesToolbar({ rooms, room, onRoom, search, onSearch, status, 
   status: 'all' | 'online' | 'offline'; onStatus: (value: 'all' | 'online' | 'offline') => void;
   view: 'grid' | 'list'; onView: (value: 'grid' | 'list') => void;
 }) {
-  return <section aria-label="Find devices" className="w-full max-w-sm shrink-0 space-y-3 sm:max-w-md md:max-w-2xl lg:max-w-5xl">
+  return <section aria-label="Find devices" className="devices-reference-toolbar w-full max-w-sm shrink-0 space-y-3 sm:max-w-md md:max-w-2xl lg:max-w-5xl">
     <div className="flex items-center gap-2">
       <label className="flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-full border border-sky-100 bg-white/80 px-3 shadow-sm">
         <Search aria-hidden="true" className="size-4 shrink-0 text-slate-500" />
