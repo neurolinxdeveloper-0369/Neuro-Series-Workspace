@@ -1,3 +1,4 @@
+import { ExploreScreen } from './components/ExploreScreen';
 import { DevicesToolbar } from './components/DevicesToolbar';
 import { QuickControls } from './components/QuickControls';
 import { SmartHomeOverview } from './components/SmartHomeOverview';
@@ -1171,11 +1172,11 @@ export function App() {
 
   return (<>
     <div inert={biometricLock.locked} aria-hidden={biometricLock.locked || undefined}
-      style={{ visibility: biometricLock.locked ? 'hidden' : undefined }} className="app-screen fixed inset-0 overflow-hidden font-sans">
+      data-active-tab={activeTab} style={{ visibility: biometricLock.locked ? 'hidden' : undefined }} className="app-screen fixed inset-0 overflow-hidden font-sans">
       {isRefreshing && <div role="status" className="pointer-events-none fixed inset-x-0 top-[calc(var(--safe-inset-top)+0.5rem)] z-[100] mx-auto w-fit rounded-full border border-sky-200 bg-white px-4 py-2 text-sm font-semibold text-sky-800 shadow-sm">Refreshing...</div>}
 
       {/* 3. Unified Responsive Header: Only shown on Home tab */}
-      {isSignedIn && activeTab === 'home' ? (
+      {isSignedIn && (activeTab === 'home' || activeTab === 'menu') ? (
         /* Logged-In Header: Row 1 = Quick Actions & Home Switcher; Row 2 = Search & Room Tabs */
         <header className="app-top-header fixed top-4 sm:top-5 inset-x-0 z-30 flex flex-col pointer-events-none px-4 sm:px-6 md:px-8">
           {/* Row 1: Quick Actions & Home Selector */}
@@ -1243,7 +1244,7 @@ export function App() {
 
           {/* Row 2: Search + Room Tabs (Positioned with clear generous gap below header Row 1) */}
           <div className="w-full max-w-sm sm:max-w-md md:max-w-2xl lg:max-w-5xl mx-auto mt-4 sm:mt-5 pt-1 sm:pt-1.5 pointer-events-auto">
-            {renderRoomTabsBar()}
+            {activeTab === 'home' && renderRoomTabsBar()}
           </div>
         </header>
       ) : isSignedIn ? (
@@ -1284,7 +1285,7 @@ export function App() {
       )}
 
       {/* 4. Mobile & Tablet Content (Explore Slider + Pure White Cards based on activeTab; Menu has all content cleared) */}
-      <main className={`explore-slider-wrapper ${isSignedIn && activeTab === 'home' ? 'top-header-2rows' : 'top-header-1row'} fixed inset-x-0 top-[7.5rem] sm:top-32 bottom-20 sm:bottom-6 overflow-y-auto overflow-x-hidden flex flex-col items-center justify-start z-20 px-4 sm:px-6 sm:pl-24 pb-8 space-y-3.5`}>
+      <main className={`explore-slider-wrapper ${activeTab === 'explore' ? 'explore-page-content' : activeTab === 'menu' ? 'menu-page-content' : ''} ${isSignedIn && activeTab === 'home' ? 'top-header-2rows' : 'top-header-1row'} fixed inset-x-0 top-[7.5rem] sm:top-32 bottom-20 sm:bottom-6 overflow-y-auto overflow-x-hidden flex flex-col items-center justify-start z-20 px-4 sm:px-6 sm:pl-24 pb-8 space-y-3.5`}>
         {isSignedIn && activeTab === 'home' && homesLoadFailed && (
           <div role="alert" className="pointer-events-auto w-full max-w-lg rounded-2xl bg-white p-4 text-sm text-slate-800 shadow-sm">
             <p>Couldn?t load your locations. Check your connection and try again.</p>
@@ -1475,22 +1476,7 @@ export function App() {
           </>
         )}
 
-        {activeTab === 'explore' && (
-          <section className="w-full max-w-lg rounded-3xl bg-white p-5 text-slate-900 shadow-sm pointer-events-auto sm:p-7">
-            <h2 className="text-lg font-bold">Explore Neuro Touch devices</h2>
-            <p className="mt-2 text-sm leading-relaxed text-slate-600">
-              Browse device models, check which controls are available, or set up a device you already own.
-            </p>
-            <div className="mt-4 flex flex-wrap gap-3">
-              <button type="button" onClick={() => setIsCatalogOpen(true)} className="min-h-11 rounded-xl bg-sky-700 px-4 text-sm font-semibold text-white">
-                Browse device models
-              </button>
-              <button type="button" onClick={() => handleProtectedAction(() => setIsAddDeviceOpen(true))} className="min-h-11 rounded-xl bg-slate-100 px-4 text-sm font-semibold">
-                Add a device
-              </button>
-            </div>
-          </section>
-        )}
+        {activeTab === 'explore' && <ExploreScreen />}
 
         {activeTab === 'routines' && canManageLocation && (
           <button type="button" onClick={() => setHistoryView('routines')}
@@ -1747,6 +1733,10 @@ export function App() {
         {activeTab === 'menu' && (
           <MenuTabContent
             isSignedIn={isSignedIn}
+            user={currentUser}
+            homeName={activeHome?.name}
+            rooms={rooms}
+            onExplore={() => setActiveTab('explore')}
             onBrowse={() => setIsCatalogOpen(true)}
             onAssistant={isSignedIn && canManageLocation ? () => setIsAiAssistantOpen(true) : undefined}
             onJoin={() => {
@@ -1775,7 +1765,7 @@ export function App() {
 
       {/* 7. Responsive Navigation Bar: Horizontal on Mobile (< 640px), Vertical on Tabs & Desktop (>= 640px) */}
       <nav
-        className="nav-bar-responsive fixed z-40 transition-all duration-300 rounded-full flex flex-row sm:flex-col items-center justify-between sm:justify-center"
+        className={'nav-bar-responsive fixed z-40 transition-all duration-300 rounded-full flex flex-row sm:flex-col items-center justify-between sm:justify-center ' + (activeTab === 'explore' || activeTab === 'menu' ? 'explore-bottom-nav' : '')}
         style={{
           background: 'linear-gradient(135deg, rgba(142, 197, 252, 0.78) 0%, rgba(120, 182, 252, 0.58) 100%)',
           backdropFilter: 'blur(28px) saturate(190%)',
