@@ -174,6 +174,11 @@ const isSetupSsid = (ssid: unknown): ssid is string => {
 };
 
 type ScreenView = 'main' | 'catalog' | 'qr_scanner' | 'scan_nearby' | 'connect_device' | 'assign_room' | 'provision_form' | 'provision_success';
+type PreparedHomeSetup = {
+  homeId: string;
+  config: PairingConfig | null;
+  wifi: Awaited<ReturnType<typeof homeApi.getHomeWifiCredentials>> | null;
+};
 
 export const AddDeviceScreen = ({
   isOpen,
@@ -227,12 +232,30 @@ export const AddDeviceScreen = ({
   const [hotspotReady, setHotspotReady] = useState(false);
   const [setupProgress, setSetupProgress] = useState('');
   const pairingConfig = useRef<PairingConfig | null>(null);
+  const setupCache = useRef<PreparedHomeSetup | null>(null);
   const setupInFlight = useRef(false);
   const setupGeneration = useRef(0);
 
   const [scanFeedbackMessage, setScanFeedbackMessage] = useState<string | null>(null);
   const [scanNetworkMessage, setScanNetworkMessage] = useState<string | null>(null);
   const [selectedScanSsid, setSelectedScanSsid] = useState('');
+
+  useEffect(() => {
+    setupCache.current = null;
+    if (!isOpen || !nativeProvisioning || !homeId) return;
+    let active = true;
+    const cached: PreparedHomeSetup = { homeId, config: null, wifi: null };
+    setupCache.current = cached;
+    void Promise.allSettled([
+      deviceApi.getPairingConfig(homeId),
+      homeApi.getHomeWifiCredentials(homeId),
+    ]).then(([config, wifi]) => {
+      if (!active) return;
+      if (config.status === 'fulfilled') cached.config = config.value;
+      if (wifi.status === 'fulfilled') cached.wifi = wifi.value;
+    });
+    return () => { active = false; setupCache.current = null; };
+  }, [isOpen, nativeProvisioning, homeId]);
 
   // Floor resolution: if activeHome has floors (> 1), allow selecting floor before room
   const floorCount = activeHome?.floor_count || 1;
@@ -520,21 +543,15 @@ export const AddDeviceScreen = ({
     setIsJoiningHotspot(true);
     setHotspotReady(false);
     setScanFeedbackMessage('Preparing setup for ' + ssid + '…');
-    setSetupProgress('Preparing device setup. Keep your phone connected to the internet…');
+    setSetupProgress('Approve the Wi-Fi connection request on your phone…');
     confirmedPairing.current = null;
-    pairingConfig.current = null;
     initiateDeviceFromSsid(ssid, false);
     setCurrentView('connect_device');
+    const cached = setupCache.current?.homeId === homeId ? setupCache.current : null;
+    pairingConfig.current = cached?.config || null;
+    setWifiSsid(cached?.wifi?.ssid || defaultWifiSsid);
+    setWifiPassword(cached?.wifi?.password || '');
     try {
-      const [config, saved] = await Promise.all([
-        deviceApi.getPairingConfig(homeId),
-        homeApi.getHomeWifiCredentials(homeId).catch(() => null),
-      ]);
-      if (selectedHotspotRef.current !== ssid || generation !== setupGeneration.current) return;
-      pairingConfig.current = config;
-      setWifiSsid(saved?.ssid || defaultWifiSsid);
-      setWifiPassword(saved?.password || '');
-      setSetupProgress('Approve the Wi-Fi connection request on your phone…');
       await joinHotspot(ssid, generation);
     } catch (error) {
       if (selectedHotspotRef.current !== ssid || generation !== setupGeneration.current) return;
@@ -902,7 +919,8 @@ export const AddDeviceScreen = ({
             bridge.getConnectedSsid?.() !== selectedHotspot) {
           throw new Error('The setup Wi-Fi disconnected. Join it again before continuing.');
         }
-        const config = pairingConfig.current || await deviceApi.getPairingConfig(homeId);
+        const cached = setupCache.current?.homeId === homeId ? setupCache.current : null;
+        const config = pairingConfig.current || cached?.config || await deviceApi.getPairingConfig(homeId);
         const hardware = await sendConfigToHardware({ ...config, deviceId: generatedDeviceId, ssid: wifiSsid.trim(), password: wifiPassword });
         attempt = { key, ipAddress: hardware.ipAddress };
         confirmedPairing.current = attempt;
@@ -1517,7 +1535,7 @@ export const AddDeviceScreen = ({
           <p className="mt-3 break-all text-center text-sm font-semibold text-sky-800">{selectedHotspot}</p>
           <p role="status" className="my-4 rounded-2xl bg-white p-4 text-sm">
             {isJoiningHotspot ? setupProgress : hotspotReady
-              ? 'Device Wi-Fi connected. Tap Connect Device to continue.'
+              ? 'Device Wi-Fi connected. Continue with this device below.'
               : 'Join this device’s Wi-Fi network, then check the connection.'}
           </p>
           <p className="mb-5 text-sm leading-relaxed text-slate-600">
@@ -1533,10 +1551,10 @@ export const AddDeviceScreen = ({
                 className="min-h-11 rounded-xl bg-white px-3 font-semibold text-sky-700">Wi-Fi Settings</button>}
             <button type="button" onClick={() => void checkHotspot()} className="min-h-11 rounded-xl bg-white px-3 font-semibold text-sky-700">Check connection</button>
           </div>}
-          <button type="button" disabled={!hotspotReady || isJoiningHotspot || !pairingConfig.current} onClick={async () => {
+          <button type="button" disabled={!hotspotReady || isJoiningHotspot} onClick={async () => {
             if (await checkHotspot()) setCurrentView('assign_room');
           }} className="min-h-12 w-full rounded-full bg-sky-700 px-4 font-bold text-white disabled:opacity-50">
-            Connect Device
+            Continue with {selectedHotspot}
           </button>
         </section>
       )}
@@ -1608,7 +1626,7 @@ export const AddDeviceScreen = ({
           <button type="button" onClick={() => void handleContinueProvisioning()}
             disabled={isProvisioning || !wifiSsid.trim() || (!hotspotReady && !confirmedPairing.current)}
             className="w-full rounded-full bg-sky-700 p-3.5 font-bold text-white disabled:opacity-50">
-            {isProvisioning ? 'Setting up…' : confirmedPairing.current ? 'Check again' : 'Save and connect device'}
+            {isProvisioning ? 'Setting up…' : confirmedPairing.current ? 'Check again' : 'Send setup to ' + selectedHotspot}
           </button>
         </section>
       )}
