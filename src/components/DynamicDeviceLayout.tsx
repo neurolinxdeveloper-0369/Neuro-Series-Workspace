@@ -1,6 +1,7 @@
+import { ApplianceIcon } from './ApplianceIcon';
 import { SwitchCommandState } from '../../server/src/utils/switch-command-state';
 import { DeviceEndpointControls } from './DeviceEndpointControls';
-import { useState, useRef, useEffect, useId } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { 
   Zap, 
@@ -25,7 +26,6 @@ import {
   RotateCcw,
   Wifi
 } from 'lucide-react';
-import { getAssetUrl } from '../utils/assets';
 import { HARDWARE_ICONS } from '../utils/icons';
 import { deviceApi } from '../services/device';
 import { realtimeSocket } from '../services/socket';
@@ -546,25 +546,10 @@ export const TouchPanelLayout = ({
   };
 
   const switchRows = getSwitchRows(switches.length);
-  const iconFilterId = 'switch-white-' + useId().replace(/:/g, '');
-  const iconFilter = <svg aria-hidden="true" focusable="false" width="0" height="0" className="absolute pointer-events-none">
-    <defs><filter id={iconFilterId} x="-5%" y="-5%" width="110%" height="110%" colorInterpolationFilters="sRGB">
-      <feComponentTransfer in="SourceAlpha" result="solidAlpha"><feFuncA type="linear" slope="4" intercept="-0.08" /></feComponentTransfer>
-      <feMorphology in="solidAlpha" operator="dilate" radius="1.1" result="outline" />
-      <feGaussianBlur in="outline" stdDeviation="0.6" result="softOutline" />
-      <feComponentTransfer in="softOutline" result="smoothOutline"><feFuncA type="linear" slope="3" intercept="-0.55" /></feComponentTransfer>
-      <feFlood floodColor="#ffffff" result="white" /><feComposite in="white" in2="smoothOutline" operator="in" />
-    </filter></defs>
-  </svg>;
-
   const renderApplianceIcon = (sw: SwitchItemConfig, idx: number, isOn: boolean) => {
     if (sw.iconPath) {
       return (
-        <img 
-          src={getAssetUrl('ICONS/' + encodeURIComponent(sw.iconPath))}
-          alt=""
-          className="h-full w-full object-contain pointer-events-none" style={{ filter: 'url(#' + iconFilterId + ')' }}
-        />
+        <ApplianceIcon filename={sw.iconPath} className="h-full w-full pointer-events-none" />
       );
     }
 
@@ -602,7 +587,6 @@ export const TouchPanelLayout = ({
       <div 
         className="app-screen fixed inset-0 z-[100] flex flex-col overflow-hidden animate-in fade-in slide-in-from-right-3 duration-200"
       >
-        {iconFilter}
         {/* Dedicated Screen Top Header */}
         <header className="screen-top-header w-full bg-white/90 border-b border-white/80 px-4 sm:px-6 py-3 flex items-center justify-between flex-shrink-0 shadow-xs z-10">
           <button
@@ -642,11 +626,7 @@ export const TouchPanelLayout = ({
             <div className="flex items-center gap-3.5">
               <div className="relative rounded-full aspect-square w-16 h-16 bg-[#298fb6] border-2 border-white ring-4 ring-[#0284c7] flex items-center justify-center shadow-[0_0_18px_rgba(2,132,199,0.35)]">
                 {draftIconPath ? (
-                  <img 
-                    src={getAssetUrl('ICONS/' + encodeURIComponent(draftIconPath))}
-                    alt="Preview" 
-                    className="w-[88%] h-[88%] object-contain" style={{ filter: 'url(#' + iconFilterId + ')' }}
-                  />
+                  <ApplianceIcon filename={draftIconPath} alt="Preview" className="w-[88%] h-[88%]" />
                 ) : (
                   <Power className="w-9 h-9 text-white drop-shadow-[0_0_10px_rgba(56,189,248,1)]" />
                 )}
@@ -808,12 +788,7 @@ export const TouchPanelLayout = ({
                     }`}
                     title={iconName} aria-label={iconName} aria-pressed={isSelected}
                   >
-                    <img 
-                      src={getAssetUrl('ICONS/' + encodeURIComponent(iconName))}
-                      alt={iconName}
-                      className="w-full h-full object-contain" style={{ filter: 'url(#' + iconFilterId + ')' }}
-                      loading="lazy"
-                    />
+                    <ApplianceIcon filename={iconName} alt={iconName} lazy className="w-full h-full" />
                     {isSelected && (
                       <div className="absolute top-1 right-1 w-3.5 h-3.5 bg-white rounded-full flex items-center justify-center shadow-xs">
                         <Check className="w-2.5 h-2.5 text-[#0284c7]" strokeWidth={3} />
@@ -850,7 +825,6 @@ export const TouchPanelLayout = ({
 
   return (
     <div className="w-full select-none">
-      {iconFilter}
       {/* Top Header: Heading Name with Capacitive Touch Panel & Batch Actions */}
       <div className="flex items-center justify-between mb-4 pb-3 border-b border-sky-200/50">
         <div className="flex items-center gap-2">

@@ -1,3 +1,4 @@
+import { ApplianceIcon } from './ApplianceIcon';
 import { ROOM_PRESETS } from '../../server/src/config/room-presets';
 import { useState, useEffect, useRef } from 'react';
 import { 
@@ -2157,12 +2158,7 @@ export const AddDeviceScreen = ({
                       : 'bg-slate-50 border-slate-200/70 hover:border-sky-300 hover:bg-sky-50/50'
                   }`}
                 >
-                  <img
-                    src={getAssetUrl('ICONS/' + iconFile)}
-                    alt={`Icon ${idx}`}
-                    className="w-9 h-9 object-contain"
-                    loading="lazy"
-                  />
+                  <ApplianceIcon filename={iconFile} alt={"Icon " + (idx + 1)} white={false} lazy className="w-9 h-9" />
                 </button>
               ))}
             </div>
