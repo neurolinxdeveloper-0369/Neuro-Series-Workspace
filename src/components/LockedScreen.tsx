@@ -3,7 +3,7 @@ import type { useBiometricLock } from '../hooks/useBiometricLock';
 
 export function LockedScreen({ lock, onSignOut }: { lock: ReturnType<typeof useBiometricLock>; onSignOut: () => void }) {
   return (
-    <main className="grid min-h-dvh place-items-center bg-[var(--app-background)] p-5 text-slate-900">
+    <main className="fixed inset-0 grid overflow-y-auto place-items-center bg-[var(--app-background)] p-5 text-slate-900" style={{ paddingTop: 'calc(1.25rem + var(--safe-inset-top))', paddingBottom: 'calc(1.25rem + var(--nav-inset-bottom))' }}>
       <section className="w-full max-w-sm rounded-3xl bg-white p-6 text-center shadow-sm">
         <LockKeyhole className="mx-auto size-8 text-sky-700" aria-hidden="true" />
         <h1 className="mt-3 text-xl font-bold">Neuro Touch is locked</h1>

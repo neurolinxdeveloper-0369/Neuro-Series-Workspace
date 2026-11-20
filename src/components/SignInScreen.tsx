@@ -365,7 +365,7 @@ export const SignInScreen = ({ isOpen, onClose, onSignInSuccess, onHelp }: SignI
       {isLoading && <NeuroLoader message={step === 'otp' ? 'Verifying code...' : 'Please wait...'} />}
 
       {/* Top Header */}
-      <header className="screen-top-header w-full flex items-center justify-between px-5 sm:px-10 py-5 sm:py-6">
+      <header className="screen-top-header w-full shrink-0 flex items-center justify-between px-5 sm:px-10 py-5 sm:py-6">
         <div className="flex items-center gap-3">
           <button
             onClick={() => {
@@ -397,7 +397,7 @@ export const SignInScreen = ({ isOpen, onClose, onSignInSuccess, onHelp }: SignI
       </header>
 
       {/* Main Content Area */}
-      <main className="w-full max-w-md mx-auto px-6 py-6 sm:py-10 flex flex-col items-center justify-center flex-1">
+      <main className="w-full max-w-md mx-auto px-6 py-4 sm:py-10 shrink-0 flex flex-col items-center justify-center flex-1">
         {/* Step 1: Identifier Entry */}
         {step === 'identifier' && (
           <div className="w-full flex flex-col items-center animate-in fade-in duration-200">
@@ -684,7 +684,7 @@ export const SignInScreen = ({ isOpen, onClose, onSignInSuccess, onHelp }: SignI
       </main>
 
       {/* Footer */}
-      <footer className="w-full py-6 px-4 text-center mt-auto">
+      <footer className="w-full shrink-0 px-4 pt-3 pb-[calc(0.75rem+var(--nav-inset-bottom))] sm:pt-6 text-center mt-auto">
         <div className="flex flex-wrap items-center justify-center gap-x-4 sm:gap-x-6 gap-y-2 text-xs text-slate-500 font-sans max-w-2xl mx-auto">
           <button type="button" className="min-h-10 hover:text-slate-900" onClick={() => onHelp('account')}>Sign-in help</button>
           <button type="button" className="min-h-10 hover:text-slate-900" onClick={() => onHelp('privacy')}>Account and device data</button>

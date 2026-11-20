@@ -28,10 +28,12 @@
     overflow: hidden;
     width: 100vw;
     height: 100vh;
+    height: 100dvh;
   }
 
   #root {
     height: 100vh;
+    height: 100dvh;
     width: 100vw;
     margin: 0;
     padding: 0;

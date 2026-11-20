@@ -1012,7 +1012,7 @@ export const AddDeviceScreen = ({
 
   if (!nativeProvisioning) return (
     <div className="app-screen screen-top-container fixed inset-0 z-50 flex flex-col overflow-y-auto">
-      <section className="mx-auto flex w-full max-w-md flex-1 flex-col p-5 sm:p-6">
+      <section className="mx-auto flex w-full max-w-md flex-1 shrink-0 flex-col p-5 sm:p-6">
         <header className="mb-6 flex items-center gap-4">
           <button type="button" aria-label="Back" data-screen-back onClick={() => {
             if (currentView === 'qr_scanner') { stopCamera(); setCurrentView('main'); }
@@ -1063,7 +1063,7 @@ export const AddDeviceScreen = ({
       
       {/* ------------------- VIEW 1: MAIN ADD DEVICE SCREEN ------------------- */}
       {view === 'main' && (
-        <div className="w-full max-w-md mx-auto flex flex-1 flex-col p-5 sm:p-6">
+        <div className="w-full max-w-md mx-auto flex flex-1 shrink-0 flex-col p-5 sm:p-6">
           <div>
             {/* Header */}
             <div className="relative flex items-center justify-between mb-6 pt-2">
@@ -1153,7 +1153,7 @@ export const AddDeviceScreen = ({
 
       {/* ------------------- VIEW 2: "What kind of device?" (Catalog) ------------------- */}
       {view === 'catalog' && (
-        <div className="w-full max-w-md mx-auto min-h-screen flex flex-col justify-between p-4 sm:p-6 pb-8">
+        <div className="w-full max-w-md mx-auto flex-1 shrink-0 flex flex-col justify-between p-4 sm:p-6 pb-8">
           <div>
             {/* Header */}
             <div className="relative flex items-center justify-between mb-4 pt-2">
@@ -1273,7 +1273,7 @@ export const AddDeviceScreen = ({
 
       {/* ------------------- VIEW 3: LIVE CAMERA QR SCANNER (Reference media_1794034114279.jpg) ------------------- */}
       {currentView === 'qr_scanner' && (
-        <div className="w-full max-w-md mx-auto min-h-screen flex flex-col justify-between p-5 sm:p-6 pb-8 animate-in fade-in duration-200">
+        <div className="w-full max-w-md mx-auto flex-1 shrink-0 flex flex-col justify-between p-5 sm:p-6 pb-8 animate-in fade-in duration-200">
           <div>
             {/* Header */}
             <div className="relative flex items-center justify-between mb-4 pt-2">
@@ -1645,7 +1645,7 @@ export const AddDeviceScreen = ({
 
       {/* ------------------- VIEW 5: ASSIGN ROOM & WI-FI PROVISIONING FORM ------------------- */}
       {currentView === 'provision_form' && !selectedHotspot && (
-        <div className="w-full max-w-md mx-auto min-h-screen flex flex-col justify-between p-5 sm:p-6 pb-8 animate-in fade-in duration-200">
+        <div className="w-full max-w-md mx-auto flex-1 shrink-0 flex flex-col justify-between p-5 sm:p-6 pb-8 animate-in fade-in duration-200">
           <div>
             {/* Header */}
             <div className="relative flex items-center justify-between mb-5 pt-2">

@@ -734,7 +734,7 @@ export const TouchPanelLayout = ({
         </header>
 
         {/* Dedicated Screen Scrollable Body */}
-        <main className="flex-1 overflow-y-auto px-3.5 sm:px-6 py-4 space-y-3.5 max-w-2xl mx-auto w-full pb-[calc(2.5rem+max(var(--android-nav-bottom,0px),env(safe-area-inset-bottom,0px)))]">
+        <main className="min-h-0 flex-1 overflow-y-auto px-3.5 sm:px-6 py-4 space-y-3.5 max-w-2xl mx-auto w-full pb-[calc(2.5rem+max(var(--android-nav-bottom,0px),env(safe-area-inset-bottom,0px)))]">
           
           {/* Live Switch Preview Card */}
           <div className="bg-white/75 backdrop-blur-xl rounded-3xl p-4 border border-white/90 shadow-xs flex items-center justify-between">

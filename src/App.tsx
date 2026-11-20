@@ -2575,7 +2575,7 @@ export function App() {
             </header>
 
             {/* Screen Content Body */}
-            <main className="w-full max-w-2xl mx-auto px-3.5 sm:px-6 py-3 sm:py-4 flex-1 flex flex-col gap-3 pb-[calc(3.5rem+max(var(--android-nav-bottom,0px),env(safe-area-inset-bottom,0px)))]">
+            <main className="w-full max-w-2xl mx-auto px-3.5 sm:px-6 py-3 sm:py-4 flex-1 flex flex-col gap-3 pb-[calc(1.25rem+var(--nav-inset-bottom))]">
               {/* Device Custom Name (8 Gang Image & Model Name Badge Removed) */}
               <div className="px-1 py-1">
                 <h1 className="text-base sm:text-lg font-extrabold text-slate-900 tracking-tight leading-tight break-words">
