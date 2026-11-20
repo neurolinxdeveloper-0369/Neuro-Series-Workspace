@@ -3,9 +3,11 @@ import { WebSocketServer, WebSocket } from 'ws';
 import type { Server } from 'http';
 import { verifySessionToken } from '../auth/auth.middleware.js';
 import { db } from '../../config/database.js';
+import { verifyOtaSession } from '../ota/ota.auth.js';
 
 class SocketManager {
   private sessions = new Map<WebSocket, ReturnType<typeof verifySessionToken>>();
+  private otaSessions = new Map<WebSocket, ReturnType<typeof verifyOtaSession>>();
 
   public init(server: Server) {
     const wss = new WebSocketServer({ noServer: true, maxPayload: 8192 });
@@ -22,6 +24,11 @@ class SocketManager {
       ws.once('message', message => {
         try {
           const data = JSON.parse(message.toString());
+          if (data.type === 'OTA_AUTH' && typeof data.token === 'string') {
+            this.otaSessions.set(ws, verifyOtaSession(data.token));
+            ws.send(JSON.stringify({ type: 'CONNECTION_ACK' }));
+            return;
+          }
           if (data.type !== 'AUTH' || typeof data.token !== 'string') throw new Error('Invalid authentication');
           this.sessions.set(ws, verifySessionToken(data.token));
           ws.send(JSON.stringify({ type: 'CONNECTION_ACK' }));
@@ -35,8 +42,18 @@ class SocketManager {
       ws.on('close', () => {
         clearTimeout(authTimeout);
         this.sessions.delete(ws);
+        this.otaSessions.delete(ws);
       });
     });
+  }
+
+  public broadcastOtaUpdate(job: Record<string, unknown>) {
+    const { id, device_id, status, progress, detail, updated_at } = job;
+    const payload = JSON.stringify({ type: 'OTA_UPDATE', job: { id, device_id, status, progress, detail, updated_at } });
+    for (const [client, session] of this.otaSessions) {
+      if (session.expiresAt <= Date.now()) { client.close(1008, 'OTA session expired'); continue; }
+      if (client.readyState === WebSocket.OPEN) client.send(payload);
+    }
   }
 
   public broadcastDeviceUpdate(deviceId: string, state: Record<string, unknown>) {

@@ -40,6 +40,8 @@ services:
       - PORT=3056
       - DATABASE_URL=postgresql://neurolinx_admin:${POSTGRES_PASSWORD:-NeurolinxDb2026!}@smart-workspace-db:5432/neurolinx_smart_workspace
       - MQTT_USERNAME=${MQTT_USERNAME:-}
+      - OTA_ACCESS_CODE_HASH=${OTA_ACCESS_CODE_HASH:-}
+      - OTA_PUBLIC_BASE_URL=${OTA_PUBLIC_BASE_URL:-https://neurolinx.in/neuro-series/api/ota}
       - MQTT_PASSWORD=${MQTT_PASSWORD:-}
       - MQTT_DEVICE_USERNAME=${MQTT_DEVICE_USERNAME:-}
       - MQTT_USE_LEGACY_COMMAND_TOPICS=${MQTT_USE_LEGACY_COMMAND_TOPICS:-false}

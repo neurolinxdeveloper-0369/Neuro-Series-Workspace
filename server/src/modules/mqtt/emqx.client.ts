@@ -6,6 +6,33 @@ class EmqxService {
   private client: MqttClient | null = null;
   private telemetryHandlers: Array<(deviceId: string, payload: any) => Promise<void> | void> = [];
   private heartbeatHandlers: Array<(deviceId: string, payload: any) => Promise<void> | void> = [];
+  private otaHandlers: Array<(deviceId: string, payload: unknown) => Promise<void> | void> = [];
+
+  public onOtaStatus(handler: (deviceId: string, payload: unknown) => Promise<void> | void) {
+    this.otaHandlers.push(handler);
+  }
+
+  public async sendOtaCommand(deviceId: string, url: string): Promise<void> {
+    const client = this.client;
+    if (!client?.connected) throw new Error('MQTT broker is offline');
+    if (!/^[A-Za-z0-9_-]{1,64}$/.test(deviceId) || !/^https?:\/\//.test(url)) throw new Error('Invalid OTA command');
+    // Subscribe and wait for SUBACK before publishing the command. Never retain it.
+    await new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error('OTA subscription timed out')), 8000);
+      client.subscribe(`devices/${deviceId}/ota/stat`, { qos: 0 }, (error, grants) => {
+        clearTimeout(timeout);
+        if (error || !grants?.length || grants.some(grant => Number(grant.qos) === 128)) reject(error || new Error('OTA status subscription rejected'));
+        else resolve();
+      });
+    });
+    await new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error('OTA publish timed out')), 8000);
+      client.publish(`devices/${deviceId}/ota`, JSON.stringify({ url }), { qos: 1, retain: false }, error => {
+        clearTimeout(timeout);
+        if (error) reject(error); else resolve();
+      });
+    });
+  }
 
   public onTelemetry(handler: (deviceId: string, payload: any) => Promise<void> | void) {
     this.telemetryHandlers.push(handler);
@@ -37,6 +64,7 @@ class EmqxService {
         'devices/+/telemetry',
         'devices/+/state',
         'devices/+/stat',
+        'devices/+/ota/stat',
         MQTT_TOPICS.DEVICE_STATE,
         MQTT_TOPICS.DEVICE_TELEMETRY,
         MQTT_TOPICS.DEVICE_STATUS
@@ -51,12 +79,17 @@ class EmqxService {
       });
     });
 
-    this.client.on('message', async (topic: string, message: Buffer) => {
+    this.client.on('message', async (topic: string, message: Buffer, packet) => {
       try {
         const payload = JSON.parse(message.toString());
         if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return;
 
         const parts = topic.split('/');
+        if (parts.length === 4 && parts[0] === 'devices' && parts[2] === 'ota' && parts[3] === 'stat') {
+          if (packet.retain) return;
+          for (const handler of this.otaHandlers) await handler(parts[1], payload);
+          return;
+        }
         const prefix = ENV.MQTT_TOPIC_PREFIX.split('/');
         const legacy = parts.length === prefix.length + 2 && prefix.every((segment, index) => segment === parts[index]);
         const officialTelemetry = parts.length === 5 && parts[0] === 'nt' && parts[1] === 'v1' && parts[3] === 'stat' && parts[4] === 'telemetry';

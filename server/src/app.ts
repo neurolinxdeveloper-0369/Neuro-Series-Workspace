@@ -13,6 +13,8 @@ import { authService } from './modules/auth/auth.service.js';
 import { homeService } from './modules/homes/home.service.js';
 import { deviceService } from './modules/devices/device.service.js';
 import { routineService } from './modules/routines/routine.service.js';
+import { otaRouter } from './modules/ota/ota.controller.js';
+import { otaService } from './modules/ota/ota.service.js';
 
 export const app = express();
 
@@ -23,6 +25,7 @@ export async function initializeDatabase() {
   await routineService.ensureTableExists();
   await initializeNotifications();
   await initializeHistory();
+  await otaService.initialize();
   routineService.startSchedulerEngine();
 }
 
@@ -59,6 +62,7 @@ app.use(['/neuro-series/api/homes', '/api/homes', '/homes'], homeRouter);
 app.use(['/neuro-series/api/routines', '/api/routines', '/routines'], routineRouter);
 app.use(['/neuro-series/api/notifications', '/api/notifications', '/notifications'], notificationRouter);
 app.use(['/neuro-series/api/ai', '/api/ai', '/ai'], aiRouter);
+app.use(['/neuro-series/api/ota', '/api/ota', '/ota'], otaRouter);
 app.use([
   '/neuro-series/api/webhook',
   '/neuro-series/api/whatsapp',

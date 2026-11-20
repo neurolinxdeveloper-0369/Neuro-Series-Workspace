@@ -4,8 +4,10 @@ import { ENV } from './config/env.js';
 import { socketManager } from './modules/websocket/socket.server.js';
 import { emqxService } from './modules/mqtt/emqx.client.js';
 import { db } from './config/database.js';
+import { otaService } from './modules/ota/ota.service.js';
 
 await initializeDatabase();
+emqxService.onOtaStatus((deviceId, payload) => otaService.status(deviceId, payload));
 const server = http.createServer(app);
 
 // 1. Initialize WebSocket Gateway on same HTTP server
