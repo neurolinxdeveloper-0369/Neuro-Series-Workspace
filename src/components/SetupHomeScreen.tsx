@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { 
   Building2, 
   Home as HomeIcon, 
@@ -57,11 +57,13 @@ export const SetupHomeScreen = ({
   const [scanRevision, setScanRevision] = useState(0);
   const [scanningWifi, setScanningWifi] = useState(false);
   const [wifiScanMessage, setWifiScanMessage] = useState('');
+  const [showWifiNetworks, setShowWifiNetworks] = useState(false);
+  const wifiPasswordInput = useRef<HTMLInputElement>(null);
   const wifiBridge = (window as any).AndroidWifiBridge;
   const canScanWifi = Boolean(wifiBridge?.getSetupScanResults || wifiBridge?.getScanResults);
 
   useEffect(() => {
-    if (!isOpen || !canScanWifi) return;
+    if (!isOpen || !canScanWifi || !showWifiNetworks) return;
     setScanningWifi(true);
     setWifiScanMessage('');
     let attempt = 0;
@@ -95,7 +97,12 @@ export const SetupHomeScreen = ({
     };
     readNetworks();
     return () => clearTimeout(timer);
-  }, [isOpen, canScanWifi, scanRevision, wifiBridge]);
+  }, [isOpen, canScanWifi, showWifiNetworks, scanRevision, wifiBridge]);
+
+  const openWifiPicker = () => {
+    setShowWifiNetworks(true);
+    if (!scanningWifi) setScanRevision(value => value + 1);
+  };
 
   const selectWifi = (ssid: string) => {
     if (ssid !== wifiSsid) setWifiPassword('');
@@ -425,50 +432,70 @@ export const SetupHomeScreen = ({
               boxShadow: '0 16px 36px -10px rgba(15, 23, 42, 0.08), 0 4px 12px rgba(0, 0, 0, 0.02)',
             }}
           >
-            <div className="flex items-center gap-2">
-              <Wifi className="w-4 h-4 text-[#0284c7]" />
-              <h3 className="text-xs sm:text-sm font-bold uppercase tracking-wider text-[#0284c7] font-sans">
-                Home Wi-Fi Setup (Optional)
-              </h3>
-            </div>
+            <h3>
+              {canScanWifi ? <button type="button" onClick={openWifiPicker}
+                aria-expanded={showWifiNetworks} aria-controls="home-nearby-wifi"
+                className="flex min-h-11 w-full items-center gap-2 text-left text-xs font-bold uppercase tracking-wider text-sky-700 sm:text-sm">
+                <Wifi className="size-4" />Home Wi-Fi Setup (Optional)
+              </button> : <span className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-sky-700 sm:text-sm">
+                <Wifi className="size-4" />Home Wi-Fi Setup (Optional)
+              </span>}
+            </h3>
             <p className="text-xs text-slate-500 leading-relaxed">
               Select your home router and enter its Wi-Fi password to use when adding devices. Most devices need a 2.4 GHz network.
             </p>
 
             <div className="space-y-3 pt-1">
-              {canScanWifi ? (
-                <div className="space-y-2">
+              {canScanWifi && showWifiNetworks && (
+                <div id="home-nearby-wifi" className="space-y-2 rounded-2xl border border-sky-100 bg-sky-50/50 p-3">
                   <div className="flex items-center justify-between gap-3">
-                    <label htmlFor="home-nearby-wifi" className="text-xs font-semibold text-slate-700">Nearby Wi-Fi networks</label>
+                    <h4 className="text-xs font-semibold text-slate-700">Nearby Wi-Fi networks</h4>
                     <button type="button" disabled={scanningWifi} onClick={() => setScanRevision(value => value + 1)}
                       className="min-h-11 rounded-xl px-3 text-sm font-semibold text-sky-700 disabled:opacity-50">
                       {scanningWifi ? 'Scanning…' : 'Scan again'}
                     </button>
                   </div>
-                  <select id="home-nearby-wifi" value={nearbyNetworks.some(network => network.ssid === wifiSsid) ? wifiSsid : ''}
-                    onChange={event => { if (event.target.value) selectWifi(event.target.value); }}
-                    className="min-h-11 w-full rounded-2xl border border-slate-200 bg-white px-3 text-sm text-slate-900">
-                    <option value="">Select a nearby network</option>
-                    {nearbyNetworks.map(network => (
-                      <option key={network.ssid} value={network.ssid}>
-                        {network.ssid}{network.frequency ? ' · ' + (network.frequency < 3000 ? '2.4 GHz' : network.frequency < 5925 ? '5 GHz' : '6 GHz') : ''}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="max-h-60 space-y-2 overflow-y-auto">
+                    {nearbyNetworks.map(network => <button key={network.ssid} type="button" aria-pressed={network.ssid === wifiSsid}
+                      onClick={() => {
+                        selectWifi(network.ssid);
+                        setShowWifiNetworks(false);
+                        wifiPasswordInput.current?.focus();
+                      }}
+                      className={'flex min-h-12 w-full items-center gap-3 rounded-xl border bg-white p-3 text-left text-sm ' +
+                        (network.ssid === wifiSsid ? 'border-sky-500 text-sky-800' : 'border-slate-200 text-slate-900')}>
+                      <Wifi aria-hidden="true" className="size-4 shrink-0 text-sky-700" />
+                      <span className="min-w-0 flex-1 break-all">
+                        <span className="block font-semibold">{network.ssid}</span>
+                        <span className="text-xs text-slate-600">
+                          {network.frequency ? (network.frequency < 3000 ? '2.4 GHz' : network.frequency < 5925 ? '5 GHz' : '6 GHz') + ' · ' : ''}
+                          {network.level >= -55 ? 'Strong signal' : network.level >= -70 ? 'Good signal' : 'Weak signal'}
+                        </span>
+                      </span>
+                    </button>)}
+                  </div>
                   <p role="status" className="text-xs leading-relaxed text-slate-600">
                     {wifiScanMessage || (scanningWifi ? 'Looking for networks near this phone…' : nearbyNetworks.length + ' networks found. Strongest signal first.')}
                   </p>
+                  <button type="button" onClick={() => setShowWifiNetworks(false)}
+                    className="min-h-11 text-sm font-semibold text-sky-700">Enter Wi-Fi name manually</button>
                 </div>
-              ) : (
+              )}
+              {!canScanWifi && (
                 <p className="text-xs leading-relaxed text-slate-600">Enter the Wi-Fi name from your phone’s Wi-Fi settings. Nearby network scanning is available in the Android app.</p>
               )}
               <div>
-                <label htmlFor="home-wifi-ssid" className="block text-xs font-semibold text-slate-700 mb-1">
-                  Wi-Fi Network Name (SSID)
-                </label>
+                {canScanWifi ? <button type="button" onClick={openWifiPicker}
+                  aria-expanded={showWifiNetworks} aria-controls="home-nearby-wifi"
+                  className="mb-1 flex min-h-11 items-center gap-2 text-xs font-semibold text-sky-700">
+                  Wi-Fi Network Name (SSID)<Wifi aria-hidden="true" className="size-4" />
+                </button> : <label htmlFor="home-wifi-ssid" className="mb-1 block text-xs font-semibold text-slate-700">
+                    Wi-Fi Network Name (SSID)
+                  </label>}
                 <input
                   type="text"
                   id="home-wifi-ssid"
+                  aria-label="Wi-Fi Network Name (SSID)"
                   value={wifiSsid}
                   onChange={(e) => selectWifi(e.target.value)}
                   placeholder="Enter your home Wi-Fi name"
@@ -482,6 +509,7 @@ export const SetupHomeScreen = ({
                 </label>
                 <div className="relative">
                   <input
+                    ref={wifiPasswordInput}
                     type={showWifiPassword ? 'text' : 'password'}
                     value={wifiPassword}
                     onChange={(e) => setWifiPassword(e.target.value)}
