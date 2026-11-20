@@ -903,7 +903,7 @@ export const AddDeviceScreen = ({
       
       {/* ------------------- VIEW 1: MAIN ADD DEVICE SCREEN ------------------- */}
       {view === 'main' && (
-        <div className="w-full max-w-md mx-auto min-h-screen flex flex-col justify-between p-5 sm:p-6 pb-8">
+        <div className="w-full max-w-md mx-auto flex flex-1 flex-col p-5 sm:p-6">
           <div>
             {/* Header */}
             <div className="relative flex items-center justify-between mb-6 pt-2">
@@ -947,7 +947,7 @@ export const AddDeviceScreen = ({
               <div className="flex items-center justify-between">
                 <div>
                   <div className="text-lg sm:text-xl font-extrabold text-slate-900 tracking-wider font-sans">
-                    NEURO SERIES
+                    NEURO TOUCH
                   </div>
                   <div className="text-xs sm:text-sm font-semibold text-slate-400 tracking-wide font-sans mt-0.5">
                     neurolinx
@@ -964,8 +964,8 @@ export const AddDeviceScreen = ({
             </div>
           </div>
 
-          {/* Bottom Action Buttons */}
-          <div className="space-y-3 pt-6 mt-auto pb-[calc(1rem+var(--nav-inset-bottom))]">
+          {/* Centered device setup actions */}
+          <div className="my-auto space-y-3 py-6">
             <button
               onClick={() => {
                 setActiveModel(DEVICE_CATALOG[0]);
