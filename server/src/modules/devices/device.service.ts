@@ -106,7 +106,7 @@ class DeviceService {
         } catch {
           // ignore
         }
-      }, 2000).unref();
+      }, 1000).unref();
     } catch (err) {
       console.error('❌ Failed to initialize devices tables:', err);
       throw err;
@@ -584,6 +584,7 @@ class DeviceService {
         is_online: isOnline,
         rssi,
         uptime_sec: uptime,
+        last_seen_at: new Date().toISOString(),
       });
       console.log(`💓 [HEARTBEAT] Device ${deviceId} online:`, isOnline, `RSSI:`, rssi);
     } catch (err) {
