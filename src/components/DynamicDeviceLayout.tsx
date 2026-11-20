@@ -1,6 +1,6 @@
 import { SwitchCommandState } from '../../server/src/utils/switch-command-state';
 import { DeviceEndpointControls } from './DeviceEndpointControls';
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useId } from 'react';
 import { createPortal } from 'react-dom';
 import { 
   Zap, 
@@ -546,6 +546,16 @@ export const TouchPanelLayout = ({
   };
 
   const switchRows = getSwitchRows(switches.length);
+  const iconFilterId = 'switch-white-' + useId().replace(/:/g, '');
+  const iconFilter = <svg aria-hidden="true" focusable="false" width="0" height="0" className="absolute pointer-events-none">
+    <defs><filter id={iconFilterId} x="-5%" y="-5%" width="110%" height="110%" colorInterpolationFilters="sRGB">
+      <feComponentTransfer in="SourceAlpha" result="solidAlpha"><feFuncA type="linear" slope="4" intercept="-0.08" /></feComponentTransfer>
+      <feMorphology in="solidAlpha" operator="dilate" radius="1.1" result="outline" />
+      <feGaussianBlur in="outline" stdDeviation="0.6" result="softOutline" />
+      <feComponentTransfer in="softOutline" result="smoothOutline"><feFuncA type="linear" slope="3" intercept="-0.55" /></feComponentTransfer>
+      <feFlood floodColor="#ffffff" result="white" /><feComposite in="white" in2="smoothOutline" operator="in" />
+    </filter></defs>
+  </svg>;
 
   const renderApplianceIcon = (sw: SwitchItemConfig, idx: number, isOn: boolean) => {
     if (sw.iconPath) {
@@ -553,7 +563,7 @@ export const TouchPanelLayout = ({
         <img 
           src={getAssetUrl('ICONS/' + encodeURIComponent(sw.iconPath))}
           alt=""
-          className="h-full w-full object-contain pointer-events-none brightness-0 invert"
+          className="h-full w-full object-contain pointer-events-none" style={{ filter: 'url(#' + iconFilterId + ')' }}
         />
       );
     }
@@ -592,6 +602,7 @@ export const TouchPanelLayout = ({
       <div 
         className="app-screen fixed inset-0 z-[100] flex flex-col overflow-hidden animate-in fade-in slide-in-from-right-3 duration-200"
       >
+        {iconFilter}
         {/* Dedicated Screen Top Header */}
         <header className="screen-top-header w-full bg-white/90 border-b border-white/80 px-4 sm:px-6 py-3 flex items-center justify-between flex-shrink-0 shadow-xs z-10">
           <button
@@ -634,7 +645,7 @@ export const TouchPanelLayout = ({
                   <img 
                     src={getAssetUrl('ICONS/' + encodeURIComponent(draftIconPath))}
                     alt="Preview" 
-                    className="w-[88%] h-[88%] object-contain brightness-0 invert"
+                    className="w-[88%] h-[88%] object-contain" style={{ filter: 'url(#' + iconFilterId + ')' }}
                   />
                 ) : (
                   <Power className="w-9 h-9 text-white drop-shadow-[0_0_10px_rgba(56,189,248,1)]" />
@@ -800,7 +811,7 @@ export const TouchPanelLayout = ({
                     <img 
                       src={getAssetUrl('ICONS/' + encodeURIComponent(iconName))}
                       alt={iconName}
-                      className="w-full h-full object-contain brightness-0 invert"
+                      className="w-full h-full object-contain" style={{ filter: 'url(#' + iconFilterId + ')' }}
                       loading="lazy"
                     />
                     {isSelected && (
@@ -839,6 +850,7 @@ export const TouchPanelLayout = ({
 
   return (
     <div className="w-full select-none">
+      {iconFilter}
       {/* Top Header: Heading Name with Capacitive Touch Panel & Batch Actions */}
       <div className="flex items-center justify-between mb-4 pb-3 border-b border-sky-200/50">
         <div className="flex items-center gap-2">
