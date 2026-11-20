@@ -1,5 +1,6 @@
 import { ROOM_PRESETS } from '../server/src/config/room-presets';
 import { HistoryPanel } from './components/HistoryPanel';
+import { RoomOverviewCard } from './components/RoomOverviewCard';
 import { DeviceRecovery } from './components/DeviceRecovery';
 import { HelpCenter, type HelpTopic } from './components/HelpCenter';
 import { NotificationCenter } from './components/NotificationCenter';
@@ -1399,7 +1400,18 @@ export function App() {
         {activeTab === 'home' && (
           <>
             {/* Real-time Clock View & User Details */}
-            {renderRealTimeHeader()}
+            {(!isSignedIn || rooms.length === 0) && renderRealTimeHeader()}
+
+            {isSignedIn && rooms.length > 0 && (
+              <div className="grid w-full max-w-sm shrink-0 gap-3 sm:max-w-md md:max-w-2xl lg:max-w-5xl lg:grid-cols-2">
+                {rooms.filter(room => activeRoomTab === 'all' || room.name === activeRoomTab).map(room => (
+                  <RoomOverviewCard key={room.id} room={room} devices={devices} onOpen={() => {
+                    setActiveRoomTab(room.name);
+                    requestAnimationFrame(() => document.getElementById('home-device-list')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+                  }} />
+                ))}
+              </div>
+            )}
 
             {/* "Explore" cards slider: ONLY when NO devices exist in home */}
             {devices.length === 0 && !isExploreDismissed && (
@@ -1436,9 +1448,9 @@ export function App() {
                 const offlineCount = filtered.filter(d => !d.is_online).length;
 
                 return (
-                  <div className="w-full max-w-sm sm:max-w-md md:max-w-2xl lg:max-w-5xl space-y-3 pointer-events-auto pt-1 sm:pt-2">
+                  <div id="home-device-list" className="w-full max-w-sm shrink-0 sm:max-w-md md:max-w-2xl lg:max-w-5xl space-y-3 pointer-events-auto pt-1 sm:pt-2">
                     {/* Transparent Card: Your Space Connectivity */}
-                    {renderConnectivityCard(filtered.length, onlineCount, offlineCount)}
+                    {(activeRoomTab === 'all' || rooms.length === 0) && renderConnectivityCard(filtered.length, onlineCount, offlineCount)}
 
                     {filtered.length === 0 ? (
                       <div className="bg-white/80 backdrop-blur-md rounded-3xl p-6 text-center border border-white/80 shadow-xs space-y-1.5">
