@@ -1,4 +1,6 @@
 import type { useBiometricLock } from '../hooks/useBiometricLock';
+import { HomeWifiSettings } from './HomeWifiSettings';
+import type { Home } from '../services/home';
 import type { useNotifications } from '../hooks/useNotifications';
 import { ArrowLeft, LogOut } from 'lucide-react';
 
@@ -7,6 +9,9 @@ interface SettingsScreenProps {
   onClose: () => void;
   onOpenSignIn: () => void;
   isSignedIn?: boolean;
+  home?: Home | null;
+  canManageHome?: boolean;
+  onHomeSaved: (home: Home) => void;
   currentUser?: {
     full_name?: string | null;
     email?: string | null;
@@ -19,7 +24,7 @@ interface SettingsScreenProps {
   notifications: ReturnType<typeof useNotifications>;
 }
 
-export function SettingsScreen({ isOpen, onClose, onOpenSignIn, isSignedIn, currentUser, onSignOut, onNotifications, lock, notifications }: SettingsScreenProps) {
+export function SettingsScreen({ isOpen, onClose, onOpenSignIn, isSignedIn, currentUser, onSignOut, onNotifications, lock, notifications, home, canManageHome, onHomeSaved }: SettingsScreenProps) {
   if (!isOpen) return null;
 
   return (
@@ -49,6 +54,7 @@ export function SettingsScreen({ isOpen, onClose, onOpenSignIn, isSignedIn, curr
         </section>
         {isSignedIn && (
           <>
+            {home && canManageHome && <HomeWifiSettings key={home.id} home={home} onSaved={onHomeSaved} />}
             <section className="space-y-2 rounded-3xl bg-white p-5 shadow-sm">
               <h2 className="font-semibold">Notifications</h2>
               <p className="text-sm text-slate-700">Device activity is saved in the app. System alerts depend on your device or browser permissions.</p>

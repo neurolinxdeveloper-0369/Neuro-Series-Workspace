@@ -1176,7 +1176,7 @@ export function App() {
       {isRefreshing && <div role="status" className="pointer-events-none fixed inset-x-0 top-[calc(var(--safe-inset-top)+0.5rem)] z-[100] mx-auto w-fit rounded-full border border-sky-200 bg-white px-4 py-2 text-sm font-semibold text-sky-800 shadow-sm">Refreshing...</div>}
 
       {/* 3. Unified Responsive Header: Only shown on Home tab */}
-      {isSignedIn && (activeTab === 'home' || activeTab === 'menu') ? (
+      {isSignedIn && (activeTab === 'home' || activeTab === 'menu' || activeTab === 'explore') ? (
         /* Logged-In Header: Row 1 = Quick Actions & Home Switcher; Row 2 = Search & Room Tabs */
         <header className="app-top-header fixed top-4 sm:top-5 inset-x-0 z-30 flex flex-col pointer-events-none px-4 sm:px-6 md:px-8">
           {/* Row 1: Quick Actions & Home Selector */}
@@ -1891,6 +1891,12 @@ export function App() {
 
       {/* 9. Full-Screen Neuro Touch Settings */}
       <SettingsScreen
+        home={activeHome}
+        canManageHome={canManageLocation}
+        onHomeSaved={updated => {
+          setHomes(previous => previous.map(home => home.id === updated.id ? updated : home));
+          setActiveHome(previous => previous?.id === updated.id ? updated : previous);
+        }}
         lock={biometricLock}
         notifications={notifications}
         onNotifications={() => setShowNotifications(true)}

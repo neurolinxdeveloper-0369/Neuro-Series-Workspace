@@ -46,6 +46,7 @@ homeRouter.get('/:id/wifi', async (req: AuthenticatedRequest, res: Response) => 
     }
 
     const wifi = await homeService.getHomeWifiCredentials(homeId, userId);
+    res.setHeader('Cache-Control', 'no-store');
     return res.json({ success: true, wifi });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Failed to fetch home Wi-Fi';
@@ -131,6 +132,13 @@ homeRouter.put('/:id', async (req: AuthenticatedRequest, res: Response) => {
     }
 
     const homeId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const { default_wifi_ssid: ssid, wifi_password: password } = req.body;
+    if (ssid !== undefined && (typeof ssid !== 'string' || !ssid.trim() || Buffer.byteLength(ssid, 'utf8') > 32)) {
+      return res.status(400).json({ success: false, error: 'Wi-Fi name must be between 1 and 32 bytes.' });
+    }
+    if (password !== undefined && (typeof password !== 'string' || (password !== '' && !((password.length >= 8 && password.length <= 63) || /^[a-fA-F0-9]{64}$/.test(password))))) {
+      return res.status(400).json({ success: false, error: 'Use an 8–63 character Wi-Fi password or a 64-digit hexadecimal key.' });
+    }
     const updated = await homeService.updateHome(homeId, userId, req.body);
     if (!updated) {
       return res.status(404).json({ success: false, error: 'Home not found or update failed' });

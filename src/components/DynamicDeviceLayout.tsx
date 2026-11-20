@@ -657,13 +657,9 @@ export const TouchPanelLayout = ({
     if (sw.iconPath) {
       return (
         <img 
-          src={getAssetUrl(`ICONS/${sw.iconPath}`)} 
+          src={getAssetUrl('ICONS/' + encodeURIComponent(sw.iconPath))}
           alt=""
-          className={`w-12 h-12 sm:w-14 sm:h-14 object-contain transition-all duration-300 pointer-events-none brightness-0 invert ${
-            isOn 
-              ? 'filter drop-shadow-[0_0_14px_rgba(56,189,248,1)] opacity-100 scale-105' 
-              : 'opacity-90 group-hover:opacity-100'
-          }`}
+          className="h-full w-full object-contain pointer-events-none"
         />
       );
     }
@@ -703,7 +699,7 @@ export const TouchPanelLayout = ({
         className="app-screen fixed inset-0 z-[100] flex flex-col overflow-hidden animate-in fade-in slide-in-from-right-3 duration-200"
       >
         {/* Dedicated Screen Top Header */}
-        <header className="w-full bg-white/75 backdrop-blur-xl border-b border-white/80 px-4 sm:px-6 py-3 flex items-center justify-between flex-shrink-0 shadow-xs z-10">
+        <header className="screen-top-header w-full bg-white/90 border-b border-white/80 px-4 sm:px-6 py-3 flex items-center justify-between flex-shrink-0 shadow-xs z-10">
           <button
             type="button"
             data-device-dismiss
@@ -739,12 +735,12 @@ export const TouchPanelLayout = ({
           {/* Live Switch Preview Card */}
           <div className="bg-white/75 backdrop-blur-xl rounded-3xl p-4 border border-white/90 shadow-xs flex items-center justify-between">
             <div className="flex items-center gap-3.5">
-              <div className="relative rounded-full aspect-square w-16 h-16 bg-sky-100 border-2 border-white ring-4 ring-[#0284c7] flex items-center justify-center shadow-[0_0_18px_rgba(2,132,199,0.35)]">
+              <div className="relative rounded-full aspect-square w-16 h-16 bg-[#298fb6] border-2 border-white ring-4 ring-[#0284c7] flex items-center justify-center shadow-[0_0_18px_rgba(2,132,199,0.35)]">
                 {draftIconPath ? (
                   <img 
-                    src={getAssetUrl(`ICONS/${draftIconPath}`)} 
+                    src={getAssetUrl('ICONS/' + encodeURIComponent(draftIconPath))}
                     alt="Preview" 
-                    className="w-11 h-11 object-contain brightness-0 invert drop-shadow-[0_0_10px_rgba(56,189,248,1)]"
+                    className="w-[88%] h-[88%] object-contain"
                   />
                 ) : (
                   <Power className="w-9 h-9 text-white drop-shadow-[0_0_10px_rgba(56,189,248,1)]" />
@@ -847,7 +843,7 @@ export const TouchPanelLayout = ({
           <div className="bg-white/75 backdrop-blur-xl rounded-3xl p-4 border border-white/90 shadow-xs space-y-3">
             <div className="flex items-center justify-between">
               <label className="text-xs font-bold text-slate-700">
-                Select Icon ({HARDWARE_ICONS.length} White Appliance Icons)
+                Select Icon ({HARDWARE_ICONS.length} Appliance Icons)
               </label>
               {draftIconPath && (
                 <button
@@ -878,15 +874,15 @@ export const TouchPanelLayout = ({
             </div>
 
             {/* Grid of transparent PNG icons */}
-            <div className="grid grid-cols-5 sm:grid-cols-6 md:grid-cols-8 gap-2.5 max-h-72 overflow-y-auto p-2.5 bg-slate-100/70 rounded-2xl border border-slate-200/80">
+            <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-3 max-h-80 overflow-y-auto p-3 bg-sky-50 rounded-2xl border border-slate-200/80">
               {/* Default Power Icon */}
               <button
                 type="button"
                 onClick={() => setDraftIconPath('')}
-                className={`aspect-square rounded-2xl p-2.5 flex flex-col items-center justify-center transition-all cursor-pointer border ${
+                className={`aspect-square rounded-2xl p-1.5 flex flex-col items-center justify-center transition-all cursor-pointer border ${
                   !draftIconPath
                     ? 'bg-[#0284c7] border-white ring-2 ring-[#0284c7] shadow-[0_0_14px_rgba(2,132,199,0.45)] scale-105'
-                    : 'bg-slate-50 border-slate-200 hover:bg-sky-100'
+                    : 'bg-[#5f9eb9] border-sky-200 hover:bg-[#368fad]'
                 }`}
                 title="Default Power Icon"
               >
@@ -900,17 +896,17 @@ export const TouchPanelLayout = ({
                     key={iconName}
                     type="button"
                     onClick={() => setDraftIconPath(iconName)}
-                    className={`aspect-square rounded-2xl p-2.5 flex items-center justify-center transition-all cursor-pointer relative group border ${
+                    className={`aspect-square rounded-2xl p-1.5 flex items-center justify-center transition-all cursor-pointer relative group border ${
                       isSelected
                         ? 'bg-[#0284c7] border-white ring-2 ring-[#0284c7] shadow-[0_0_14px_rgba(2,132,199,0.45)] scale-105'
-                        : 'bg-slate-50 border-slate-200 hover:bg-sky-100 hover:border-[#0284c7]'
+                        : 'bg-[#5f9eb9] border-sky-200 hover:bg-[#368fad] hover:border-[#0284c7]'
                     }`}
-                    title={iconName}
+                    title={iconName} aria-label={iconName} aria-pressed={isSelected}
                   >
                     <img 
-                      src={getAssetUrl(`ICONS/${iconName}`)} 
-                      alt="Icon" 
-                      className="w-full h-full object-contain filter brightness-0 invert transition-transform group-hover:scale-110"
+                      src={getAssetUrl('ICONS/' + encodeURIComponent(iconName))}
+                      alt={iconName}
+                      className="w-full h-full object-contain"
                       loading="lazy"
                     />
                     {isSelected && (
@@ -924,8 +920,8 @@ export const TouchPanelLayout = ({
             </div>
           </div>
 
-          {/* Action Buttons */}
-          <div className="flex items-center gap-3 pt-2">
+          </main>
+        <footer className="flex shrink-0 items-center gap-3 border-t border-sky-100 bg-[var(--app-background)] px-4 pt-3" style={{ paddingBottom: 'calc(0.75rem + var(--nav-inset-bottom))' }}>
             <button
               type="button"
               onClick={() => setEditingIndex(null)}
@@ -941,8 +937,7 @@ export const TouchPanelLayout = ({
               <CheckCircle2 className="w-4 h-4" />
               <span>Save Switch</span>
             </button>
-          </div>
-        </main>
+        </footer>
       </div>,
       document.body
     );
@@ -1011,10 +1006,10 @@ export const TouchPanelLayout = ({
                     onClick={() => handleClick(idx)}
                     className={`group relative rounded-full aspect-square w-[68px] h-[68px] sm:w-22 sm:h-22 flex items-center justify-center select-none transition-all duration-300 ease-out ${
                       !isOnline
-                        ? 'opacity-35 cursor-not-allowed pointer-events-none filter grayscale-[50%] bg-[#181a1f] border-2 border-slate-700'
+                        ? 'cursor-not-allowed pointer-events-none bg-[#7babc0] border-2 border-slate-300'
                         : isOn
-                          ? 'cursor-pointer active:scale-90 bg-[#0b1424] border-2 border-white ring-4 ring-[#38bdf8] shadow-[0_0_26px_rgba(56,189,248,0.9),0_0_50px_rgba(14,165,233,0.45),inset_0_0_16px_rgba(56,189,248,0.4)]'
-                          : 'cursor-pointer active:scale-90 bg-[#181a1f] hover:bg-[#20232a] border-2 border-[#2f333c] shadow-[0_8px_20px_rgba(0,0,0,0.35),inset_0_2px_4px_rgba(255,255,255,0.06)]'
+                          ? 'cursor-pointer active:scale-95 bg-[#168db7] border-2 border-white ring-4 ring-sky-400 shadow-md shadow-sky-200'
+                          : 'cursor-pointer active:scale-95 bg-[#6eabc3] hover:bg-[#559bb7] border-2 border-sky-200 shadow-sm'
                     }`}
                     title={!isOnline ? 'Device is offline - switch disabled' : `${sw.name || `Switch ${idx + 1}`} • Tap to toggle, Long-press to edit`}
                   >
@@ -1023,8 +1018,8 @@ export const TouchPanelLayout = ({
                       <div className="absolute inset-1 rounded-full bg-radial from-sky-400/25 via-transparent to-transparent pointer-events-none animate-pulse" />
                     )}
 
-                    {/* Centered Appliance Icon - ALL IN WHITE */}
-                    <div className="relative z-10 flex items-center justify-center">
+                    {/* Original appliance image, contained within the circle */}
+                    <div className="relative z-10 w-[88%] h-[88%] flex items-center justify-center">
                       {renderApplianceIcon(sw, idx, isOn && isOnline)}
                     </div>
                   </div>

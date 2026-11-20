@@ -77,6 +77,11 @@ export const homeStorage = {
 };
 
 export const homeApi = {
+  updateHomeWifi: async (homeId: string, ssid: string, password?: string): Promise<Home> => {
+    const response = await api.put<{ success: boolean; home: Home }>(`/homes/${homeId}`, { default_wifi_ssid: ssid, ...(password !== undefined ? { wifi_password: password } : {}) });
+    if (!response.success || !response.home) throw new Error('Could not save home Wi-Fi.');
+    return response.home;
+  },
   // Fetch all homes for current user
   getHomes: async (): Promise<Home[]> => {
     const res = await api.get<{ success: boolean; homes: Home[] }>('/homes');

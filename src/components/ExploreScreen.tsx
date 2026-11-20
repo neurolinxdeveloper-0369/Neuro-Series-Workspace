@@ -1,5 +1,5 @@
 import { Modal } from './Modal';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ArrowRight, BedDouble, Clapperboard, Grid2X2, House, Layers, Moon, PersonStanding, Play, Plus, Sun, Thermometer, Zap } from 'lucide-react';
 import { getAssetUrl } from '../utils/assets';
 import './ExploreScreen.css';
@@ -27,7 +27,12 @@ export function ExploreScreen() {
   const [motion, setMotion] = useState(true);
   const [preview, setPreview] = useState<{ title: string; description: string } | null>(null);
   const touch = useRef(0);
-  const banner = banners[slide];
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      if (!document.hidden && !preview) setSlide(value => (value + 1) % banners.length);
+    }, 2000);
+    return () => window.clearInterval(timer);
+  }, [preview]);
   const open = (title: string, description: string) => setPreview({ title, description });
   const sectionHeading = (title: string, description: string) => <div className="explore-section-heading">
     <h2>{title}</h2><button type="button" onClick={() => open(title, description)}>View All<ArrowRight size={15} /></button>
@@ -39,12 +44,16 @@ export function ExploreScreen() {
     <section className="explore-hero" aria-label="Smart home inspiration"
       onTouchStart={event => { touch.current = event.touches[0].clientX; }}
       onTouchEnd={event => { const distance = touch.current - event.changedTouches[0].clientX; if (Math.abs(distance) > 40) setSlide(value => (value + (distance > 0 ? 1 : 2)) % 3); }}>
-      <img src={getAssetUrl('explore/smart-home-hero.png')} alt="Blue sofa, floor lamp, houseplant and smart control panel in a sunlit living room" />
-      <div className="explore-hero-copy"><span>SMART HOME</span><h2>{banner.title}</h2><p>{banner.description}</p>
-        <button type="button" onClick={() => open('Make your space smarter', 'Explore scenes, automation ideas and recommended devices below. Choose any card to preview it.')}>Get Started<ArrowRight size={16} /></button>
+      <div className="explore-hero-track" style={{ transform: 'translateX(-' + slide * 100 + '%)' }}>
+        {banners.map((banner, index) => <div key={banner.title} className="explore-hero-panel" aria-hidden={index !== slide} inert={index !== slide}>
+          <img src={getAssetUrl('explore/smart-home-hero.png')} alt="Blue sofa, floor lamp, houseplant and smart control panel in a sunlit living room" />
+          <div className="explore-hero-copy"><span>SMART HOME</span><h2>{banner.title}</h2><p>{banner.description}</p>
+            <button type="button" onClick={() => open(banner.title, 'Explore scenes, automation ideas and recommended devices below. Choose any card to preview it.')}>Get Started<ArrowRight size={16} /></button>
+          </div>
+        </div>)}
       </div>
-      <div className="explore-hero-dots" role="group" aria-label="Inspiration slides">{banners.map((item, index) => <button key={item.title} type="button" aria-label={`Show slide ${index + 1}`} aria-pressed={slide === index} onClick={() => setSlide(index)}><span /></button>)}</div>
     </section>
+    <div className="explore-hero-dots" role="group" aria-label="Inspiration slides">{banners.map((item, index) => <button key={item.title} type="button" aria-label={`Show slide ${index + 1}`} aria-pressed={slide === index} onClick={() => setSlide(index)}><span /></button>)}</div>
 
     <div className="explore-categories" role="group" aria-label="Explore categories">{[
       { name: 'Scenes', description: 'One-tap control', Icon: House, id: 'explore-scenes' },

@@ -73,6 +73,23 @@ test('owner can invite, grant access to one home, and revoke membership', {
       [owner]
     )).rows[0].id;
     const room = await homeService.createRoom(sharedHome, 'Office');
+    const wifiUpdate = await request(owner, '/homes/' + sharedHome, 'PUT', { default_wifi_ssid: 'Home WiFi test', wifi_password: 'TestWifiPassword123!' });
+    assert.equal(wifiUpdate.status, 200);
+    const wifiHome = (await wifiUpdate.json()).home;
+    assert.equal(wifiHome.default_wifi_ssid, 'Home WiFi test');
+    assert.equal(wifiHome.wifi_password, undefined);
+    assert.equal(wifiHome.wifi_password_encrypted, undefined);
+    const savedWifi = (await db.query('SELECT wifi_password_encrypted FROM homes WHERE id=$1', [sharedHome])).rows[0];
+    assert.ok(savedWifi.wifi_password_encrypted);
+    assert.notEqual(savedWifi.wifi_password_encrypted, 'TestWifiPassword123!');
+    assert.deepEqual(await homeService.getHomeWifiCredentials(sharedHome, owner), { ssid: 'Home WiFi test', password: 'TestWifiPassword123!' });
+    assert.equal((await request(owner, '/homes/' + sharedHome, 'PUT', { default_wifi_ssid: 'Home WiFi test' })).status, 200);
+    assert.equal((await homeService.getHomeWifiCredentials(sharedHome, owner)).password, 'TestWifiPassword123!');
+    assert.equal((await request(member, '/homes/' + sharedHome, 'PUT', { default_wifi_ssid: 'Forbidden' })).status, 404);
+    assert.equal((await request(owner, '/homes/' + sharedHome, 'PUT', { default_wifi_ssid: 'a'.repeat(33) })).status, 400);
+    assert.equal((await request(owner, '/homes/' + sharedHome, 'PUT', { wifi_password: 'short' })).status, 400);
+    assert.equal((await request(owner, '/homes/' + sharedHome, 'PUT', { default_wifi_ssid: 'Open test', wifi_password: '' })).status, 200);
+    assert.deepEqual(await homeService.getHomeWifiCredentials(sharedHome, owner), { ssid: 'Open test', password: '' });
     assert.equal(room.image_path, 'Rooms Images/Office.png');
     assert.equal((await homeService.getRoomsByHome(sharedHome, owner)).find(item => item.id === room.id).image_path, room.image_path);
     const provisionResponse = await request(owner, '/devices/provision', 'POST', {

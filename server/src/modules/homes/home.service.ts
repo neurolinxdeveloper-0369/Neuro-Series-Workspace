@@ -397,7 +397,7 @@ export const homeService = {
       data.latitude !== undefined ? data.latitude : null,
       data.longitude !== undefined ? data.longitude : null,
       data.timezone || null,
-      data.default_wifi_ssid !== undefined ? (data.default_wifi_ssid ? data.default_wifi_ssid.trim() : null) : null,
+      data.default_wifi_ssid !== undefined ? (data.default_wifi_ssid || null) : null,
       encryptedWifiPassword !== undefined ? encryptedWifiPassword : null,
       homeId,
       ownerId,

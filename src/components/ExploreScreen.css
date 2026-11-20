@@ -18,3 +18,7 @@
 .explore-intro p{max-width:400px}.explore-hero-copy p{max-width:230px}.explore-product-sprite{width:65px;max-width:100%;align-self:center}
 @media(min-width:640px){.explore-product-sprite{width:110px}}
 @media(max-width:400px){.explore-product-sprite{width:52px}}
+.explore-design .explore-hero{margin-bottom:0}.explore-hero-dots{position:static;transform:none;justify-content:center;margin:2px 0 12px;min-height:24px}.explore-hero-dots button{width:22px;height:24px}
+@media(max-width:639px){.explore-slider-wrapper.explore-page-content{top:calc(4.5rem + var(--safe-inset-top))!important}}
+@media(min-width:640px){.explore-slider-wrapper.explore-page-content{top:6rem!important}}
+.explore-hero-track{position:absolute;inset:0;display:flex;transition:transform .45s ease}.explore-hero-panel{position:relative;isolation:isolate;flex:0 0 100%;min-width:0;height:100%}.explore-hero-panel>img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:right center;z-index:-1}
