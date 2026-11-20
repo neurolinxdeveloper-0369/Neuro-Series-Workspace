@@ -1,3 +1,5 @@
+import { QuickControls } from './components/QuickControls';
+import { HomeDeviceCard } from './components/HomeDeviceCard';
 import { ROOM_PRESETS } from '../server/src/config/room-presets';
 import { HistoryPanel } from './components/HistoryPanel';
 import { RoomOverviewCard } from './components/RoomOverviewCard';
@@ -14,6 +16,8 @@ import { useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react
 import {
   Home,
   LayoutPanelTop,
+  LayoutGrid,
+  List,
   BookText,
   CirclePlay,
   Menu,
@@ -134,6 +138,7 @@ export function App() {
 
   // Room Sub-Tabs & Explore Banner State
   const [activeRoomTab, setActiveRoomTab] = useState<string>('all');
+  const [deviceView, setDeviceView] = useState<'grid' | 'list'>('grid');
   const [isExploreDismissed, setIsExploreDismissed] = useState(() => {
     return typeof window !== 'undefined' && sessionStorage.getItem('neuro_explore_dismissed') === 'true';
   });
@@ -1056,150 +1061,28 @@ export function App() {
     );
   };
 
-  // Render Your Space Connectivity Card (Arched Plaque Outer Silhouette with Inner White Fill & No Border / No Trees)
-  const renderConnectivityCard = (totalCount: number, liveCount: number, inactiveCount: number) => (
-    <div className="relative w-full select-none pt-1 pb-1 transition-all">
-      {/* Plaque Container with Increased Height and Clean Pure White Silhouette */}
-      <div className="relative w-full py-5 sm:py-6 px-6 sm:px-8">
-        {/* Plaque Background (Pure White Silhouette, No Trees, No Border Line) */}
-        <svg
-          viewBox="0 0 520 130"
-          preserveAspectRatio="none"
-          className="absolute inset-0 w-full h-full pointer-events-none drop-shadow-[0_4px_20px_rgba(0,0,0,0.06)]"
-        >
-          {/* Outer Plaque Contour Shape with Pure White Fill and No Border Line */}
-          <path
-            d="M 30 10 Q 260 2 490 10 C 510 14, 518 36, 517 65 C 518 94, 510 116, 490 120 Q 260 128 30 120 C 10 116, 2 94, 3 65 C 2 36, 10 14, 30 10 Z"
-            fill="#ffffff"
-          />
-        </svg>
-
-        {/* Card Content Layer */}
-        <div className="relative z-10 space-y-3">
-          {/* Top Row: YOUR SPACE CONNECTIVITY */}
-          <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-[#5f7032] flex-shrink-0 shadow-2xs" />
-            <h2 className="text-xs sm:text-sm font-extrabold tracking-wider uppercase text-slate-800 font-sans">
-              YOUR SPACE CONNECTIVITY
-            </h2>
-          </div>
-
-          {/* Horizontal Divider Line */}
-          <div className="h-px bg-slate-100 my-2.5 sm:my-3 w-full" />
-
-          {/* Bottom Row: Total | Live | Inactive */}
-          <div className="flex items-center justify-between text-xs sm:text-sm px-1 font-sans">
-            <div className="flex items-center gap-1.5">
-              <span className="text-slate-500 font-medium text-[11px] sm:text-xs">Total:</span>
-              <span className="font-extrabold text-slate-900 text-xs sm:text-sm font-mono">{totalCount}</span>
-            </div>
-
-            <div className="h-3.5 w-px bg-slate-200" />
-
-            <div className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-[#5f7032] flex-shrink-0" />
-              <span className="text-slate-500 font-medium text-[11px] sm:text-xs">Live:</span>
-              <span className="font-extrabold text-slate-900 text-xs sm:text-sm font-mono">{liveCount}</span>
-            </div>
-
-            <div className="h-3.5 w-px bg-slate-200" />
-
-            <div className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-slate-400 flex-shrink-0" />
-              <span className="text-slate-500 font-medium text-[11px] sm:text-xs">Inactive:</span>
-              <span className="font-extrabold text-slate-900 text-xs sm:text-sm font-mono">{inactiveCount}</span>
-            </div>
-          </div>
-        </div>
+  const renderQuickControls = () => {
+    const roomId = activeRoomTab === 'all' ? null : rooms.find(room => room.name === activeRoomTab)?.id ?? '__missing__';
+    return <QuickControls key={(activeHome?.id || '') + ':' + (roomId ?? 'all')} devices={devices} roomId={roomId}
+      roomName={activeRoomTab === 'all' ? 'all rooms' : activeRoomTab} routines={routines}
+      onSeeAll={() => setActiveTab('routines')} />;
+  };
+  const renderDeviceHeading = (count: number) => (
+    <header className="flex items-center justify-between gap-3 px-1">
+      <h2 className="flex items-center gap-2 text-base font-extrabold text-slate-900">
+        <LayoutPanelTop className="size-5 text-slate-500" />Devices <span className="text-sm font-semibold text-slate-500">({count})</span>
+      </h2>
+      <div role="group" aria-label="Device layout" className="flex items-center gap-1">
+        {(['grid', 'list'] as const).map(layout => <button key={layout} type="button" onClick={() => setDeviceView(layout)}
+          aria-label={layout === 'grid' ? 'Grid view' : 'List view'} aria-pressed={deviceView === layout}
+          className={'grid size-11 place-items-center rounded-full ' + (deviceView === layout ? 'bg-white/90 text-sky-500 shadow-sm' : 'text-slate-500 hover:bg-white/50')}>
+          {layout === 'grid' ? <LayoutGrid className="size-5" /> : <List className="size-5" />}
+        </button>)}
       </div>
-    </div>
+    </header>
   );
-
-  // Compact Device Card (2 per row on mobile, reduced height, clean UI)
   const renderCompactDeviceCard = (dev: any, roomLabel: string) => (
-    <div
-      key={dev.id}
-      onClick={() => setSelectedDeviceForControl(dev)}
-      className="group relative overflow-hidden bg-white/70 backdrop-blur-xl rounded-2xl sm:rounded-3xl shadow-xs border border-white/80 hover:border-sky-300 hover:shadow-md transition-all cursor-pointer active:scale-[0.98] flex flex-col justify-between"
-    >
-      {/* Top Compact Hero Showcase: reduced height h-18 sm:h-22 */}
-      <div className="relative w-full h-18 sm:h-22 bg-gradient-to-b from-sky-50/70 via-sky-50/30 to-white/10 flex items-center justify-center overflow-hidden p-1.5 border-b border-slate-100/70">
-        {dev.model_code === 'GATE' ? (
-          <div className="w-full h-full flex flex-col items-center justify-center p-0.5 opacity-90 group-hover:opacity-100 group-hover:scale-105 transition-all duration-300">
-            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-gradient-to-br from-sky-500 to-indigo-600 flex items-center justify-center shadow-xs text-white relative flex-shrink-0">
-              <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M3 21h18" />
-                <path d="M5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16" />
-                <path d="M9 21v-4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v4" />
-              </svg>
-              <span className="absolute -bottom-1 -right-1 px-1 py-0.2 rounded-full bg-emerald-500 text-[6px] font-black text-white shadow-xs">
-                1 CH
-              </span>
-            </div>
-            <span className="text-[7.5px] sm:text-[8.5px] font-bold text-slate-600 tracking-wider uppercase mt-1 font-mono truncate max-w-full">
-              Gate Motor
-            </span>
-          </div>
-        ) : (
-          <img
-            src={getAssetUrl('8S.png')}
-            alt={dev.custom_name}
-            className="w-full h-full max-h-12 sm:max-h-14 object-contain opacity-85 group-hover:opacity-100 group-hover:scale-105 transition-all duration-300"
-          />
-        )}
-
-        {/* Overlaid Room Name Pill (Top-Left) */}
-        <div className="absolute top-1.5 left-1.5 flex items-center max-w-[50%]">
-          <span className="px-1.5 py-0.5 rounded-full text-[9px] font-semibold bg-white/95 backdrop-blur-md text-slate-700 shadow-2xs border border-white/80 flex items-center gap-1 truncate">
-            <span className="flex-shrink-0">{getRoomEmoji(roomLabel)}</span>
-            <span className="truncate">{roomLabel}</span>
-          </span>
-        </div>
-
-        {/* Overlaid Status Pill (Top-Right) */}
-        <div className="absolute top-1.5 right-1.5 flex items-center">
-          <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold border flex items-center gap-1 backdrop-blur-md shadow-2xs ${
-            dev.is_online
-              ? 'bg-emerald-50/95 text-emerald-700 border-emerald-200'
-              : 'bg-rose-50/95 text-rose-700 border-rose-200'
-          }`}>
-            <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
-              dev.is_online ? 'bg-emerald-500 animate-pulse' : 'bg-rose-400'
-            }`} />
-            <span>{dev.is_online ? 'Online' : 'Offline'}</span>
-          </span>
-        </div>
-      </div>
-
-      {/* Bottom Details Section (Device name, model, Action) */}
-      <div className="p-2 sm:p-2.5 flex-1 flex flex-col justify-between">
-        <div>
-          <div className="flex items-center justify-between gap-1">
-            <h3 className="text-xs sm:text-sm font-bold text-slate-900 group-hover:text-[#0284c7] transition-colors leading-tight truncate">
-              {dev.custom_name}
-            </h3>
-            <span className="px-1 py-0.2 rounded-md text-[8px] sm:text-[9px] font-bold bg-sky-50 text-[#0284c7] border border-sky-100 font-mono flex-shrink-0">
-              {dev.model_code || 'TP8'}
-            </span>
-          </div>
-          <p className="text-[9px] text-slate-400 font-mono truncate mt-0.5">
-            {dev.device_id || `NEURO-${dev.model_code}-${dev.mac_4}`}
-          </p>
-        </div>
-
-        <div className="mt-1.5 pt-1.5 border-t border-slate-100/90 flex items-center justify-between text-[9px] sm:text-[10px]">
-          <span className="font-medium text-slate-400 truncate">
-            {dev.is_online ? 'Ready' : 'Offline'}
-          </span>
-          <span className={`font-bold flex items-center gap-0.5 group-hover:translate-x-0.5 transition-transform flex-shrink-0 ${
-            dev.is_online ? 'text-[#0284c7]' : 'text-slate-400'
-          }`}>
-            <span>Open</span>
-            <span>&rarr;</span>
-          </span>
-        </div>
-      </div>
-    </div>
+    <HomeDeviceCard key={dev.id} device={dev} roomName={roomLabel} list={deviceView === 'list'} onOpen={() => setSelectedDeviceForControl(dev)} />
   );
 
   const canGoBack = Boolean(helpTopic || showNotifications || historyView || recoveryOpen || isSignInOpen ||
@@ -1425,6 +1308,7 @@ export function App() {
               />
             )}
 
+            {isSignedIn && <div className="w-full max-w-sm shrink-0 sm:max-w-md md:max-w-2xl lg:max-w-5xl">{renderQuickControls()}</div>}
             {/* When NO devices exist in home, show the Quick Devices onboarding card */}
             {devices.length === 0 ? (
               <QuickDevicesCard
@@ -1444,13 +1328,13 @@ export function App() {
                     (rooms.find(r => r.id === d.room_id)?.name.toLowerCase().includes(searchQuery.trim().toLowerCase()))
                   );
 
-                const onlineCount = filtered.filter(d => Boolean(d.is_online)).length;
-                const offlineCount = filtered.filter(d => !d.is_online).length;
+
+
 
                 return (
                   <div id="home-device-list" className="w-full max-w-sm shrink-0 sm:max-w-md md:max-w-2xl lg:max-w-5xl space-y-3 pointer-events-auto pt-1 sm:pt-2">
-                    {/* Transparent Card: Your Space Connectivity */}
-                    {(activeRoomTab === 'all' || rooms.length === 0) && renderConnectivityCard(filtered.length, onlineCount, offlineCount)}
+                    {/* Devices in the current room and search scope */}
+                    {renderDeviceHeading(filtered.length)}
 
                     {filtered.length === 0 ? (
                       <div className="bg-white/80 backdrop-blur-md rounded-3xl p-6 text-center border border-white/80 shadow-xs space-y-1.5">
@@ -1481,7 +1365,7 @@ export function App() {
                         )}
                       </div>
                     ) : (
-                      <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2.5 sm:gap-3.5">
+                      <div className={deviceView === 'list' ? 'grid grid-cols-1 gap-3' : 'grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2.5 sm:gap-3.5'}>
                         {filtered.map((dev) => {
                           const devRoom = rooms.find(r => r.id === dev.room_id);
                           const roomLabel = devRoom?.name ?? 'Unassigned';
@@ -1537,13 +1421,14 @@ export function App() {
                     (rooms.find(r => r.id === d.room_id)?.name.toLowerCase().includes(searchQuery.trim().toLowerCase()))
                   );
 
-                const onlineCount = filtered.filter(d => Boolean(d.is_online)).length;
-                const offlineCount = filtered.filter(d => !d.is_online).length;
+
+
 
                 return (
                   <div className="w-full max-w-sm sm:max-w-md md:max-w-2xl lg:max-w-5xl space-y-3 pointer-events-auto mb-2">
-                    {/* Transparent Card: Your Space Connectivity */}
-                    {renderConnectivityCard(filtered.length, onlineCount, offlineCount)}
+                    {/* Quick controls and scoped device list */}
+                    {renderQuickControls()}
+                    {renderDeviceHeading(filtered.length)}
 
                     {filtered.length === 0 ? (
                       <div className="bg-white/80 backdrop-blur-md rounded-3xl p-6 text-center border border-white/80 shadow-xs space-y-1.5">
@@ -1574,7 +1459,7 @@ export function App() {
                         )}
                       </div>
                     ) : (
-                      <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2.5 sm:gap-3.5">
+                      <div className={deviceView === 'list' ? 'grid grid-cols-1 gap-3' : 'grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2.5 sm:gap-3.5'}>
                         {filtered.map((dev) => {
                           const devRoom = rooms.find(r => r.id === dev.room_id);
                           const roomLabel = devRoom ? devRoom.name : 'Living room';

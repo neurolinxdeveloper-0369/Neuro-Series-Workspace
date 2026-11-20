@@ -17,6 +17,7 @@ export interface DeviceEndpoint {
 }
 
 export interface Device {
+  can_control?: boolean;
   id: string;
   home_id: string;
   room_id: string | null;
