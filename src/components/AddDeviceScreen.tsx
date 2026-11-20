@@ -339,6 +339,7 @@ export const AddDeviceScreen = ({
   const [isProvisioning, setIsProvisioning] = useState(false);
   const confirmedPairing = useRef<{ key: string; ipAddress?: string; result?: ProvisionResult } | null>(null);
   const [provisionError, setProvisionError] = useState<string | null>(null);
+  const displayProvisionError = provisionError?.replace(/^API Error \[\d{3}\]:\s*/i, '');
   // Helper to send Device ID, Wi-Fi credentials & MQTT details to hardware at 192.168.4.1/api/wifi/configure
   // The server confirms readiness from a fresh MQTT report after registration.
   const sendConfigToHardware = async (payload: {
@@ -977,10 +978,18 @@ export const AddDeviceScreen = ({
       } else {
         setProvisionError(err instanceof Error ? err.message : 'Setup didn’t finish. Check your Wi-Fi and try again.');
       }
-      if (!confirmedPairing.current) setHotspotReady(false);
+      if (!confirmedPairing.current && selectedHotspot) {
+        const bridge = (window as any).AndroidWifiBridge;
+        if (bridge?.getSetupConnectionState) {
+          setHotspotReady(bridge.getSetupConnectionState(selectedHotspot) === 'connected' ||
+            bridge.getConnectedSsid?.() === selectedHotspot);
+        }
+      }
     } finally {
       if (confirmedPairing.current) pairingConfig.current = null;
-      (window as any).AndroidWifiBridge?.unbindProcessFromNetwork?.();
+      if (confirmedPairing.current || !selectedHotspot) {
+        (window as any).AndroidWifiBridge?.unbindProcessFromNetwork?.();
+      }
       setIsProvisioning(false);
     }
   };
@@ -1542,7 +1551,7 @@ export const AddDeviceScreen = ({
             This setup network may say “No internet.” Stay connected while setup runs. Keep mobile data on if available.
             After setup, reconnect to your home Wi-Fi so we can confirm the device is online.
           </p>
-          {provisionError && <p role="alert" className="mb-4 rounded-xl bg-rose-50 p-3 text-sm text-rose-700">{provisionError}</p>}
+          {provisionError && <p role="alert" className="mb-4 rounded-xl bg-rose-50 p-3 text-sm text-rose-700">{displayProvisionError}</p>}
           {!isJoiningHotspot && <div className="mb-4 flex flex-wrap gap-3">
             {(window as any).AndroidWifiBridge &&
               <button type="button" onClick={() => void handleSetUpDevice(selectedHotspot)} className="min-h-11 rounded-xl bg-white px-3 font-semibold text-sky-700">Retry connection</button>}
@@ -1622,7 +1631,7 @@ export const AddDeviceScreen = ({
               </label>
             </fieldset>
           )}
-          {provisionError && <p role="alert" className="mb-4 rounded-xl bg-rose-50 p-3 text-sm text-rose-700">{provisionError}</p>}
+          {provisionError && <p role="alert" className="mb-4 rounded-xl bg-rose-50 p-3 text-sm text-rose-700">{displayProvisionError}</p>}
           <button type="button" onClick={() => void handleContinueProvisioning()}
             disabled={isProvisioning || !wifiSsid.trim() || (!hotspotReady && !confirmedPairing.current)}
             className="w-full rounded-full bg-sky-700 p-3.5 font-bold text-white disabled:opacity-50">
@@ -2072,7 +2081,7 @@ export const AddDeviceScreen = ({
               <Info className="w-4 h-4 text-rose-500 flex-shrink-0 mt-0.5" />
               <div>
                 <span className="font-bold block">Provisioning Notice:</span>
-                <span>{provisionError}</span>
+                <span>{displayProvisionError}</span>
               </div>
             </div>
           )}
