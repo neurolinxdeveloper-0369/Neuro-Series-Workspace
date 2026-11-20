@@ -1411,7 +1411,11 @@ export const AddDeviceScreen = ({
           </div>
           {!!nearbyFoundDevices.length && <h2 className="mb-3 text-sm font-semibold">Nearby Wi-Fi networks</h2>}
           {nearbyFoundDevices.map(device => (
-            <div key={device.ssid} className="mb-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <button key={device.ssid} type="button"
+              aria-label={isSetupSsid(device.ssid) ? 'Select ' + device.ssid : device.ssid}
+              disabled={!isSetupSsid(device.ssid) || isJoiningHotspot}
+              onClick={() => void handleSetUpDevice(device.ssid)}
+              className="mb-3 block w-full rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm enabled:hover:border-sky-400">
               <div className="flex items-start gap-3">
                 <Wifi aria-hidden="true" className="mt-1 size-5 shrink-0 text-sky-700" />
                 <div className="min-w-0 flex-1">
@@ -1420,25 +1424,25 @@ export const AddDeviceScreen = ({
                     {device.model?.name || (isSetupSsid(device.ssid) ? 'Device setup network' : 'Wi-Fi network')}
                   </p>
                 </div>
+                {isSetupSsid(device.ssid) && <ChevronRight aria-hidden="true" className="mt-1 size-5 shrink-0 text-sky-700" />}
               </div>
-              {isSetupSsid(device.ssid) && <button type="button" onClick={() => void handleSetUpDevice(device.ssid)}
-                disabled={isJoiningHotspot} className="mt-3 min-h-11 w-full rounded-xl bg-sky-700 px-3 text-sm font-semibold text-white disabled:opacity-50">
-                Connect to this network
-              </button>}
-            </div>
+            </button>
           ))}
           {scanFeedbackMessage && <p role="status" className="py-3 text-sm">{scanFeedbackMessage}</p>}
           {typeof window !== 'undefined' && (window as any).AndroidWifiBridge ? (
             <button type="button" onClick={() => void runNearbyScan()} disabled={isNearbyScanning || isJoiningHotspot}
               className="my-3 font-semibold text-sky-700 disabled:opacity-50">Scan again</button>
           ) : <p className="py-3 text-sm text-slate-600">Nearby Wi-Fi scanning is available in the Android app. On this device, find the setup network in Wi-Fi Settings or on the device label and enter its name below while your phone is online.</p>}
-          <form className="mt-4 space-y-2" onSubmit={event => { event.preventDefault(); if (isSetupSsid(manualSsidInput.trim())) void handleSetUpDevice(manualSsidInput.trim()); }}>
+          <details className="mt-4">
+          <summary className="min-h-11 cursor-pointer text-sm font-semibold text-sky-700">Enter device network manually</summary>
+          <form className="mt-2 space-y-2" onSubmit={event => { event.preventDefault(); if (isSetupSsid(manualSsidInput.trim())) void handleSetUpDevice(manualSsidInput.trim()); }}>
             <label htmlFor="manual-setup-ssid" className="block text-sm font-medium">Enter device network instead</label>
             <input id="manual-setup-ssid" value={manualSsidInput} onChange={event => setManualSsidInput(event.target.value)}
               placeholder="NEURO-…" autoCapitalize="none" className="w-full rounded-xl border p-3" />
             <button type="submit" disabled={isJoiningHotspot || !isSetupSsid(manualSsidInput.trim())}
-              className="min-h-11 font-semibold text-sky-700 disabled:opacity-50">Connect to this network</button>
+              className="min-h-11 font-semibold text-sky-700 disabled:opacity-50">Select network</button>
           </form>
+          </details>
         </section>
       )}
 
