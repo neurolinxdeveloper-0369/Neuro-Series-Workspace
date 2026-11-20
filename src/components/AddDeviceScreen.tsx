@@ -216,7 +216,7 @@ export const AddDeviceScreen = ({
     ssid: string;
     level: number;
   }>>([]);
-  const scanGeneration = useRef(0);
+  const scanIndicatorTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [selectedHotspot, setSelectedHotspot] = useState('');
   const selectedHotspotRef = useRef('');
   const [isJoiningHotspot, setIsJoiningHotspot] = useState(false);
@@ -783,54 +783,78 @@ export const AddDeviceScreen = ({
     }
   };
 
-  const runNearbyScan = async () => {
-    const generation = ++scanGeneration.current;
+  const readNearbyNetworks = (refresh: boolean) => {
     const bridge = (window as any).AndroidWifiBridge;
-    setNearbyFoundDevices([]);
-    setScanFeedbackMessage(null);
-    if (!bridge?.getScanResults) {
-      setIsNearbyScanning(false);
-      return;
-    }
-    setIsNearbyScanning(true);
+    if (!bridge?.getScanResults && !bridge?.getSetupScanResults) return;
     try {
-      let matches: Array<{ ssid: string; level: number }> = [];
-      for (let attempt = 0; attempt < 3; attempt++) {
-        const results = JSON.parse((bridge.getSetupScanResults ? bridge.getSetupScanResults(attempt === 0) : bridge.getScanResults()) || '[]');
-        const valid = Array.isArray(results) ? results : [];
-        matches = valid.filter(item => typeof item?.ssid === 'string' && item.ssid.trim() && item.ssid !== '<unknown ssid>')
-          .map(item => ({ ssid: item.ssid, level: Number.isFinite(item.level) ? item.level : -100 }));
-        const connected = bridge.getConnectedSsid?.();
-        if (isSetupSsid(connected) && !matches.some(item => item.ssid === connected)) {
-          matches.push({ ssid: connected, level: 0 });
-        }
-        if (attempt === 2) break;
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        if (generation !== scanGeneration.current) return;
+      const raw = bridge.getSetupScanResults ? bridge.getSetupScanResults(refresh) : bridge.getScanResults();
+      const results = JSON.parse(raw || '[]');
+      if (!Array.isArray(results)) throw new Error('Invalid scan results');
+      const networks = new Map<string, { ssid: string; level: number }>();
+      for (const item of results) {
+        if (typeof item?.ssid !== 'string' || !item.ssid.trim() || item.ssid === '<unknown ssid>') continue;
+        const level = Number.isFinite(item.level) ? item.level : -100;
+        const previous = networks.get(item.ssid);
+        if (!previous || level > previous.level) networks.set(item.ssid, { ssid: item.ssid, level });
       }
-      const unique = new Map<string, typeof matches[number]>();
-      for (const item of matches.sort((a, b) => b.level - a.level)) {
-        if (!unique.has(item.ssid)) unique.set(item.ssid, item);
+      const connected = bridge.getConnectedSsid?.();
+      if (typeof connected === 'string' && connected.trim() && connected !== '<unknown ssid>' && !networks.has(connected)) {
+        networks.set(connected, { ssid: connected, level: -100 });
       }
-      setNearbyFoundDevices(Array.from(unique.values(), ({ ssid, level }) => {
+      const sorted = [...networks.values()].sort((a, b) => b.level - a.level);
+      setNearbyFoundDevices(sorted.map(({ ssid, level }) => {
         const resolved = isSetupSsid(ssid) ? resolveDeviceFromSsid(ssid) : null;
-        const model = resolved ? DEVICE_CATALOG.find(d => d.modelCode.toUpperCase() === resolved.modelCode.toUpperCase()) : undefined;
+        const model = resolved ? DEVICE_CATALOG.find(device => device.modelCode.toUpperCase() === resolved.modelCode.toUpperCase()) : undefined;
         return { model, ssid, level };
       }));
-      if (!matches.some(item => isSetupSsid(item.ssid))) setScanFeedbackMessage('No device setup network found yet. Keep the device powered on in setup mode, turn on Wi-Fi and Location, and scan again.');
+      setScanFeedbackMessage(sorted.length ? null : 'No networks reported yet. Turn on Wi-Fi and Location and allow Wi-Fi scan permissions. This list updates automatically.');
     } catch {
-      if (generation === scanGeneration.current) setScanFeedbackMessage('Couldn’t scan for devices. Check Wi-Fi permissions and try again.');
-    } finally {
-      if (generation === scanGeneration.current) setIsNearbyScanning(false);
+      setScanFeedbackMessage('Couldn’t read nearby networks. Check Wi-Fi and Location permissions or open Wi-Fi Settings.');
     }
   };
 
-  useEffect(() => {
-    if (isOpen && currentView === 'scan_nearby') void runNearbyScan();
-    if (isOpen && currentView === 'provision_form' && !selectedHotspot) scanAll24GhzNetworks();
-    return () => { scanGeneration.current++; };
-  }, [isOpen, currentView, refreshRevision]);
+  const runNearbyScan = () => {
+    const bridge = (window as any).AndroidWifiBridge;
+    if (!bridge?.getScanResults && !bridge?.getSetupScanResults) {
+      setIsNearbyScanning(false);
+      return;
+    }
+    clearTimeout(scanIndicatorTimer.current);
+    setIsNearbyScanning(true);
+    readNearbyNetworks(true);
+    scanIndicatorTimer.current = setTimeout(() => setIsNearbyScanning(false), 6000);
+  };
 
+  useEffect(() => {
+    if (!isOpen) return;
+    if (currentView !== 'scan_nearby') {
+      if (currentView === 'provision_form' && !selectedHotspot) scanAll24GhzNetworks();
+      return;
+    }
+    runNearbyScan();
+    const updated = () => {
+      if (document.visibilityState === 'hidden') return;
+      readNearbyNetworks(false);
+      clearTimeout(scanIndicatorTimer.current);
+      setIsNearbyScanning(false);
+    };
+    const requestScan = () => {
+      if (document.visibilityState !== 'hidden') runNearbyScan();
+    };
+    const latestResults = setInterval(() => {
+      if (document.visibilityState !== 'hidden') readNearbyNetworks(false);
+    }, 2000);
+    const activeScan = setInterval(requestScan, 31000);
+    window.addEventListener('neuro-wifi-scan-results', updated);
+    document.addEventListener('visibilitychange', requestScan);
+    return () => {
+      clearTimeout(scanIndicatorTimer.current);
+      clearInterval(latestResults);
+      clearInterval(activeScan);
+      window.removeEventListener('neuro-wifi-scan-results', updated);
+      document.removeEventListener('visibilitychange', requestScan);
+    };
+  }, [isOpen, currentView, refreshRevision]);
   const leaveNearbySetup = () => {
     selectedHotspotRef.current = '';
     setSelectedHotspot('');
@@ -1409,7 +1433,10 @@ export const AddDeviceScreen = ({
             </p>
             {isNearbyScanning && <p role="status" className="sr-only">Scanning nearby Wi-Fi networks</p>}
           </div>
-          {!!nearbyFoundDevices.length && <h2 className="mb-3 text-sm font-semibold">Nearby Wi-Fi networks</h2>}
+          <p className="mb-4 text-xs leading-relaxed text-slate-600">
+            All network names reported by your phone are shown here, strongest signal first. This list updates as Android scans.
+          </p>
+          {!!nearbyFoundDevices.length && <h2 className="mb-3 text-sm font-semibold">Nearby Wi-Fi networks ({nearbyFoundDevices.length})</h2>}
           {nearbyFoundDevices.map(device => (
             <button key={device.ssid} type="button"
               aria-label={isSetupSsid(device.ssid) ? 'Select ' + device.ssid : device.ssid}
@@ -1431,8 +1458,11 @@ export const AddDeviceScreen = ({
           {scanFeedbackMessage && <p role="status" className="py-3 text-sm">{scanFeedbackMessage}</p>}
           {typeof window !== 'undefined' && (window as any).AndroidWifiBridge ? (
             <button type="button" onClick={() => void runNearbyScan()} disabled={isNearbyScanning || isJoiningHotspot}
-              className="my-3 font-semibold text-sky-700 disabled:opacity-50">Scan again</button>
+              className="my-3 min-h-11 font-semibold text-sky-700 disabled:opacity-50">Refresh networks</button>
           ) : <p className="py-3 text-sm text-slate-600">Nearby Wi-Fi scanning is available in the Android app. On this device, find the setup network in Wi-Fi Settings or on the device label and enter its name below while your phone is online.</p>}
+          {(window as any).AndroidWifiBridge?.openWifiSettings && <button type="button"
+            onClick={() => (window as any).AndroidWifiBridge.openWifiSettings()}
+            className="ml-4 min-h-11 font-semibold text-sky-700">Wi-Fi Settings</button>}
           <details className="mt-4">
           <summary className="min-h-11 cursor-pointer text-sm font-semibold text-sky-700">Enter device network manually</summary>
           <form className="mt-2 space-y-2" onSubmit={event => { event.preventDefault(); if (isSetupSsid(manualSsidInput.trim())) void handleSetUpDevice(manualSsidInput.trim()); }}>

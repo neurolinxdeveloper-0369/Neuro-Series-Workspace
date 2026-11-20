@@ -3,7 +3,9 @@ package in.neurolinx.neuroseries;
 import android.Manifest;
 import android.app.Dialog;
 import android.content.Context;
+import android.content.BroadcastReceiver;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.net.ConnectivityManager;
 import android.net.Network;
@@ -14,6 +16,7 @@ import android.net.wifi.WifiManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Message;
+import android.os.SystemClock;
 import android.provider.Settings;
 import android.view.ViewGroup;
 import android.webkit.CookieManager;
@@ -33,10 +36,12 @@ import java.util.List;
 
 public class MainActivity extends BridgeActivity {
     private static final int CAMERA_PERMISSION_REQ_CODE = 101;
+    private BroadcastReceiver wifiScanReceiver;
 
     // Native Android Wi-Fi Bridge exposed to WebView JavaScript as window.AndroidWifiBridge
     public class AndroidWifiBridge {
         private final Context context;
+        private long lastWifiScanRequest = -31000;
 
         public AndroidWifiBridge(Context context) {
             this.context = context;
@@ -90,12 +95,16 @@ public class MainActivity extends BridgeActivity {
         }
 
         @JavascriptInterface
-        public String getSetupScanResults(boolean refresh) {
+        public synchronized String getSetupScanResults(boolean refresh) {
             try {
                 WifiManager wm = (WifiManager) context.getApplicationContext().getSystemService(Context.WIFI_SERVICE);
                 if (wm != null) {
                     try {
-                        if (refresh) wm.startScan();
+                        long now = SystemClock.elapsedRealtime();
+                        if (refresh && now - lastWifiScanRequest >= 31000) {
+                            lastWifiScanRequest = now;
+                            wm.startScan();
+                        }
                     } catch (Exception ignored) {}
                     List<ScanResult> results = wm.getScanResults();
                     JSONArray arr = new JSONArray();
@@ -683,6 +692,19 @@ public class MainActivity extends BridgeActivity {
 
             // Register native Android Wi-Fi Bridge
             webView.addJavascriptInterface(new AndroidWifiBridge(MainActivity.this), "AndroidWifiBridge");
+            wifiScanReceiver = new BroadcastReceiver() {
+                @Override
+                public void onReceive(Context context, Intent intent) {
+                    webView.post(() -> webView.evaluateJavascript(
+                        "window.dispatchEvent(new Event('neuro-wifi-scan-results'));", null));
+                }
+            };
+            IntentFilter scanFilter = new IntentFilter(WifiManager.SCAN_RESULTS_AVAILABLE_ACTION);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                registerReceiver(wifiScanReceiver, scanFilter, Context.RECEIVER_EXPORTED);
+            } else {
+                registerReceiver(wifiScanReceiver, scanFilter);
+            }
 
             // 1. Enable DOM Storage, JavaScript & Multi-Window support
             settings.setJavaScriptEnabled(true);
@@ -768,5 +790,13 @@ public class MainActivity extends BridgeActivity {
                 }
             });
         }
+    }
+    @Override
+    public void onDestroy() {
+        if (wifiScanReceiver != null) {
+            unregisterReceiver(wifiScanReceiver);
+            wifiScanReceiver = null;
+        }
+        super.onDestroy();
     }
 }
