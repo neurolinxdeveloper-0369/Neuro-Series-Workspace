@@ -1058,7 +1058,7 @@ export const AddDeviceScreen = ({
 
   return (
     <div 
-      className="app-screen screen-top-container fixed inset-0 z-50 w-full h-full overflow-y-auto overflow-x-hidden flex flex-col font-sans select-none animate-in fade-in duration-200"
+      className={`app-screen screen-top-container fixed inset-0 z-50 w-full h-full ${currentView === 'provision_success' ? 'overflow-hidden' : 'overflow-y-auto overflow-x-hidden'} flex flex-col font-sans select-none animate-in fade-in duration-200`}
     >
       
       {/* ------------------- VIEW 1: MAIN ADD DEVICE SCREEN ------------------- */}
@@ -2173,8 +2173,8 @@ export const AddDeviceScreen = ({
 
       {/* ------------------- VIEW 6: PROVISIONING CONFIRMATION & SUCCESS ------------------- */}
       {currentView === 'provision_success' && (
-        <div className="w-full max-w-md mx-auto min-h-screen flex flex-col justify-between p-5 sm:p-6 pb-8 animate-in fade-in zoom-in-95 duration-200">
-          <div className="flex-1 flex flex-col items-center justify-center text-center py-8">
+        <div className="w-full max-w-md mx-auto min-h-0 flex-1 flex flex-col p-5 sm:p-6 animate-in fade-in zoom-in-95 duration-200" style={{ paddingBottom: 'calc(1.25rem + var(--nav-inset-bottom, 0px))' }}>
+          <div className="min-h-0 flex-1 overflow-y-auto flex flex-col items-center justify-center text-center py-6">
             
             {/* Success Animated Badge */}
             <div className="w-20 h-20 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 mb-5 shadow-lg shadow-emerald-500/20">
@@ -2186,7 +2186,7 @@ export const AddDeviceScreen = ({
           </div>
 
           {/* Finish & View Dashboard */}
-          <div className="pt-4 mt-auto">
+          <div className="shrink-0 pt-4">
             <button
               onClick={() => {
                 setCurrentView('main');
