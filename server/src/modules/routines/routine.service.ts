@@ -1,39 +1,8 @@
+import { dueScheduleTargets } from './schedule.js';
 import { findOwnedDevice, ownsHome } from '../homes/home.access.js';
 import { db } from '../../config/database.js';
 import { deviceService } from '../devices/device.service.js';
 import type { RoutineRecord, CreateRoutineDTO, UpdateRoutineDTO } from './routine.types.js';
-
-function parseTimeToMinutes(timeStr?: string | null): number | null {
-  if (!timeStr) return null;
-  const cleaned = timeStr.replace(/IST/gi, '').replace(/\s+/g, ' ').trim().toLowerCase();
-  const match = cleaned.match(/^(\d{1,2}):(\d{1,2})(?::\d{1,2})?\s*(am|pm)?$/i);
-  if (!match) return null;
-  let hours = parseInt(match[1], 10);
-  const minutes = parseInt(match[2], 10);
-  const ampm = match[3];
-  if (ampm) {
-    if (ampm === 'pm' && hours < 12) hours += 12;
-    if (ampm === 'am' && hours === 12) hours = 0;
-  }
-  return (hours % 24) * 60 + minutes;
-}
-
-function getCurrentIstMinutes(date: Date = new Date()): { minutes: number; day: string; timeStr: string } {
-  const parts = new Intl.DateTimeFormat('en-IN', {
-    timeZone: 'Asia/Kolkata',
-    hour: 'numeric',
-    minute: 'numeric',
-    weekday: 'short',
-    hour12: false,
-  }).formatToParts(date);
-  const hour = parseInt(parts.find(p => p.type === 'hour')?.value || '0', 10);
-  const minute = parseInt(parts.find(p => p.type === 'minute')?.value || '0', 10);
-  const day = parts.find(p => p.type === 'weekday')?.value || '';
-  const normalizedHour = hour === 24 ? 0 : hour;
-  const minutes = normalizedHour * 60 + minute;
-  const timeStr = `${normalizedHour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
-  return { minutes, day, timeStr };
-}
 
 export const routineService = {
   /**
@@ -303,6 +272,7 @@ export const routineService = {
   executeRoutine: async (id: string, userId: string) => {
     const routine = await routineService.getRoutineById(id, userId);
     if (!routine) throw new Error('Routine not found');
+    if (routine.type !== 'scene') throw new RangeError('Schedules run automatically at their assigned ON/OFF times. Enable the schedule instead of running it now.');
     return routineService.dispatchActions(routine);
   },
 
@@ -315,20 +285,15 @@ export const routineService = {
       try {
         const now = new Date();
         const scheduledMinute = new Date(Math.floor(now.getTime() / 60000) * 60000);
-        const { minutes, day } = getCurrentIstMinutes(now);
         if (now.getTime() - lastCleanup >= 86400000) {
           await db.query("DELETE FROM routine_executions WHERE scheduled_minute < NOW() - INTERVAL '7 days'");
           lastCleanup = now.getTime();
         }
         const result = await db.query<RoutineRecord>(
-          "SELECT * FROM routines WHERE is_active = true AND (type = 'schedule' OR icon = 'clock')"
+          "SELECT * FROM routines WHERE is_active = true AND type = 'schedule'"
         );
         for (const routine of result.rows) {
-          const repeatDays = Array.isArray(routine.repeat_days) ? routine.repeat_days : [];
-          if (repeatDays.length && !repeatDays.some(d => typeof d === 'string' && d.toLowerCase().slice(0, 3) === day.toLowerCase().slice(0, 3))) continue;
-          const times = [[routine.schedule_time, true], [routine.schedule_off_time, false]] as const;
-          for (const [time, target] of times) {
-            if (parseTimeToMinutes(time) !== minutes) continue;
+          for (const target of dueScheduleTargets(routine, now)) {
             const claim = await db.query(
               'INSERT INTO routine_executions VALUES ($1, $2, $3) ON CONFLICT DO NOTHING',
               [routine.id, scheduledMinute, target]

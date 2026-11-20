@@ -1,3 +1,4 @@
+import { validateSchedule } from '../server/src/modules/routines/schedule';
 import { RoutinesScreen } from './components/RoutinesScreen';
 import { ExploreScreen } from './components/ExploreScreen';
 import { DevicesToolbar } from './components/DevicesToolbar';
@@ -538,7 +539,7 @@ export function App() {
   };
 
   const handleOpenEditRoutine = (routine: SmartRoutine) => {
-    const isSchedule = routine.type === 'schedule' && routine.icon === 'clock';
+    const isSchedule = routine.type === 'schedule';
     setRoutineEditError('');
     setEditingRoutine(routine);
     setRoutineDraftName(routine.name);
@@ -559,6 +560,8 @@ export function App() {
       setRoutineEditError('Choose at least one device action.');
       return;
     }
+    const scheduleError = validateSchedule({ type: routineDraftType, scheduleTime: routineDraftScheduleTime, scheduleOffTime: routineDraftScheduleOffTime, repeatDays: routineDraftRepeatDays });
+    if (scheduleError) { setRoutineEditError(scheduleError); return; }
     setIsSavingRoutine(true);
     const isSchedule = routineDraftType === 'schedule';
     const finalName = routineDraftName.trim() || (isSchedule ? 'Timed Schedule' : 'Custom Scene');
@@ -624,6 +627,7 @@ export function App() {
 
   const [routineRunError, setRoutineRunError] = useState('');
   const handleRunRoutine = async (routine: SmartRoutine) => {
+    if (routine.type !== 'scene') { setRoutineRunError('Schedules run only at their assigned ON/OFF times. Use the toggle to enable or pause them.'); return; }
     setRoutineRunError('');
     setRunningRoutineId(routine.id);
     try {
@@ -1924,11 +1928,6 @@ export function App() {
                       type="button"
                       onClick={() => {
                         setRoutineDraftIcon(item.id as any);
-                        if (item.id === 'clock') {
-                          setRoutineDraftType('schedule');
-                        } else if (routineDraftType === 'schedule' && item.id !== 'clock') {
-                          setRoutineDraftType('scene');
-                        }
                       }}
                       className={`flex-1 py-2 rounded-xl flex items-center justify-center border transition-all cursor-pointer ${
                         routineDraftIcon === item.id
@@ -1981,6 +1980,7 @@ export function App() {
               {/* Time Schedule Options (if schedule selected) */}
               {routineDraftType === 'schedule' && (
                 <div className="bg-sky-50/70 rounded-2xl p-3.5 border border-sky-100 space-y-3">
+                  <p className="text-xs leading-relaxed text-slate-600">Saving or enabling this schedule waits for the selected ON/OFF times. It does not switch devices immediately.</p>
                   <div className="flex items-center justify-between pb-1 border-b border-sky-100">
                     <div>
                       <span className="text-xs font-bold text-slate-800 block">Switch State Schedule (IST)</span>
@@ -2241,8 +2241,8 @@ export function App() {
                 const devRoomId = selectedDeviceForControl.room_id;
                 const devId = selectedDeviceForControl.device_id || selectedDeviceForControl.id;
 
-                const isSched = (r: SmartRoutine) => r.type === 'schedule' && r.icon === 'clock';
-                const isScn = (r: SmartRoutine) => r.type === 'scene' || r.icon !== 'clock';
+                const isSched = (r: SmartRoutine) => r.type === 'schedule';
+                const isScn = (r: SmartRoutine) => r.type === 'scene';
 
                 const roomScenes = routines.filter(r =>
                   isScn(r) &&

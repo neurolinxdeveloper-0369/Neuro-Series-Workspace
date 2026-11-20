@@ -385,16 +385,16 @@ export const AiAssistantModal = ({
 
     // 9. Run Scene
     if (q.includes('good morning') || (q.includes('run') && q.includes('scene'))) {
-      const scene = routines.find((r) => r.type === 'scene' || (r.name && r.name.toLowerCase().includes('morning'))) || routines[0];
+      const scene = routines.find(r => r.type === 'scene' && r.name?.toLowerCase().includes('morning')) || routines.find(r => r.type === 'scene');
       if (scene && onRunRoutine) {
         onRunRoutine(scene);
         return {
-          text: `🌅 **${scene.name || 'Scene'} executed successfully!** Applied all configured switch actions.`,
+          text: 'Scene request sent for ' + (scene.name || 'Scene') + '. Device confirmation updates the controls.',
           action: { type: 'scene', label: `Ran Scene: ${scene.name}` },
         };
       }
       return {
-        text: `🌅 I triggered the morning automation scene! Your devices are now set to optimal morning states.`,
+        text: `No scene is available to run. Create a scene in Routines first.`,
       };
     }
 

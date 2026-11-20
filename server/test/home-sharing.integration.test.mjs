@@ -195,6 +195,15 @@ test('owner can invite, grant access to one home, and revoke membership', {
     const alertFeed = (await (await request(owner, '/notifications')).json()).notifications;
     assert.equal(alertFeed.filter(item => item.detail?.includes('configured limit')).length, 1);
 
+    const scheduleResponse = await request(owner, '/routines', 'POST', {
+      name: 'Fixture timed-only schedule', homeId: sharedHome, type: 'schedule', icon: 'sun',
+      scheduleTime: '07:00 AM IST', scheduleOffTime: '10:00 PM IST', repeatDays: ['Fri'],
+      actions: [{ deviceId: meter.deviceId, deviceName: 'Fixture energy meter', channel: 1, targetState: true }],
+    });
+    assert.equal(scheduleResponse.status, 201);
+    const savedSchedule = (await scheduleResponse.json()).routine;
+    assert.equal((await request(owner, '/routines/' + savedSchedule.id + '/run', 'POST')).status, 400);
+    assert.equal(Number((await db.query('SELECT COUNT(*) AS count FROM routine_history WHERE home_id=$1 AND name=$2', [sharedHome, 'Fixture timed-only schedule'])).rows[0].count), 0);
     await routineService.dispatchActions({
       name: 'Fixture schedule', home_id: sharedHome, user_id: owner,
       actions: [{ deviceId: meter.deviceId, deviceName: 'Fixture energy meter', channel: 1, targetState: true }],

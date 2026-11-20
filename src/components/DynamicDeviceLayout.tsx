@@ -884,7 +884,7 @@ export const TouchPanelLayout = ({
                       if (isOnline) openCustomizeModal(idx);
                     }}
                     onClick={() => handleClick(idx)}
-                    className={`group relative rounded-full aspect-square w-[68px] h-[68px] sm:w-22 sm:h-22 flex items-center justify-center select-none transition-all duration-300 ease-out ${
+                    className={`group relative rounded-full aspect-square w-[80px] h-[80px] sm:w-24 sm:h-24 flex items-center justify-center select-none transition-all duration-300 ease-out ${
                       !isOnline
                         ? 'cursor-not-allowed pointer-events-none bg-[#7babc0] border-2 border-slate-300'
                         : isOn

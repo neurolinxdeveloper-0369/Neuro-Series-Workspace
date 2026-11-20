@@ -3,6 +3,7 @@ import { activityOutcome } from '../history/history.service.js';
 import { ownsHome } from '../homes/home.access.js';
 import { Router, type Response } from 'express';
 import { routineService } from './routine.service.js';
+import { validateSchedule } from './schedule.js';
 import { authenticateToken, type AuthenticatedRequest } from '../auth/auth.middleware.js';
 import type { CreateRoutineDTO, UpdateRoutineDTO } from './routine.types.js';
 
@@ -65,6 +66,8 @@ routineRouter.post('/', async (req: AuthenticatedRequest, res: Response) => {
     }
 
     const body = req.body as CreateRoutineDTO;
+    const scheduleError = validateSchedule(body);
+    if (scheduleError) return res.status(400).json({ success: false, error: scheduleError });
     if (!body.name || !body.name.trim()) {
       return res.status(400).json({ success: false, error: 'Routine name is required' });
     }
@@ -86,6 +89,9 @@ routineRouter.put('/:id', async (req: AuthenticatedRequest, res: Response) => {
     const body = req.body as UpdateRoutineDTO;
     const existing = await routineService.getRoutineById(id, req.user!.id);
     if (!existing) return res.status(404).json({ success: false, error: 'Routine not found' });
+    const scheduleError = validateSchedule({ type: body.type ?? existing.type, scheduleTime: body.scheduleTime ?? existing.schedule_time,
+      scheduleOffTime: body.scheduleOffTime ?? existing.schedule_off_time, repeatDays: body.repeatDays ?? existing.repeat_days });
+    if (scheduleError) return res.status(400).json({ success: false, error: scheduleError });
     await routineService.validateActions(req.user!.id, existing.home_id, body.actions);
     const updated = await routineService.updateRoutine(id, body);
     if (!updated) {
@@ -119,6 +125,6 @@ routineRouter.post('/:id/run', async (req: AuthenticatedRequest, res: Response) 
     return res.json(result);
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Failed to execute routine';
-    return res.status(500).json({ success: false, error: message });
+    return res.status(error instanceof RangeError ? 400 : 500).json({ success: false, error: message });
   }
 });

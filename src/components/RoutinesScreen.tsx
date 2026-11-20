@@ -31,7 +31,7 @@ export function RoutinesScreen({ routines, rooms, roomFilter, onRoomFilter, canM
     {roomFilter !== 'all' && <p className="routines-room-label">{rooms.find(room => room.id === roomFilter)?.name || 'Selected room'}</p>}
     <div className="routines-list">
       {filtered.map(routine => {
-        const Icon = ({ sun: Sun, moon: Moon, zap: Zap, home: House, shield: Shield, sparkles: Sparkles, clock: Sun })[routine.icon] || Sparkles;
+        const Icon = ({ sun: Sun, moon: Moon, zap: Zap, home: House, shield: Shield, sparkles: Sparkles, clock: Clock3 })[routine.icon] || Sparkles;
         const theme = routine.icon === 'moon' ? 'blue' : ['sparkles', 'zap'].includes(routine.icon) ? 'green' : ['home', 'shield'].includes(routine.icon) ? 'purple' : 'amber';
         const allOff = routine.actions.length > 0 && routine.actions.every(action => !action.targetState);
         const description = routine.description || (routine.type === 'schedule' ? allOff ? 'Turn OFF selected devices' : 'Turn ON selected devices' : 'One-tap control for selected devices');
@@ -39,7 +39,7 @@ export function RoutinesScreen({ routines, rooms, roomFilter, onRoomFilter, canM
         return <article key={routine.id} className="routine-reference-card">
           <span className={'routine-reference-icon ' + theme}><Icon aria-hidden="true" /></span>
           <div className="routine-reference-copy"><h2>{routine.name}</h2><p>{description}</p>
-            <div className="routine-reference-tags">{routine.type === 'schedule' ? <><span><CalendarDays size={12} />{repeat}</span>{routine.scheduleTime && <span><Clock3 size={12} />{formatScheduleTimeToIst(routine.scheduleTime)}</span>}</> : <span><Layers size={12} />On tap</span>}</div>
+            <div className="routine-reference-tags">{routine.type === 'schedule' ? <><span><CalendarDays size={12} />{repeat}</span>{routine.scheduleTime && <span><Clock3 size={12} />ON {formatScheduleTimeToIst(routine.scheduleTime)}</span>}{routine.scheduleOffTime && <span><Clock3 size={12} />OFF {formatScheduleTimeToIst(routine.scheduleOffTime)}</span>}</> : <span><Layers size={12} />On tap</span>}</div>
           </div>
           <div className="routine-reference-actions"><button type="button" role="switch" aria-checked={routine.isActive !== false} aria-label={(routine.isActive === false ? 'Enable ' : 'Pause ') + routine.name} disabled={!canManage || busy === routine.id}
             className="routine-reference-switch" onClick={async () => { setBusy(routine.id); try { await onToggle(routine); } finally { setBusy(null); } }}><span /></button>
@@ -51,6 +51,6 @@ export function RoutinesScreen({ routines, rooms, roomFilter, onRoomFilter, canM
       {!filtered.length && <div className="routine-empty"><Sparkles /><h2>{routines.length ? 'No routines match this filter' : 'No routines yet'}</h2><p>{routines.length ? 'Choose another filter to view your routines.' : 'Create your first scene or schedule for your home.'}</p></div>}
     </div>
     {canManage && <div className="routines-footer"><button type="button" className="routine-create" onClick={onCreate}><Plus size={23} />Create Routine</button><button type="button" className="routine-history" onClick={onHistory}>Routine history</button></div>}
-    {actions && <Modal title={actions.name} onClose={() => setActions(null)}><div className="grid gap-3"><button type="button" className="min-h-11 rounded-xl bg-sky-50 px-4 text-left font-semibold text-sky-800" onClick={() => { setActions(null); onEdit(actions); }}>Edit routine</button><button type="button" disabled={runningId === actions.id} className="min-h-11 rounded-xl bg-sky-500 px-4 text-left font-semibold text-white disabled:opacity-50" onClick={() => { const selected = actions; setActions(null); void onRun(selected); }}>Run now</button></div></Modal>}
+    {actions && <Modal title={actions.name} onClose={() => setActions(null)}><div className="grid gap-3"><button type="button" className="min-h-11 rounded-xl bg-sky-50 px-4 text-left font-semibold text-sky-800" onClick={() => { setActions(null); onEdit(actions); }}>Edit routine</button>{actions.type === 'scene' && <button type="button" disabled={runningId === actions.id} className="min-h-11 rounded-xl bg-sky-500 px-4 text-left font-semibold text-white disabled:opacity-50" onClick={() => { const selected = actions; setActions(null); void onRun(selected); }}>Run now</button>}{actions.type === 'schedule' && <p className="text-sm leading-relaxed text-slate-600">Runs automatically at the saved ON/OFF times. Use its toggle to enable or pause the schedule.</p>}</div></Modal>}
   </section>;
 }

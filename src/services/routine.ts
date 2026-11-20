@@ -26,7 +26,7 @@ export interface SmartRoutine {
 }
 
 function mapRoutine(r: any): SmartRoutine {
-  const isSchedule = r.icon === 'clock' || (r.type === 'schedule' && (r.schedule_time || r.schedule_off_time) && r.icon !== 'sun' && r.icon !== 'sparkles' && r.icon !== 'moon');
+  const isSchedule = r.type === 'schedule';
   const resolvedType: 'scene' | 'schedule' = isSchedule ? 'schedule' : 'scene';
   return {
     id: r.id,

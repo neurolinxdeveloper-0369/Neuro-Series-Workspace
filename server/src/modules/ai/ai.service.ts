@@ -662,15 +662,16 @@ When the user asks how many switches are turned ON or what switches are in a roo
 
     // I. Run Scene
     else if (q.includes('good morning') || (q.includes('run') && q.includes('scene'))) {
-      const routine = telemetry.routines.find((r) => r.type === 'scene' || r.name.toLowerCase().includes('morning')) || telemetry.routines[0];
+      const routine = telemetry.routines.find(r => r.type === 'scene' && r.name.toLowerCase().includes('morning')) || telemetry.routines.find(r => r.type === 'scene');
       if (routine) {
         action = {
           type: 'scene',
           routineId: routine.id,
           label: `Ran ${routine.name}`,
         };
-        routineService.executeRoutine(routine.id, userId).catch(() => {});
-        reply = `🌅 **Scene Activated!** Executed **${routine.name}** with ${routine.actionCount} automated actions across your home.`;
+        const outcome = await routineService.executeRoutine(routine.id, userId).catch(() => null);
+        if (outcome?.success) reply = 'Scene commands sent for ' + routine.name + '. Device confirmation updates the controls.';
+        else { action = undefined; reply = 'Could not run the scene completely. Check device connections and try again.'; }
       } else {
         reply = `🌅 Good morning! Your home is online and responsive. You have not configured a specific "Good Morning" scene yet—tap the **+** button in Routines to create one.`;
       }
