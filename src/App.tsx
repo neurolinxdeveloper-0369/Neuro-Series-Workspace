@@ -1,4 +1,5 @@
 import { QuickControls } from './components/QuickControls';
+import { SmartHomeOverview } from './components/SmartHomeOverview';
 import { HomeDeviceCard } from './components/HomeDeviceCard';
 import { ROOM_PRESETS } from '../server/src/config/room-presets';
 import { HistoryPanel } from './components/HistoryPanel';
@@ -137,7 +138,8 @@ export function App() {
   const [isDotsMenuOpen, setIsDotsMenuOpen] = useState(false);
 
   // Room Sub-Tabs & Explore Banner State
-  const [activeRoomTab, setActiveRoomTab] = useState<string>('all');
+  const [activeRoomTab, setActiveRoomTab] = useState<string>('__initial__');
+  const roomSelectionHome = useRef<string | null>(null);
   const [deviceView, setDeviceView] = useState<'grid' | 'list'>('grid');
   const [isExploreDismissed, setIsExploreDismissed] = useState(() => {
     return typeof window !== 'undefined' && sessionStorage.getItem('neuro_explore_dismissed') === 'true';
@@ -187,7 +189,13 @@ export function App() {
   const loadRooms = async (homeId: string) => {
     try {
       const homeRooms = await homeApi.getRooms(homeId);
-      if (currentHomeId.current === homeId) setRooms(homeRooms);
+      if (currentHomeId.current === homeId) {
+        const firstLoad = roomSelectionHome.current !== homeId;
+        roomSelectionHome.current = homeId;
+        setRooms(homeRooms);
+        setActiveRoomTab(previous => !firstLoad && (previous === 'all' || homeRooms.some(room => room.name === previous))
+          ? previous : homeRooms[0]?.name ?? 'all');
+      }
     } catch {
       // Keep the last successful snapshot on a transient failure.
     }
@@ -238,6 +246,7 @@ export function App() {
 
   useEffect(() => {
     setRooms([]);
+    if (!activeHomeId) roomSelectionHome.current = null;
     setDevices([]);
     setRoutines([]);
     setSelectedDeviceForControl(null);
@@ -1282,12 +1291,17 @@ export function App() {
 
         {activeTab === 'home' && (
           <>
+            {isSignedIn && activeRoomTab === 'all' ? (
+              <SmartHomeOverview rooms={rooms} devices={devices} homeName={activeHome?.name || 'Home'}
+                onExplore={() => setIsCatalogOpen(true)}
+                onAssistant={canManageLocation ? () => setIsAiAssistantOpen(true) : undefined} />
+            ) : (<>
             {/* Real-time Clock View & User Details */}
             {(!isSignedIn || rooms.length === 0) && renderRealTimeHeader()}
 
             {isSignedIn && rooms.length > 0 && (
               <div className="grid w-full max-w-sm shrink-0 gap-3 sm:max-w-md md:max-w-2xl lg:max-w-5xl lg:grid-cols-2">
-                {rooms.filter(room => activeRoomTab === 'all' || room.name === activeRoomTab).map(room => (
+                {rooms.filter(room => room.name === activeRoomTab).map(room => (
                   <RoomOverviewCard key={room.id} room={room} devices={devices} onOpen={() => {
                     setActiveRoomTab(room.name);
                     requestAnimationFrame(() => document.getElementById('home-device-list')?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
@@ -1377,6 +1391,7 @@ export function App() {
                 );
               })()
             )}
+            </>)}
           </>
         )}
 
