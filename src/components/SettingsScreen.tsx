@@ -29,7 +29,7 @@ export function SettingsScreen({ isOpen, onClose, onOpenSignIn, isSignedIn, curr
           className="grid size-11 place-items-center rounded-full bg-white">
           <ArrowLeft className="size-5" aria-hidden="true" />
         </button>
-        <h1 id="settings-title" className="text-lg font-bold">Neuro Series Settings</h1>
+        <h1 id="settings-title" className="text-lg font-bold">Neuro Touch Settings</h1>
       </header>
       <main className="mx-auto grid w-full max-w-lg gap-4 px-4 py-5 pb-[calc(1.25rem+var(--nav-inset-bottom))] sm:px-6">
         <section className="rounded-3xl bg-white p-5 shadow-sm">
@@ -77,7 +77,7 @@ export function SettingsScreen({ isOpen, onClose, onOpenSignIn, isSignedIn, curr
         <section className="space-y-2 rounded-3xl bg-white p-5 shadow-sm">
           <h2 className="font-semibold">Device permissions</h2>
           <p className="text-sm leading-relaxed text-slate-700">
-            Manage permissions in your device or browser settings. Neuro Series uses the camera for QR scanning, the microphone for voice input, and location for setup.
+            Manage permissions in your device or browser settings. Neuro Touch uses the camera for QR scanning, the microphone for voice input, and location for setup.
           </p>
         </section>
       </main>

@@ -22,7 +22,7 @@ export const RoutinesMenuCard = ({ onCreateRoutine, onLearnRoutines }: RoutinesM
         <div className="w-36 sm:w-44 md:w-48 flex-shrink-0">
           <img 
             src={getAssetUrl('routinespage.png')} 
-            alt="Neuro Series Smart Routines" 
+            alt="Neuro Touch Smart Routines"
             className="w-full h-auto object-contain drop-shadow-sm hover:scale-105 transition-transform duration-300"
           />
         </div>

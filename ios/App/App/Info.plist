@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
-        <string>Neuro Series</string>
+        <string>Neuro Touch</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -78,13 +78,13 @@
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
 	<key>NSFaceIDUsageDescription</key>
-	<string>Use Face ID to unlock Neuro Series on this device.</string>
+	<string>Use Face ID to unlock Neuro Touch on this device.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>Camera access is required to scan QR codes on Neuro Series hardware devices.</string>
+	<string>Camera access is required to scan QR codes on Neuro Touch hardware devices.</string>
 	<key>NSBluetoothAlwaysUsageDescription</key>
-	<string>Bluetooth is required to discover and configure Neuro Series devices in BLE Mode.</string>
+	<string>Bluetooth is required to discover and configure Neuro Touch devices in BLE Mode.</string>
 	<key>NSBluetoothPeripheralUsageDescription</key>
-	<string>Bluetooth is required to connect to Neuro Series hardware controllers.</string>
+	<string>Bluetooth is required to connect to Neuro Touch hardware controllers.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Local network access is required to connect to hardware device Wi-Fi access points during setup.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>

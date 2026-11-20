@@ -938,10 +938,10 @@ export const AddDeviceScreen = ({
               </div>
             </div>
 
-            {/* Neuro Series devices Card (Partner devices removed) */}
+            {/* Neuro Touch devices Card (Partner devices removed) */}
             <div className="bg-white rounded-[28px] p-5 sm:p-6 shadow-sm border border-slate-100/90 mb-5">
               <h2 className="text-sm sm:text-base font-bold text-slate-900 mb-6 font-sans">
-                Neuro Series devices
+                Neuro Touch devices
               </h2>
 
               <div className="flex items-center justify-between">
@@ -1198,7 +1198,7 @@ export const AddDeviceScreen = ({
               )}
             </div>
 
-            {/* Guidance Text & Neuro Series QR sample */}
+            {/* Guidance Text & Neuro Touch QR sample */}
             <div className="text-center px-4 space-y-2 mb-6">
               <p className="text-xs sm:text-sm text-slate-500 font-medium leading-relaxed">
                 Find the QR code on your {activeModel.name} that looks like the image below.
@@ -1225,7 +1225,7 @@ export const AddDeviceScreen = ({
               <div className="flex items-center justify-center pt-2">
                 <div className="flex items-center rounded-xl bg-slate-50 text-slate-900 px-3.5 py-2 shadow-sm border border-slate-200 gap-3">
                   <span className="font-extrabold text-xs sm:text-sm tracking-wide font-sans">
-                    Neuro Series
+                    Neuro Touch
                   </span>
                   <div className="w-7 h-7 bg-white rounded p-0.5 flex items-center justify-center text-slate-900">
                     <QrCode className="w-6 h-6 text-slate-900" />

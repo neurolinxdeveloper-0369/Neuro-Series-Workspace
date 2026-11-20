@@ -2,7 +2,7 @@ interface NeuroLoaderProps {
   message?: string;
 }
 
-export const NeuroLoader = ({ message = 'Connecting to Neuro Series...' }: NeuroLoaderProps) => {
+export const NeuroLoader = ({ message = 'Connecting to Neuro Touch...' }: NeuroLoaderProps) => {
   return (
     <div 
       className="fixed inset-0 z-[100] flex flex-col items-center justify-center select-none pointer-events-auto font-sans animate-in fade-in duration-200"

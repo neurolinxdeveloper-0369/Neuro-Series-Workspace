@@ -360,7 +360,7 @@ export const SignInScreen = ({ isOpen, onClose, onSignInSuccess, onHelp }: SignI
     <div
       className="app-screen fixed inset-0 z-50 overflow-y-auto flex flex-col justify-between select-none pointer-events-auto font-sans animate-in fade-in duration-200"
     >
-      {/* Real-time Neuro Series Glowing Light Blue Loader */}
+      {/* Real-time Neuro Touch Glowing Light Blue Loader */}
       {isLoading && <NeuroLoader message={step === 'otp' ? 'Verifying code...' : 'Please wait...'} />}
 
       {/* Top Header */}
@@ -382,7 +382,7 @@ export const SignInScreen = ({ isOpen, onClose, onSignInSuccess, onHelp }: SignI
             <ArrowLeft className="w-5 h-5 sm:w-6 sm:h-6" strokeWidth={2.2} />
           </button>
           <span className="text-base sm:text-xl font-bold text-slate-900 tracking-tight font-sans">
-            Neuro Series Account
+            Neuro Touch Account
           </span>
         </div>
 
