@@ -1364,7 +1364,7 @@ export function App() {
         <header className="app-top-header fixed top-4 sm:top-5 inset-x-0 z-30 flex items-center justify-between px-4 sm:px-6 md:px-8 pointer-events-none">
           <div className="flex items-center gap-2 sm:gap-2.5 select-none pointer-events-auto flex-shrink-0">
             <span className="brand-text-responsive font-extrabold text-base sm:text-lg md:text-xl tracking-wider font-sans select-none whitespace-nowrap">
-              Neuro Series
+              Neuro Touch
             </span>
           </div>
 
@@ -1578,7 +1578,7 @@ export function App() {
 
         {activeTab === 'explore' && (
           <section className="w-full max-w-lg rounded-3xl bg-white p-5 text-slate-900 shadow-sm pointer-events-auto sm:p-7">
-            <h2 className="text-lg font-bold">Explore Neuro Series devices</h2>
+            <h2 className="text-lg font-bold">Explore Neuro Touch devices</h2>
             <p className="mt-2 text-sm leading-relaxed text-slate-600">
               Browse device models, check which controls are available, or set up a device you already own.
             </p>
@@ -1987,7 +1987,7 @@ export function App() {
       {/* Global Syncing Loader */}
       {isInitializing && <NeuroLoader message="Syncing Smart Workspace..." />}
 
-      {/* 8. Full-Screen Neuro Series Account Authentication */}
+      {/* 8. Full-Screen Neuro Touch Account Authentication */}
       <SignInScreen
         onHelp={setHelpTopic}
         isOpen={isSignInOpen}
@@ -2000,7 +2000,7 @@ export function App() {
         }}
       />
 
-      {/* 9. Full-Screen Neuro Series Settings */}
+      {/* 9. Full-Screen Neuro Touch Settings */}
       <SettingsScreen
         lock={biometricLock}
         notifications={notifications}

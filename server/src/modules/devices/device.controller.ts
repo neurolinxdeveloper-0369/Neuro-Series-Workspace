@@ -67,6 +67,7 @@ deviceRouter.post('/provision', async (req: AuthenticatedRequest, res) => {
     if (!await ownsHome(req.user!.id, homeId)) {
       return res.status(404).json({ success: false, error: 'Location not found' });
     }
+    const verification = await db.query('SELECT clock_timestamp() AS started_at');
     const result = await deviceService.provisionDevice({
       deviceId: deviceId ? String(deviceId).trim() : undefined,
       homeId,
@@ -78,12 +79,13 @@ deviceRouter.post('/provision', async (req: AuthenticatedRequest, res) => {
       wifiSsid,
       wifiPassword,
       firmwareVersion: firmwareVersion || 'v1.2.4-neuro',
-      ipAddress: ipAddress || '192.168.4.1',
+      ipAddress,
     });
 
     return res.status(201).json({
       success: true,
       ...result,
+      verificationFrom: verification.rows[0].started_at,
     });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Provisioning failed';
@@ -130,6 +132,27 @@ deviceRouter.delete('/:id', async (req, res, next) => {
     const result = await db.query('DELETE FROM devices WHERE device_id = $1', [req.params.id]);
     if (!result.rowCount) return res.status(404).json({ success: false, error: 'Device not found' });
     return res.json({ success: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Device middleware checks home access before this query.
+deviceRouter.get('/:id/pairing-status', async (req, res, next) => {
+  const after = typeof req.query.after === 'string' ? new Date(req.query.after) : null;
+  if (!after || !Number.isFinite(after.getTime())) {
+    return res.status(400).json({ success: false, error: 'A valid setup start time is required.' });
+  }
+  try {
+    const result = await db.query(
+      `SELECT (is_online IS TRUE AND last_seen_at > $2::timestamptz
+        AND last_seen_at > clock_timestamp() - INTERVAL '12 seconds') AS online, last_seen_at
+       FROM devices WHERE device_id = $1`,
+      [req.params.id, after.toISOString()]
+    );
+    res.setHeader('Cache-Control', 'no-store');
+    const row = result.rows[0];
+    return res.json({ online: row?.online === true, lastSeenAt: row?.online === true ? row.last_seen_at : null });
   } catch (error) {
     next(error);
   }

@@ -2,7 +2,7 @@ import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
   appId: 'in.neurolinx.neuroseries',
-  appName: 'Neuro Series',
+  appName: 'Neuro Touch',
   webDir: 'dist',
   bundledWebRuntime: false,
   server: {

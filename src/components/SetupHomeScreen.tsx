@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { 
   Building2, 
   Home as HomeIcon, 
@@ -53,6 +53,54 @@ export const SetupHomeScreen = ({
   const [wifiSsid, setWifiSsid] = useState('');
   const [wifiPassword, setWifiPassword] = useState('');
   const [showWifiPassword, setShowWifiPassword] = useState(false);
+  const [nearbyNetworks, setNearbyNetworks] = useState<Array<{ ssid: string; level: number; frequency: number }>>([]);
+  const [scanRevision, setScanRevision] = useState(0);
+  const [scanningWifi, setScanningWifi] = useState(false);
+  const [wifiScanMessage, setWifiScanMessage] = useState('');
+  const wifiBridge = (window as any).AndroidWifiBridge;
+  const canScanWifi = Boolean(wifiBridge?.getSetupScanResults || wifiBridge?.getScanResults);
+
+  useEffect(() => {
+    if (!isOpen || !canScanWifi) return;
+    setScanningWifi(true);
+    setWifiScanMessage('');
+    let attempt = 0;
+    let timer: ReturnType<typeof setTimeout>;
+    const readNetworks = () => {
+      try {
+        const raw = wifiBridge.getSetupScanResults
+          ? wifiBridge.getSetupScanResults(attempt === 0) : wifiBridge.getScanResults();
+        const results: unknown = JSON.parse(raw || '[]');
+        if (!Array.isArray(results)) throw new Error('Invalid scan results');
+        const networks = new Map<string, { ssid: string; level: number; frequency: number }>();
+        for (const item of results) {
+          if (typeof item?.ssid !== 'string' || !item.ssid.trim() || item.ssid === '<unknown ssid>') continue;
+          const level = Number.isFinite(item.level) ? item.level : -100;
+          const previous = networks.get(item.ssid);
+          if (!previous || level > previous.level) {
+            networks.set(item.ssid, { ssid: item.ssid, level, frequency: Number(item.frequency) || 0 });
+          }
+        }
+        const sorted = [...networks.values()].sort((a, b) => b.level - a.level);
+        setNearbyNetworks(sorted);
+        if (++attempt < 4) {
+          timer = setTimeout(readNetworks, 1500);
+          return;
+        }
+        if (!sorted.length) setWifiScanMessage('No networks found. Turn on Wi-Fi and Location, allow Wi-Fi permissions, and scan again. You can also enter the network name below.');
+      } catch {
+        setWifiScanMessage('Could not scan Wi-Fi. Check Wi-Fi and Location permissions or enter the network name below.');
+      }
+      setScanningWifi(false);
+    };
+    readNetworks();
+    return () => clearTimeout(timer);
+  }, [isOpen, canScanWifi, scanRevision, wifiBridge]);
+
+  const selectWifi = (ssid: string) => {
+    if (ssid !== wifiSsid) setWifiPassword('');
+    setWifiSsid(ssid);
+  };
 
   // Status
   const [isLocating, setIsLocating] = useState(false);
@@ -178,7 +226,7 @@ export const SetupHomeScreen = ({
       </header>
 
       {/* Main Form Content */}
-      <main className="w-full max-w-lg mx-auto px-5 sm:px-8 py-2 pb-16 flex flex-col items-center flex-1">
+      <main className="w-full mx-auto px-5 sm:px-8 lg:px-10 py-2 pb-16 flex flex-col items-center flex-1">
         
         {/* Intro Banner Card */}
         <div 
@@ -193,7 +241,7 @@ export const SetupHomeScreen = ({
           </div>
           <div>
             <h2 className="text-base sm:text-lg font-bold text-slate-900 font-sans tracking-tight">
-              Welcome to Neuro Series!
+              Welcome to Neuro Touch!
             </h2>
             <p className="text-xs sm:text-sm text-slate-600 mt-1 leading-relaxed">
               Every smart home begins with a single connection. Let’s configure your primary location to organize your devices, rooms, and automations.
@@ -209,7 +257,7 @@ export const SetupHomeScreen = ({
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="w-full space-y-4">
+        <form onSubmit={handleSubmit} className="grid w-full grid-cols-1 items-start gap-4 lg:grid-cols-3 lg:gap-6">
           
           {/* Card 1: Location & Property Identity */}
           <div 
@@ -384,19 +432,46 @@ export const SetupHomeScreen = ({
               </h3>
             </div>
             <p className="text-xs text-slate-500 leading-relaxed">
-              Provides one-tap smart device provisioning. Passwords are encrypted at rest with AES-256-GCM.
+              Select your home router and enter its Wi-Fi password to use when adding devices. Most devices need a 2.4 GHz network.
             </p>
 
             <div className="space-y-3 pt-1">
+              {canScanWifi ? (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <label htmlFor="home-nearby-wifi" className="text-xs font-semibold text-slate-700">Nearby Wi-Fi networks</label>
+                    <button type="button" disabled={scanningWifi} onClick={() => setScanRevision(value => value + 1)}
+                      className="min-h-11 rounded-xl px-3 text-sm font-semibold text-sky-700 disabled:opacity-50">
+                      {scanningWifi ? 'Scanning…' : 'Scan again'}
+                    </button>
+                  </div>
+                  <select id="home-nearby-wifi" value={nearbyNetworks.some(network => network.ssid === wifiSsid) ? wifiSsid : ''}
+                    onChange={event => { if (event.target.value) selectWifi(event.target.value); }}
+                    className="min-h-11 w-full rounded-2xl border border-slate-200 bg-white px-3 text-sm text-slate-900">
+                    <option value="">Select a nearby network</option>
+                    {nearbyNetworks.map(network => (
+                      <option key={network.ssid} value={network.ssid}>
+                        {network.ssid}{network.frequency ? ' · ' + (network.frequency < 3000 ? '2.4 GHz' : network.frequency < 5925 ? '5 GHz' : '6 GHz') : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <p role="status" className="text-xs leading-relaxed text-slate-600">
+                    {wifiScanMessage || (scanningWifi ? 'Looking for networks near this phone…' : nearbyNetworks.length + ' networks found. Strongest signal first.')}
+                  </p>
+                </div>
+              ) : (
+                <p className="text-xs leading-relaxed text-slate-600">Enter the Wi-Fi name from your phone’s Wi-Fi settings. Nearby network scanning is available in the Android app.</p>
+              )}
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                <label htmlFor="home-wifi-ssid" className="block text-xs font-semibold text-slate-700 mb-1">
                   Wi-Fi Network Name (SSID)
                 </label>
                 <input
                   type="text"
+                  id="home-wifi-ssid"
                   value={wifiSsid}
-                  onChange={(e) => setWifiSsid(e.target.value)}
-                  placeholder="e.g. Neuro_Home_5G"
+                  onChange={(e) => selectWifi(e.target.value)}
+                  placeholder="Enter your home Wi-Fi name"
                   className="w-full px-4 py-2.5 rounded-2xl bg-slate-50/70 border border-slate-200 text-slate-900 placeholder:text-slate-400 font-sans text-xs sm:text-sm outline-none focus:border-[#0284c7] focus:bg-white transition-all"
                 />
               </div>
@@ -426,11 +501,11 @@ export const SetupHomeScreen = ({
           </div>
 
           {/* Submit Button */}
-          <div className="pt-2">
+          <div className="pt-2 lg:col-span-3 lg:flex lg:justify-end">
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full py-4 px-6 rounded-2xl bg-[#0284c7] hover:bg-[#0369a1] text-white font-bold text-sm sm:text-base tracking-wide transition-all duration-200 shadow-md shadow-sky-600/25 active:scale-[0.99] flex items-center justify-center cursor-pointer disabled:opacity-70"
+              className="w-full lg:w-auto lg:min-w-72 py-4 px-6 rounded-2xl bg-[#0284c7] hover:bg-[#0369a1] text-white font-bold text-sm sm:text-base tracking-wide transition-all duration-200 shadow-md shadow-sky-600/25 active:scale-[0.99] flex items-center justify-center cursor-pointer disabled:opacity-70"
             >
               Save & Enter Dashboard
             </button>

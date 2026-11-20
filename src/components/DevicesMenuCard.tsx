@@ -22,7 +22,7 @@ export const DevicesMenuCard = ({ onAddDevice, onSupportedDevices }: DevicesMenu
         <div className="w-36 sm:w-44 md:w-48 flex-shrink-0">
           <img 
             src={getAssetUrl('devicepage.png')} 
-            alt="Neuro Series Smart Devices" 
+            alt="Neuro Touch Smart Devices"
             className="w-full h-auto object-contain drop-shadow-sm hover:scale-105 transition-transform duration-300"
           />
         </div>

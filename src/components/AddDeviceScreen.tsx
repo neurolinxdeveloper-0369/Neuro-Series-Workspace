@@ -7,7 +7,6 @@ import {
   Radar, 
   Check, 
   Loader2,
-  Sparkles,
   Wifi,
   X,
   ChevronRight,
@@ -25,21 +24,17 @@ import {
   Cpu,
   HelpCircle,
   Flashlight,
-  Smartphone,
   Info,
   RefreshCw,
-  Radio,
-  Bluetooth,
   Layers,
   Eye,
   EyeOff,
-  AlertTriangle,
   Image as ImageIcon
 } from 'lucide-react';
 import { Camera } from '@capacitor/camera';
-import { Capacitor } from '@capacitor/core';
+import { Capacitor, CapacitorHttp } from '@capacitor/core';
 import jsQR from 'jsqr';
-import { deviceApi, type Device } from '../services/device';
+import { deviceApi, type Device, type PairingConfig, type ProvisionResult } from '../services/device';
 import { homeApi, type Home, type Room } from '../services/home';
 import { resolveDeviceFromSsid, MODEL_REGISTRY } from './DynamicDeviceLayout';
 import { HARDWARE_ICONS } from '../utils/icons';
@@ -172,6 +167,8 @@ interface AddDeviceScreenProps {
   onRoomAdded: (newRoom: Room) => void;
 }
 
+const isSetupSsid = (ssid: unknown): ssid is string => typeof ssid === 'string' && /^(?:NEURO[-_]|(?:TP|GATE|EM|TNK)\d*[-_])[^\s]+$/i.test(ssid);
+
 type ScreenView = 'main' | 'catalog' | 'qr_scanner' | 'scan_nearby' | 'provision_form' | 'provision_success';
 
 export const AddDeviceScreen = ({
@@ -208,12 +205,16 @@ export const AddDeviceScreen = ({
   const [isNearbyScanning, setIsNearbyScanning] = useState(true);
   const [nearbyFoundDevices, setNearbyFoundDevices] = useState<Array<{ 
     model: DeviceModelItem;
-    mac4: string; 
-    ssid: string; 
-    signal: string; 
-    mode: string 
+    ssid: string;
   }>>([]);
-  const [activeNearbyMode, setActiveNearbyMode] = useState<'auto' | 'ap' | 'ble'>('auto');
+  const [selectedHotspot, setSelectedHotspot] = useState('');
+  const selectedHotspotRef = useRef('');
+  const [isJoiningHotspot, setIsJoiningHotspot] = useState(false);
+  const [hotspotReady, setHotspotReady] = useState(false);
+  const [setupProgress, setSetupProgress] = useState('');
+  const pairingConfig = useRef<PairingConfig | null>(null);
+  const setupInFlight = useRef(false);
+
   const [scanFeedbackMessage, setScanFeedbackMessage] = useState<string | null>(null);
 
   // Floor resolution: if activeHome has floors (> 1), allow selecting floor before room
@@ -296,20 +297,10 @@ export const AddDeviceScreen = ({
 
   // Provisioning In-Progress & Hardware Response State
   const [isProvisioning, setIsProvisioning] = useState(false);
-  const confirmedPairing = useRef<{ key: string; ipAddress: string; mqttHost: string; mqttPort: number } | null>(null);
+  const confirmedPairing = useRef<{ key: string; ipAddress?: string; result?: ProvisionResult } | null>(null);
   const [provisionError, setProvisionError] = useState<string | null>(null);
-  const [hardwareResponse, setHardwareResponse] = useState<{
-    status: string;
-    deviceId: string;
-    firmwareVersion: string;
-    endpoints: any[];
-    mqttHost?: string;
-    mqttPort?: number;
-    ipAddress?: string;
-  } | null>(null);
-
   // Helper to send Device ID, Wi-Fi credentials & MQTT details to hardware at 192.168.4.1/api/wifi/configure
-  // and verify connection status via GET 192.168.4.1/api/provision/status
+  // The server confirms readiness from a fresh MQTT report after registration.
   const sendConfigToHardware = async (payload: {
     deviceId: string;
     ssid: string;
@@ -318,161 +309,58 @@ export const AddDeviceScreen = ({
     mqttPort: number;
     mqttUsername: string;
     mqttPassword: string;
-  }): Promise<{ success: boolean; ipAddress: string }> => {
-    const androidBridge = typeof window !== 'undefined' ? (window as any).AndroidWifiBridge : null;
-
-    const fullPayload = {
-      // Exact Firmware Specification
-      ssid: payload.ssid,
+  }): Promise<{ ipAddress?: string }> => {
+    const bridge = (window as any).AndroidWifiBridge;
+    const body = JSON.stringify({
+      ...payload,
       password: payload.password || '',
-      deviceId: payload.deviceId,
-      mqttHost: payload.mqttHost,
-      mqttPort: Number(payload.mqttPort) || 1887,
-      mqttUsername: payload.mqttUsername,
-      mqttPassword: payload.mqttPassword,
-
-      // Compatibility aliases
       device_id: payload.deviceId,
       wifi_ssid: payload.ssid,
       wifi_password: payload.password || '',
       mqtt_host: payload.mqttHost,
-      mqtt_port: Number(payload.mqttPort) || 1887,
+      mqtt_port: payload.mqttPort,
       mqtt_username: payload.mqttUsername,
       mqtt_user: payload.mqttUsername,
       mqtt_password: payload.mqttPassword,
       mqtt_pass: payload.mqttPassword,
-    };
-
-
-    let configureAccepted = false;
-    let configureResponse: any = null;
-
-    // Primary endpoint: POST http://192.168.4.1/api/wifi/configure (with fallbacks)
-    const endpoints = [
-      '/api/wifi/configure',
-      '/configure',
-      '/api/configure',
-      '/wifi'
-    ];
-
-    let lastErrorMessage = '';
-
-    for (const ep of endpoints) {
-      const url = `http://192.168.4.1${ep}`;
-      // Priority 1: Native Android HTTP bridge bound directly to the hardware Wi-Fi network
-      if (androidBridge?.httpPost) {
-        try {
-          console.log(`Attempting native httpPost to ${url}...`);
-          const rawResult = androidBridge.httpPost(url, JSON.stringify(fullPayload));
-          const parsed = JSON.parse(rawResult || '{}');
-          if (parsed.ok || (parsed.status >= 200 && parsed.status < 300)) {
-            configureAccepted = true;
-            try {
-              configureResponse = JSON.parse(parsed.body);
-            } catch {
-              configureResponse = { status: 'accepted', raw: parsed.body };
-            }
-            console.log(`Hardware accepted configuration via native bridge on ${ep}:`, configureResponse);
-            break;
-          } else {
-            console.warn(`Native bridge returned error on ${ep}:`, parsed);
-            if (parsed.error) lastErrorMessage = parsed.error;
-          }
-        } catch (nativeErr: any) {
-          console.warn(`Native httpPost attempt failed on ${ep}:`, nativeErr);
-          lastErrorMessage = nativeErr.message || String(nativeErr);
-        }
+    });
+    // Only try another path if the firmware explicitly says the path is unsupported.
+    // A lost reply may mean the device accepted the settings and restarted.
+    for (const path of ['/api/wifi/configure', '/configure', '/api/configure', '/wifi']) {
+      const url = 'http://192.168.4.1' + path;
+      let status: number;
+      let responseBody: unknown;
+      if (bridge?.httpPost) {
+        const reply = JSON.parse(bridge.httpPost(url, body) || '{}');
+        status = reply.status || 0;
+        try { responseBody = JSON.parse(reply.body); } catch { responseBody = null; }
+      } else if (Capacitor.getPlatform() === 'ios') {
+        const reply = await CapacitorHttp.post({ url, data: JSON.parse(body), headers: { 'Content-Type': 'application/json' }, connectTimeout: 4000, readTimeout: 8000, disableRedirects: true });
+        status = reply.status;
+        responseBody = reply.data;
+      } else {
+        const reply = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body,
+          redirect: 'error',
+          signal: AbortSignal.timeout(8000),
+        });
+        status = reply.status;
+        responseBody = await reply.json().catch(() => null);
       }
-
-      // Priority 2: Standard fetch fallback
-      if (!configureAccepted) {
-        try {
-          const controller = new AbortController();
-          const timeout = setTimeout(() => controller.abort(), 4000);
-          const res = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(fullPayload),
-            signal: controller.signal,
-          });
-          clearTimeout(timeout);
-          if (res.ok) {
-            configureAccepted = true;
-            configureResponse = await res.json().catch(() => ({ status: 'accepted' }));
-            console.log(`Hardware accepted configuration via fetch on ${ep} (status ${res.status}):`, configureResponse);
-            break;
-          }
-        } catch (epErr: any) {
-          console.warn(`Fetch attempt on ${ep} failed:`, epErr);
-          if (!lastErrorMessage) lastErrorMessage = epErr.message || String(epErr);
-        }
+      if ([404, 405, 501].includes(status)) continue;
+      if (status < 200 || status >= 300) {
+        throw new Error('The device did not confirm receiving setup. Reconnect to its setup Wi-Fi and try again.');
       }
-    }
-
-    if (!configureAccepted) {
-      throw new Error(`Hardware device did not respond at http://192.168.4.1/api/wifi/configure (${lastErrorMessage || 'connection refused/timed out'}). Please ensure mobile data is toggled off or phone is connected to "NEURO-..." hotspot.`);
-    }
-
-    // 2. Real-time verification: Poll GET http://192.168.4.1/api/provision/status
-    let confirmed = configureResponse?.status === 'connected' || configureResponse?.connected === true;
-    let verifiedIp = confirmed ? (configureResponse.ip || configureResponse.ipAddress || '') : '';
-    const maxPollAttempts = 6;
-    for (let attempt = 1; attempt <= maxPollAttempts && !confirmed; attempt++) {
-      try {
-        await new Promise(r => setTimeout(r, 800));
-        let statusData: any = null;
-
-        // Try native bridge first
-        if (androidBridge?.httpGet) {
-          try {
-            const rawStatus = androidBridge.httpGet('http://192.168.4.1/api/provision/status');
-            const parsedStatus = JSON.parse(rawStatus || '{}');
-            if (parsedStatus.ok) {
-              statusData = JSON.parse(parsedStatus.body);
-            }
-          } catch {}
-        }
-
-        // Fallback to fetch
-        if (!statusData) {
-          const statusController = new AbortController();
-          const statusTimeout = setTimeout(() => statusController.abort(), 1200);
-          const statusRes = await fetch('http://192.168.4.1/api/provision/status', {
-            signal: statusController.signal,
-          });
-          clearTimeout(statusTimeout);
-          if (statusRes.ok) {
-            statusData = await statusRes.json().catch(() => null);
-          }
-        }
-
-        if (statusData) {
-          console.log(`Provisioning status check (${attempt}/${maxPollAttempts}):`, statusData);
-          if (statusData.status === 'connected' || statusData.connected === true) {
-            confirmed = true;
-            verifiedIp = statusData.ip || statusData.ipAddress || '';
-            console.log('✅ Device confirmed connected to home Wi-Fi! Assigned IP:', verifiedIp);
-            break;
-          }
-          if (statusData.status === 'failed' || statusData.error) {
-            throw new Error(`Device Wi-Fi connection failed: ${statusData.error || statusData.message || 'Check your Wi-Fi password and router 2.4GHz network'}`);
-          }
-        }
-      } catch (pollErr: any) {
-        if (pollErr.message && pollErr.message.includes('Device Wi-Fi connection failed')) {
-          throw pollErr;
-        }
-        // A missing status response is not a connection confirmation.
+      const data = responseBody as { status?: string; connected?: boolean; success?: boolean; error?: unknown; ip?: string; ipAddress?: string } | null;
+      if (data?.status === 'failed' || data?.success === false || data?.error) {
+        throw new Error('The device rejected setup. Check the Wi-Fi details and retry.');
       }
+      const ip = data?.ip || data?.ipAddress;
+      return { ipAddress: (data?.status === 'connected' || data?.connected === true) && ip !== '192.168.4.1' ? ip : undefined };
     }
-
-    if (!confirmed || !verifiedIp || verifiedIp === '192.168.4.1') {
-      throw new Error('Setup was sent, but the device did not confirm joining your home Wi-Fi. Check the device and reconnect to its hotspot to retry.');
-    }
-    return {
-      success: true,
-      ipAddress: verifiedIp,
-    };
+    throw new Error('This device does not support Wi-Fi setup. Check the device firmware.');
   };
 
   // Generate random ntxx-mac4-Code helper
@@ -494,7 +382,7 @@ export const AddDeviceScreen = ({
   };
 
   // Setup device configuration sheet
-  const initiateDeviceSetup = (model: DeviceModelItem, customMac?: string) => {
+  const initiateDeviceSetup = (model: DeviceModelItem, customMac?: string, loadSavedWifi = true) => {
     const m4 = customMac || getRandomMac4();
     const devId = createDeviceId(m4, model.modelCode);
     setActiveModel(model);
@@ -515,11 +403,11 @@ export const AddDeviceScreen = ({
     setNewRoomName('');
 
     // Default Wi-Fi credentials from Home or DB
-    setWifiSsid(defaultWifiSsid || 'HomeWiFi');
+    setWifiSsid(defaultWifiSsid);
     setWifiPassword('');
     setIsCustomWifi(false);
 
-    if (homeId) {
+    if (homeId && loadSavedWifi) {
       homeApi.getHomeWifiCredentials(homeId).then((creds) => {
         if (creds.ssid) {
           setWifiSsid(creds.ssid);
@@ -534,46 +422,107 @@ export const AddDeviceScreen = ({
     setCurrentView('provision_form');
   };
 
-  // Native Setup Flow triggered from Discovered Hotspot card ("Set up" button)
-  const handleSetUpDevice = async (dev: { model: DeviceModelItem; mac4: string; ssid: string }) => {
-    // 1. Android native Wi-Fi connection trigger to device AP
-    const androidBridge = typeof window !== 'undefined' ? (window as any).AndroidWifiBridge : null;
-    if (androidBridge?.connectToWifi) {
-      try {
-        androidBridge.connectToWifi(dev.ssid, '');
-      } catch (e) {
-        console.warn('connectToWifi bridge call error:', e);
+  const joinHotspot = async (ssid: string) => {
+    const bridge = (window as any).AndroidWifiBridge;
+    setHotspotReady(false);
+    setIsJoiningHotspot(true);
+    setProvisionError(null);
+    try {
+      if (bridge?.getConnectedSsid?.() === ssid) {
+        setHotspotReady(true);
+        return;
       }
-    }
-
-    // 2. Load saved Wi-Fi credentials from database
-    let dbSsid = defaultWifiSsid || 'HomeWiFi';
-    let dbPassword = '';
-    if (homeId) {
-      try {
-        const creds = await homeApi.getHomeWifiCredentials(homeId);
-        if (creds.ssid) {
-          dbSsid = creds.ssid;
-          setHasLoadedSavedWifi(true);
-          setSavedDbWifi({ ssid: creds.ssid, password: creds.password || '' });
+      if (bridge?.connectToWifi && bridge.getSetupConnectionState) {
+        bridge.connectToWifi(ssid, '');
+        for (let attempt = 0; attempt < 35; attempt++) {
+          if (selectedHotspotRef.current !== ssid) return;
+          const status = bridge.getSetupConnectionState(ssid);
+          if (status === 'connected') {
+            setHotspotReady(true);
+            return;
+          }
+          if (status === 'unavailable') break;
+          await new Promise(resolve => setTimeout(resolve, 500));
         }
-        if (creds.password) dbPassword = creds.password;
-      } catch (e) {
-        console.warn('Failed to load DB credentials:', e);
       }
+      setProvisionError('Join ' + ssid + ' in Wi-Fi Settings, then return and tap Check connection.');
+    } finally {
+      setIsJoiningHotspot(false);
     }
-    setWifiSsid(dbSsid);
-    setWifiPassword(dbPassword);
-    setIsCustomWifi(false);
+  };
 
-    // 3. Launch configuration form
-    initiateDeviceFromSsid(dev.ssid);
+  const checkHotspot = async () => {
+    setProvisionError(null);
+    try {
+      const bridge = (window as any).AndroidWifiBridge;
+      if (bridge?.getConnectedSsid?.() === selectedHotspot ||
+          bridge?.getSetupConnectionState?.(selectedHotspot) === 'connected') {
+        setHotspotReady(true);
+        return;
+      }
+      if (!bridge) {
+        for (const path of ['/info', '/api/device', '/status']) {
+          try {
+            const url = 'http://192.168.4.1' + path;
+            let info;
+            if (Capacitor.getPlatform() === 'ios') {
+              const res = await CapacitorHttp.get({ url, connectTimeout: 1500, readTimeout: 1500, disableRedirects: true });
+              info = res.status === 200 ? res.data : null;
+            } else {
+              const res = await fetch(url, { signal: AbortSignal.timeout(1500), redirect: 'error' });
+              info = res.ok ? await res.json() : null;
+            }
+            // The reported SSID must match the selected setup network.
+            const reported = info?.ssid || (info?.model && info?.mac && `NEURO-${info.model}-${info.mac}`);
+            if (reported === selectedHotspot) {
+              setHotspotReady(true);
+              return;
+            }
+          } catch { /* try the next identification path */ }
+        }
+      }
+    } catch { /* show the same actionable retry message */ }
+    setHotspotReady(false);
+    setProvisionError('Not connected to ' + selectedHotspot + '. Join it in Wi-Fi Settings and try again.');
+  };
+
+  const handleSetUpDevice = async (ssid: string) => {
+    if (setupInFlight.current) return;
+    setProvisionError(null);
+    if (!homeId) {
+      setScanFeedbackMessage('Choose a location before adding a device.');
+      return;
+    }
+    setupInFlight.current = true;
+    setSelectedHotspot(ssid);
+    selectedHotspotRef.current = ssid;
+    setIsJoiningHotspot(true);
+    setHotspotReady(false);
+    confirmedPairing.current = null;
+    pairingConfig.current = null;
+    try {
+      const [config, saved] = await Promise.all([
+        deviceApi.getPairingConfig(homeId),
+        homeApi.getHomeWifiCredentials(homeId).catch(() => null),
+      ]);
+      if (selectedHotspotRef.current !== ssid) return;
+      pairingConfig.current = config;
+      initiateDeviceFromSsid(ssid, false);
+      setWifiSsid(saved?.ssid || defaultWifiSsid);
+      setWifiPassword(saved?.password || '');
+      await joinHotspot(ssid);
+    } catch {
+      setScanFeedbackMessage('Couldn’t prepare setup. Check your internet connection and tap the device again.');
+    } finally {
+      setupInFlight.current = false;
+      setIsJoiningHotspot(false);
+    }
   };
 
   const [manualSsidInput, setManualSsidInput] = useState('');
 
   // SSID Layout Resolver: extracts model notation from SSID and resolves layout before room assignment
-  const initiateDeviceFromSsid = (ssidString: string) => {
+  const initiateDeviceFromSsid = (ssidString: string, loadSavedWifi = true) => {
     if (!ssidString) return;
     const resolved = resolveDeviceFromSsid(ssidString);
     const matched = DEVICE_CATALOG.find(d => d.modelCode.toUpperCase() === resolved.modelCode.toUpperCase()) || {
@@ -585,7 +534,7 @@ export const AddDeviceScreen = ({
       type: 'switch' as const,
       icon: Sliders
     };
-    initiateDeviceSetup(matched, resolved.mac4);
+    initiateDeviceSetup(matched, resolved.mac4, loadSavedWifi);
   };
 
   // Camera Management
@@ -799,351 +748,151 @@ export const AddDeviceScreen = ({
     }
   };
 
-  // Scan Nearby Management with auto-retry polling
-  useEffect(() => {
-    if (isOpen && currentView === 'scan_nearby') {
-      let isMounted = true;
-      let attempt = 0;
-      let timerId: any = null;
-
-      const executeScan = async () => {
-        if (!isMounted) return;
-        await runNearbyScan(activeNearbyMode);
-        attempt++;
-        if (isMounted && attempt < 6) {
-          timerId = setTimeout(executeScan, 2800);
-        }
-      };
-
-      timerId = setTimeout(executeScan, 100);
-
-      return () => {
-        isMounted = false;
-        if (timerId) clearTimeout(timerId);
-      };
-    }
-  }, [isOpen, currentView, activeNearbyMode, refreshRevision]);
-
-  // Auto-scan all 2.4GHz Wi-Fi networks when entering provision form
-  useEffect(() => {
-    if (isOpen && currentView === 'provision_form') {
-      scanAll24GhzNetworks();
-    }
-  }, [isOpen, currentView, refreshRevision]);
-
-  const runNearbyScan = async (mode: 'auto' | 'ap' | 'ble') => {
-    setIsNearbyScanning(true);
+  const runNearbyScan = async () => {
+    const bridge = (window as any).AndroidWifiBridge;
+    setNearbyFoundDevices([]);
     setScanFeedbackMessage(null);
-
-    const androidBridge = typeof window !== 'undefined' ? (window as any).AndroidWifiBridge : null;
-
-    if (mode === 'ble') {
-      // Real-time Web Bluetooth API Scan
-      if (typeof navigator !== 'undefined' && 'bluetooth' in navigator) {
-        try {
-          const navBt = (navigator as any).bluetooth;
-          const bleDevice = await navBt.requestDevice({
-            acceptAllDevices: true,
-            optionalServices: ['generic_access', 'battery_service', 0x1800, 0x180A, 0xFFE0]
-          });
-          if (bleDevice && bleDevice.name) {
-            const resolved = resolveDeviceFromSsid(bleDevice.name);
-            const tpItem = DEVICE_CATALOG.find(d => d.modelCode.toUpperCase() === resolved.modelCode.toUpperCase()) || activeModel;
-            setNearbyFoundDevices([{
-              model: tpItem,
-              mac4: resolved.mac4,
-              ssid: bleDevice.name,
-              signal: 'BLE Paired',
-              mode: 'BLE Mode'
-            }]);
-          } else {
-            setScanFeedbackMessage('Selected device does not broadcast a standard name. Ensure your Neuro device is in Bluetooth pairing mode.');
-          }
-        } catch (btErr: any) {
-          if (btErr.name !== 'NotFoundError') {
-            setScanFeedbackMessage(btErr.message || 'Bluetooth scan unavailable or permission was not granted.');
-          }
-        } finally {
-          setIsNearbyScanning(false);
-        }
-      } else {
-        setIsNearbyScanning(false);
-        setScanFeedbackMessage('Web Bluetooth is not supported in this browser/webview. Please use AP Mode (2.4GHz Wi-Fi) or Scan QR code.');
-      }
+    if (!bridge?.getScanResults) {
+      setIsNearbyScanning(false);
       return;
     }
-
-    if (mode === 'ap' || mode === 'auto') {
-      // 1. In native Android APK: check connected SSID & native Wi-Fi scan results
-      if (androidBridge) {
-        try {
-          androidBridge.bindProcessToWifi();
-        } catch {}
-
-        // Check if phone is already connected to a NEURO device Wi-Fi (case-insensitive)
-        try {
-          const connectedSsid = androidBridge.getConnectedSsid?.();
-          const upperConnected = (connectedSsid || '').toUpperCase();
-          if (upperConnected && (upperConnected.includes('NEURO') || upperConnected.startsWith('TP') || upperConnected.startsWith('GATE') || upperConnected.startsWith('EM') || upperConnected.startsWith('TNK'))) {
-            const resolved = resolveDeviceFromSsid(connectedSsid);
-            const matched = DEVICE_CATALOG.find(d => d.modelCode.toUpperCase() === resolved.modelCode.toUpperCase()) || activeModel;
-            setNearbyFoundDevices([{
-              model: matched,
-              mac4: resolved.mac4,
-              ssid: connectedSsid,
-              signal: 'Connected to Hotspot',
-              mode: 'AP Mode'
-            }]);
-            setIsNearbyScanning(false);
-            return;
-          }
-        } catch {}
-
-        // Native Android direct HTTP probe to http://192.168.4.1 (only accept valid JSON containing actual hardware info)
-        if (androidBridge.httpGet) {
-          const probeEndpoints = ['/info', '/status', '/api/device'];
-          for (const ep of probeEndpoints) {
-            try {
-              const raw = androidBridge.httpGet(`http://192.168.4.1${ep}`);
-              if (raw && !raw.startsWith('ERROR:') && raw.trim().startsWith('{')) {
-                const parsed = JSON.parse(raw);
-                if (parsed && (parsed.ssid || (parsed.model && parsed.mac) || parsed.device_id)) {
-                  const devSsid = parsed.ssid || parsed.device_id || `NEURO-${parsed.model}-${parsed.mac}`;
-                  const resolved = resolveDeviceFromSsid(devSsid);
-                  const matched = DEVICE_CATALOG.find(d => d.modelCode.toUpperCase() === resolved.modelCode.toUpperCase()) || activeModel;
-                  setNearbyFoundDevices([{
-                    model: matched,
-                    mac4: resolved.mac4,
-                    ssid: devSsid,
-                    signal: 'Connected (192.168.4.1)',
-                    mode: 'AP Mode'
-                  }]);
-                  setIsNearbyScanning(false);
-                  return;
-                }
-              }
-            } catch {}
-          }
+    setIsNearbyScanning(true);
+    try {
+      let matches: Array<{ ssid: string; level: number }> = [];
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const results = JSON.parse((bridge.getSetupScanResults ? bridge.getSetupScanResults(attempt === 0) : bridge.getScanResults()) || '[]');
+        const valid = Array.isArray(results) ? results : [];
+        matches = valid.filter(({ ssid }) => isSetupSsid(ssid));
+        const connected = bridge.getConnectedSsid?.();
+        if (isSetupSsid(connected) && !matches.some(item => item.ssid === connected)) {
+          matches.push({ ssid: connected, level: 0 });
         }
-
-        // Check native Wi-Fi scan results from phone's Wi-Fi list (case-insensitive)
-        try {
-          const scanJson = androidBridge.getScanResults?.();
-          if (scanJson) {
-            const results = JSON.parse(scanJson);
-            const neuroSsids = results.filter((r: any) => {
-              if (!r.ssid) return false;
-              const u = r.ssid.toUpperCase();
-              return u.includes('NEURO') || u.startsWith('TP') || u.startsWith('GATE') || u.startsWith('EM') || u.startsWith('TNK');
-            });
-
-            if (neuroSsids.length > 0) {
-              // Deduplicate by SSID, keeping the strongest RSSI (level)
-              const devMap = new Map<string, any>();
-              for (const r of neuroSsids) {
-                const existing = devMap.get(r.ssid);
-                if (!existing || (r.level && r.level > existing.level)) {
-                  devMap.set(r.ssid, r);
-                }
-              }
-              const uniqueNeuroSsids = Array.from(devMap.values()).sort((a, b) => (b.level || -100) - (a.level || -100));
-              const discovered = uniqueNeuroSsids.map((r: any) => {
-                const resolved = resolveDeviceFromSsid(r.ssid);
-                const matched = DEVICE_CATALOG.find(d => d.modelCode.toUpperCase() === resolved.modelCode.toUpperCase()) || activeModel;
-                return {
-                  model: matched,
-                  mac4: resolved.mac4,
-                  ssid: r.ssid,
-                  signal: `${r.level || -60} dBm`,
-                  mode: 'Discovered Wi-Fi'
-                };
-              });
-              setNearbyFoundDevices(discovered);
-              setIsNearbyScanning(false);
-              return;
-            }
-          }
-        } catch {}
+        if (matches.length || attempt === 2) break;
+        await new Promise(resolve => setTimeout(resolve, 1000));
       }
-
-      // 2. Web fetch HTTP probe to http://192.168.4.1 (only accept verified JSON)
-      let foundViaHttp = false;
-      const endpoints = ['/info', '/status', '/api/device'];
-      for (const ep of endpoints) {
-        try {
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 1800);
-          const res = await fetch(`http://192.168.4.1${ep}`, { signal: controller.signal });
-          clearTimeout(timeoutId);
-
-          if (res.ok) {
-            const info = await res.json().catch(() => null);
-            if (info && (info.ssid || (info.model && info.mac) || info.device_id)) {
-              const devSsid = info.ssid || info.device_id || `NEURO-${info.model}-${info.mac}`;
-              const resolved = resolveDeviceFromSsid(devSsid);
-              const matched = DEVICE_CATALOG.find(d => d.modelCode.toUpperCase() === resolved.modelCode.toUpperCase()) || activeModel;
-              setNearbyFoundDevices([{
-                model: matched,
-                mac4: resolved.mac4,
-                ssid: devSsid,
-                signal: 'Connected (192.168.4.1)',
-                mode: 'AP Mode'
-              }]);
-              foundViaHttp = true;
-              break;
-            }
-          }
-        } catch {}
+      const unique = new Map<string, typeof matches[number]>();
+      for (const item of matches.sort((a, b) => b.level - a.level)) {
+        if (!unique.has(item.ssid)) unique.set(item.ssid, item);
       }
-
-      if (!foundViaHttp && nearbyFoundDevices.length === 0) {
-        const isBrowser = !androidBridge && !Capacitor.isNativePlatform();
-        if (isBrowser) {
-          setScanFeedbackMessage(
-            'In web browsers, security restrictions prevent scanning ambient Wi-Fi networks directly. Connect your phone or PC Wi-Fi to the "NEURO-..." hotspot in Settings, then tap Retry or enter the SSID below.'
-          );
-        } else {
-          setScanFeedbackMessage(
-            'Searching for device hotspot... If your device is ready, ensure your phone Wi-Fi is turned on. You can also connect to "NEURO-..." in Settings or enter the SSID below.'
-          );
-        }
-      }
-
+      setNearbyFoundDevices(Array.from(unique.values(), ({ ssid }) => {
+        const resolved = resolveDeviceFromSsid(ssid);
+        const model = DEVICE_CATALOG.find(d => d.modelCode.toUpperCase() === resolved.modelCode.toUpperCase()) || activeModel;
+        return { model, ssid };
+      }));
+      if (!unique.size) setScanFeedbackMessage('No devices found. Turn on Wi-Fi, allow the scan permission, and put the device in setup mode.');
+    } catch {
+      setScanFeedbackMessage('Couldn’t scan for devices. Check Wi-Fi permissions and try again.');
+    } finally {
       setIsNearbyScanning(false);
     }
   };
 
-  // Submit Provisioning to Backend & Hardware
+  useEffect(() => {
+    if (isOpen && currentView === 'scan_nearby') void runNearbyScan();
+    if (isOpen && currentView === 'provision_form' && !selectedHotspot) scanAll24GhzNetworks();
+  }, [isOpen, currentView, refreshRevision]);
+
+  const leaveNearbySetup = () => {
+    selectedHotspotRef.current = '';
+    setSelectedHotspot('');
+    setManualSsidInput('');
+    pairingConfig.current = null;
+    confirmedPairing.current = null;
+    setWifiPassword('');
+    setHotspotReady(false);
+    setProvisionError(null);
+    (window as any).AndroidWifiBridge?.unbindProcessFromNetwork?.();
+  };
+
   const handleContinueProvisioning = async () => {
-    if (!wifiSsid.trim()) return;
+    if (isProvisioning || !wifiSsid.trim() || !homeId ||
+        (selectedHotspot && !hotspotReady && !confirmedPairing.current)) return;
     setIsProvisioning(true);
-
-    let finalRoomId = selectedRoomId;
-    let finalRoomName = selectedRoomName;
-
+    setProvisionError(null);
+    const key = JSON.stringify([homeId, generatedDeviceId, wifiSsid.trim()]);
+    let attempt = confirmedPairing.current;
     try {
+      if (attempt?.key !== key) {
+        setSetupProgress('Sending setup to your device…');
+        const bridge = (window as any).AndroidWifiBridge;
+        if (selectedHotspot && bridge &&
+            bridge.getSetupConnectionState?.(selectedHotspot) !== 'connected' &&
+            bridge.getConnectedSsid?.() !== selectedHotspot) {
+          throw new Error('The setup Wi-Fi disconnected. Join it again before continuing.');
+        }
+        const config = pairingConfig.current || await deviceApi.getPairingConfig(homeId);
+        const hardware = await sendConfigToHardware({ ...config, deviceId: generatedDeviceId, ssid: wifiSsid.trim(), password: wifiPassword });
+        attempt = { key, ipAddress: hardware.ipAddress };
+        confirmedPairing.current = attempt;
+      }
+      (window as any).AndroidWifiBridge?.unbindProcessFromNetwork?.();
+      setSetupProgress('Waiting for the device to restart and come online…');
 
-      // Handle new room creation if typed
-      if (isCreatingNewRoom && newRoomName.trim()) {
-        finalRoomName = newRoomName.trim();
-        if (homeId) {
-          const created = await homeApi.createRoom(homeId, finalRoomName);
-          finalRoomId = created.id;
-          setSelectedRoomName(finalRoomName);
-          setSelectedRoomId(finalRoomId);
+      let roomId = selectedRoomId;
+      let roomName = selectedRoomName;
+      if (!attempt.result) {
+        // Switching off the setup network can take a moment on phones without cellular data.
+        await new Promise(resolve => setTimeout(resolve, 700));
+        if (isCreatingNewRoom && newRoomName.trim()) {
+          const created = await homeApi.createRoom(homeId, newRoomName.trim());
+          roomId = created.id;
+          roomName = created.name;
+          setSelectedRoomId(roomId);
+          setSelectedRoomName(roomName);
           setIsCreatingNewRoom(false);
           onRoomAdded(created);
         }
-      }
-
-      setProvisionError(null);
-      if (!homeId) throw new Error('Select a location before pairing a device.');
-
-      // Step 1: Send configuration payload to hardware at 192.168.4.1/api/wifi/configure
-      // and verify connection status via GET /api/provision/status
-      const assignedDeviceId = generatedDeviceId;
-
-      const pairingKey = JSON.stringify([homeId, assignedDeviceId, wifiSsid.trim()]);
-      let pairing = confirmedPairing.current;
-      if (pairing?.key !== pairingKey) {
-        const config = await deviceApi.getPairingConfig(homeId);
-        const hardware = await sendConfigToHardware({
-          ...config,
-          deviceId: assignedDeviceId,
-          ssid: wifiSsid.trim(),
-          password: wifiPassword,
+        attempt.result = await deviceApi.provisionDevice({
+          deviceId: generatedDeviceId,
+          homeId,
+          roomId: roomId || null,
+          modelCode: activeModel.modelCode,
+          mac4,
+          customName: customDeviceName.trim() || activeModel.name,
+          icon: selectedDeviceIcon || undefined,
+          wifiSsid: wifiSsid.trim(),
+          firmwareVersion: 'v1.2.4-neuro',
+          ipAddress: attempt.ipAddress,
         });
-        pairing = {
-          key: pairingKey,
-          ipAddress: hardware.ipAddress,
-          mqttHost: config.mqttHost,
-          mqttPort: config.mqttPort,
-        };
-        confirmedPairing.current = pairing;
       }
-      const { ipAddress: actualIp, mqttHost, mqttPort } = pairing;
-
-      // Restore normal internet routing if process was bound to device Wi-Fi
-      const androidBridge = typeof window !== 'undefined' ? (window as any).AndroidWifiBridge : null;
-      if (androidBridge?.unbindProcessFromNetwork) {
+      const result = attempt.result;
+      let lastSeenAt: string | null = null;
+      if (!result.verificationFrom) throw new Error('Setup was sent, but the server cannot confirm it yet. Update the backend and try again.');
+      const deadline = performance.now() + 40_000;
+      while (!lastSeenAt && performance.now() < deadline) {
         try {
-          androidBridge.unbindProcessFromNetwork();
-        } catch {}
+          const status = await deviceApi.getPairingStatus(result.deviceId, result.verificationFrom);
+          if (status.online) lastSeenAt = status.lastSeenAt;
+        } catch { /* the phone may still be reconnecting to the internet */ }
+        if (!lastSeenAt && performance.now() < deadline) await new Promise(resolve => setTimeout(resolve, 1500));
       }
-
-      // Allow 1.2 seconds for ESP32 to drop SoftAP while native bridge acquires home internet
-      await new Promise(r => setTimeout(r, 1200));
-
-      // Step 2: Provision device in PostgreSQL backend
-      // Creates parent record in `devices` with real IP and child endpoints in `device_endpoints`
-      let provisionResult: any = null;
-      let backendErrorDetail = '';
-      const MAX_RETRIES = 6;
-      
-      for (let retry = 0; retry < MAX_RETRIES; retry++) {
-        try {
-          if (retry > 0) {
-            const retryDelay = 2000 + retry * 500;
-            console.log(`Waiting ${retryDelay}ms before provision attempt ${retry + 1}/${MAX_RETRIES}...`);
-            await new Promise(r => setTimeout(r, retryDelay));
-          }
-          provisionResult = await deviceApi.provisionDevice({
-            deviceId: assignedDeviceId,
-            homeId,
-            roomId: finalRoomId || null,
-            modelCode: activeModel.modelCode,
-            mac4: mac4,
-            customName: customDeviceName.trim() || activeModel.name,
-            icon: selectedDeviceIcon || undefined,
-            wifiSsid: wifiSsid.trim(),
-
-            firmwareVersion: 'v1.2.4-neuro',
-            ipAddress: actualIp,
-          });
-          if (provisionResult) {
-            console.log('✅ Device successfully saved to PostgreSQL database:', provisionResult);
-            break;
-          }
-        } catch (backendErr: any) {
-          backendErrorDetail = backendErr.message || String(backendErr);
-          console.warn(`Backend device record creation attempt ${retry + 1}/${MAX_RETRIES} failed:`, backendErr);
-        }
-      }
-
-      if (!provisionResult) {
-        throw new Error('The device joined Wi-Fi, but could not be registered. ' + (backendErrorDetail || 'Restore internet access and try again.'));
-      }
-
-      // Step 3: Hardware confirmation verified
-      const confirmation = {
-        status: 'SUCCESS',
-        deviceId: provisionResult.deviceId,
-        firmwareVersion: 'v1.2.4-neuro',
-        endpoints: provisionResult?.endpoints || [],
-        mqttHost,
-        mqttPort,
-        ipAddress: actualIp,
-      };
-
-      const newlyCreatedDevice = {
-        ...provisionResult.device,
-        endpoints: provisionResult.endpoints,
-      } as Device;
-
-      setHardwareResponse(confirmation);
-      onDeviceAdded(finalRoomName, newlyCreatedDevice);
-      confirmedPairing.current = null;
+      if (!lastSeenAt) throw new Error('Setup was sent, but the device hasn’t come online. Check its power and Wi-Fi, then tap Check again.');
+      onDeviceAdded(roomName, { ...result.device, is_online: true, last_seen_at: lastSeenAt, endpoints: result.endpoints });
+      leaveNearbySetup();
       setCurrentView('provision_success');
-
-    } catch (err: unknown) {
-      console.error('Provisioning error:', err);
-      const msg = err instanceof Error ? err.message : 'Device provisioning failed. Please check your Wi-Fi credentials.';
-      setProvisionError(msg);
+    } catch (err) {
+      if (confirmedPairing.current && !confirmedPairing.current.result &&
+          !(err instanceof Error && err.message.includes('server cannot confirm'))) {
+        setProvisionError('Setup was sent. Reconnect your phone to the internet, then tap Check again.');
+      } else {
+        setProvisionError(err instanceof Error ? err.message : 'Setup didn’t finish. Check your Wi-Fi and try again.');
+      }
+      if (!confirmedPairing.current) setHotspotReady(false);
     } finally {
-      try { (window as any).AndroidWifiBridge?.unbindProcessFromNetwork?.(); } catch {}
+      if (confirmedPairing.current) pairingConfig.current = null;
+      (window as any).AndroidWifiBridge?.unbindProcessFromNetwork?.();
       setIsProvisioning(false);
     }
   };
+
+  useEffect(() => {
+    if (!isOpen) return;
+    return () => {
+      selectedHotspotRef.current = '';
+      pairingConfig.current = null;
+      (window as any).AndroidWifiBridge?.unbindProcessFromNetwork?.();
+    };
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -1189,10 +938,10 @@ export const AddDeviceScreen = ({
               </div>
             </div>
 
-            {/* Neuro Series devices Card (Partner devices removed) */}
+            {/* Neuro Touch devices Card (Partner devices removed) */}
             <div className="bg-white rounded-[28px] p-5 sm:p-6 shadow-sm border border-slate-100/90 mb-5">
               <h2 className="text-sm sm:text-base font-bold text-slate-900 mb-6 font-sans">
-                Neuro Series devices
+                Neuro Touch devices
               </h2>
 
               <div className="flex items-center justify-between">
@@ -1231,7 +980,6 @@ export const AddDeviceScreen = ({
             <button
               onClick={() => {
                 setActiveModel(DEVICE_CATALOG[0]);
-                setActiveNearbyMode('auto');
                 setCurrentView('scan_nearby');
               }}
               className="w-full py-4 rounded-full bg-slate-200/90 hover:bg-slate-300 text-slate-900 font-bold text-sm sm:text-base transition-all active:scale-[0.99] cursor-pointer flex items-center justify-center gap-2"
@@ -1450,7 +1198,7 @@ export const AddDeviceScreen = ({
               )}
             </div>
 
-            {/* Guidance Text & Neuro Series QR sample */}
+            {/* Guidance Text & Neuro Touch QR sample */}
             <div className="text-center px-4 space-y-2 mb-6">
               <p className="text-xs sm:text-sm text-slate-500 font-medium leading-relaxed">
                 Find the QR code on your {activeModel.name} that looks like the image below.
@@ -1477,7 +1225,7 @@ export const AddDeviceScreen = ({
               <div className="flex items-center justify-center pt-2">
                 <div className="flex items-center rounded-xl bg-slate-50 text-slate-900 px-3.5 py-2 shadow-sm border border-slate-200 gap-3">
                   <span className="font-extrabold text-xs sm:text-sm tracking-wide font-sans">
-                    Neuro Series
+                    Neuro Touch
                   </span>
                   <div className="w-7 h-7 bg-white rounded p-0.5 flex items-center justify-center text-slate-900">
                     <QrCode className="w-6 h-6 text-slate-900" />
@@ -1547,7 +1295,6 @@ export const AddDeviceScreen = ({
             <button
               onClick={() => {
                 stopCamera();
-                setActiveNearbyMode('auto');
                 setCurrentView('scan_nearby');
               }}
               className="w-full py-4 rounded-full bg-slate-200/90 hover:bg-slate-300 text-slate-900 font-bold text-sm sm:text-base transition-all active:scale-[0.99] cursor-pointer"
@@ -1558,273 +1305,70 @@ export const AddDeviceScreen = ({
         </div>
       )}
 
-      {/* ------------------- VIEW 4: "Scan nearby" (Reference media_1794034176010.jpg) ------------------- */}
       {currentView === 'scan_nearby' && (
-        <div className="w-full max-w-md mx-auto min-h-screen flex flex-col justify-between p-5 sm:p-6 pb-8 animate-in fade-in duration-200">
-          <div>
-            {/* Header */}
-            <div className="relative flex items-center justify-between mb-4 pt-2">
-              <button
-                onClick={() => setCurrentView('catalog')}
-                className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-slate-800 shadow-sm hover:bg-slate-100 transition-colors cursor-pointer"
-                aria-label="Back" data-screen-back
-              >
-                <ChevronLeft className="w-6 h-6" strokeWidth={2.5} />
-              </button>
-
-              <h1 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">
-                Scan nearby
-              </h1>
-
-              <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center text-slate-400 shadow-sm">
-                <Loader2 className={`w-5 h-5 ${isNearbyScanning ? 'animate-spin text-[#0284c7]' : 'text-slate-300'}`} />
-              </div>
-            </div>
-
-            {/* Subtitle */}
-            <div className="flex items-center gap-1.5 px-1 mb-6">
-              <span className="text-sm font-semibold text-slate-900">
-                Searching with phone...
-              </span>
-              <Info className="w-4 h-4 text-slate-400 cursor-pointer" />
-            </div>
-
-            {/* Concentric Pulsing Radar Center Illustration */}
-            <div className="flex flex-col items-center justify-center py-6 mb-6 relative">
-              <div className="relative flex items-center justify-center w-48 h-48">
-                {isNearbyScanning && (
-                  <>
-                    <span className="absolute w-44 h-44 rounded-full bg-sky-200/50 animate-ping opacity-30" />
-                    <span className="absolute w-36 h-36 rounded-full bg-sky-100/70 animate-pulse" />
-                  </>
-                )}
-                <div className="w-28 h-28 rounded-full bg-slate-100 flex items-center justify-center border border-slate-200/60 shadow-inner">
-                  <div className="w-16 h-16 rounded-full bg-white shadow-sm flex items-center justify-center text-[#0284c7]">
-                    <Smartphone className="w-8 h-8 text-sky-400" strokeWidth={2.2} />
-                  </div>
-                </div>
-              </div>
-              <span className="text-xs sm:text-sm font-medium text-slate-500 mt-3 font-sans">
-                This phone
-              </span>
-            </div>
-
-            {/* Discovered Device based on Hotspot SSID format */}
-            {nearbyFoundDevices.length > 0 && (
-              <div className="bg-white rounded-[28px] p-5 border border-sky-100 shadow-sm space-y-3 mb-4 animate-in fade-in">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-700 uppercase tracking-wide flex items-center gap-1.5">
-                    <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-                    Configuration Device
-                  </span>
-                  <span className="text-[11px] font-semibold text-[#0284c7] bg-sky-50 px-2 py-0.5 rounded-full">
-                    Ready to Configure
-                  </span>
-                </div>
-
-                <div className="divide-y divide-slate-100">
-                  {nearbyFoundDevices.map((dev, idx) => {
-                    const DevIcon = dev.model.icon || Sliders;
-                    return (
-                      <div key={idx} className="py-2.5 flex items-center justify-between first:pt-1 last:pb-1">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-2xl bg-sky-50 flex items-center justify-center text-[#0284c7] border border-sky-100 shadow-xs">
-                            <DevIcon className="w-5 h-5 text-[#0284c7]" strokeWidth={2.2} />
-                          </div>
-                          <div>
-                            <div className="text-sm font-bold text-slate-900 font-mono">{dev.ssid}</div>
-                            <div className="text-xs text-slate-400">{dev.model.name} &bull; MAC: {dev.mac4}</div>
-                          </div>
-                        </div>
-                        <button
-                          onClick={() => handleSetUpDevice(dev)}
-                          className="px-4 py-1.5 rounded-full bg-[#0284c7] text-white text-xs font-bold hover:bg-[#0369a1] transition-colors cursor-pointer shadow-sm active:scale-95"
-                        >
-                          Set up
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* Real-time Scan Notice / Feedback */}
-            {scanFeedbackMessage && (
-              <div className="bg-white/90 backdrop-blur-sm rounded-[24px] p-4 shadow-sm border border-sky-200/80 mb-4 animate-in fade-in">
-                <div className="flex items-start gap-2.5">
-                  <Info className="w-4 h-4 text-[#0284c7] flex-shrink-0 mt-0.5" />
-                  <div className="text-xs text-slate-700 leading-relaxed font-sans">
-                    {scanFeedbackMessage}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* If no devices found: Retry, AP mode 2.4G, Scan nearby, BLE Mode */}
-            {!isNearbyScanning && nearbyFoundDevices.length === 0 && (
-              <div className="bg-white rounded-[28px] p-5 shadow-sm border border-slate-100/90 space-y-4 mb-4 animate-in fade-in">
-                <div className="text-center space-y-1">
-                  <h3 className="text-sm sm:text-base font-bold text-slate-900">
-                    No devices found nearby
-                  </h3>
-                  <p className="text-xs text-slate-400">
-                    Expected SSID: <span className="font-mono text-slate-700 font-semibold">{activeModel.modelCode !== 'SN' ? activeModel.ssidFormat : 'NEURO-[MODEL]-[MAC4] (e.g. NEURO-GATE-D4C9)'}</span>
-                  </p>
-                </div>
-
-                {/* GPS Location Warning on Android if Location services is OFF */}
-                {typeof window !== 'undefined' && (window as any).AndroidWifiBridge?.isLocationEnabled?.() === false && (
-                  <div className="bg-amber-50 rounded-2xl p-3 border border-amber-200 text-left space-y-1.5 animate-in fade-in">
-                    <div className="flex items-center gap-2 text-amber-800 text-xs font-bold">
-                      <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0" />
-                      <span>Phone Location (GPS) is turned OFF</span>
-                    </div>
-                    <p className="text-[11px] text-amber-700 leading-snug">
-                      Android requires Location services to be turned ON to scan Wi-Fi networks.
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => (window as any).AndroidWifiBridge.openLocationSettings()}
-                      className="px-3 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-xs cursor-pointer"
-                    >
-                      Turn On Location
-                    </button>
-                  </div>
-                )}
-
-                {/* Android Native Wi-Fi Settings Button (APK only) */}
-                {typeof window !== 'undefined' && (window as any).AndroidWifiBridge && (
-                  <div className="space-y-1.5">
-                    <button
-                      type="button"
-                      onClick={() => (window as any).AndroidWifiBridge.openWifiSettings()}
-                      className="w-full flex items-center justify-between px-4 py-3 rounded-2xl bg-[#0284c7] hover:bg-[#0369a1] text-white text-xs sm:text-sm font-bold shadow-sm transition-all cursor-pointer active:scale-[0.99]"
-                    >
-                      <div className="flex items-center gap-3">
-                        <Wifi className="w-4 h-4 text-white" />
-                        <span>Open Phone Wi-Fi Settings</span>
-                      </div>
-                      <ChevronRight className="w-4 h-4 text-white/80" />
-                    </button>
-                    <p className="text-[10px] text-slate-400 text-center">
-                      Connect to your device Wi-Fi (e.g. <span className="font-mono font-bold text-slate-600">NEURO-GATE-D4C9</span>), then return here.
-                    </p>
-                  </div>
-                )}
-
-                <div className="space-y-2 pt-1">
-                  {/* Retry */}
-                  <button
-                    onClick={() => {
-                      setActiveNearbyMode('auto');
-                      runNearbyScan('auto');
-                    }}
-                    className="w-full flex items-center justify-between px-4 py-3 rounded-2xl bg-slate-50 hover:bg-slate-100 text-slate-800 text-xs sm:text-sm font-semibold transition-colors cursor-pointer"
-                  >
-                    <div className="flex items-center gap-3">
-                      <RefreshCw className="w-4 h-4 text-[#0284c7]" />
-                      <span>Retry Scan nearby</span>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-slate-400" />
-                  </button>
-
-                  {/* AP mode 2.4G */}
-                  <button
-                    onClick={() => {
-                      setActiveNearbyMode('ap');
-                      runNearbyScan('ap');
-                    }}
-                    className="w-full flex items-center justify-between px-4 py-3 rounded-2xl bg-sky-50/70 hover:bg-sky-100/70 text-slate-800 text-xs sm:text-sm font-semibold transition-colors cursor-pointer"
-                  >
-                    <div className="flex items-center gap-3">
-                      <Radio className="w-4 h-4 text-[#0284c7]" />
-                      <span>AP mode (2.4GHz Wi-Fi)</span>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-slate-400" />
-                  </button>
-
-                  {/* BLE Mode */}
-                  <button
-                    onClick={() => {
-                      setActiveNearbyMode('ble');
-                      runNearbyScan('ble');
-                    }}
-                    className="w-full flex items-center justify-between px-4 py-3 rounded-2xl bg-indigo-50/70 hover:bg-indigo-100/70 text-slate-800 text-xs sm:text-sm font-semibold transition-colors cursor-pointer"
-                  >
-                    <div className="flex items-center gap-3">
-                      <Bluetooth className="w-4 h-4 text-indigo-600" />
-                      <span>BLE Mode (Bluetooth Low Energy)</span>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-slate-400" />
-                  </button>
-                </div>
-
-                {/* Direct SSID resolver from Wi-Fi list */}
-                <div className="border-t border-slate-100 pt-3 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-bold text-slate-700 block">
-                      Saw your device SSID in Wi-Fi settings?
-                    </span>
-                    <span className="text-[10px] text-sky-600 font-medium">Tap to configure</span>
-                  </div>
-
-                  {/* Quick suggestion pills */}
-                  <div className="flex flex-wrap gap-1.5">
-                    {['NEURO-GATE-D4C9', 'NEURO-TP8-BC88', 'NEURO-TP4-A1B2'].map(s => (
-                      <button
-                        key={s}
-                        type="button"
-                        onClick={() => {
-                          setManualSsidInput(s);
-                          initiateDeviceFromSsid(s);
-                        }}
-                        className="px-2.5 py-1 rounded-lg bg-sky-50 hover:bg-sky-100 border border-sky-200 text-[#0284c7] font-mono text-[11px] font-bold transition-colors cursor-pointer shadow-xs active:scale-95"
-                      >
-                        + {s}
-                      </button>
-                    ))}
-                  </div>
-
-                  <div className="flex items-center gap-1.5 bg-slate-50 p-1 rounded-xl border border-slate-200">
-                    <input
-                      type="text"
-                      value={manualSsidInput}
-                      onChange={(e) => setManualSsidInput(e.target.value)}
-                      placeholder="e.g. NEURO-GATE-D4C9"
-                      className="flex-1 px-2.5 py-1.5 text-xs text-slate-800 outline-none bg-transparent font-mono placeholder:font-sans placeholder:text-slate-400"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (manualSsidInput.trim()) {
-                          initiateDeviceFromSsid(manualSsidInput.trim());
-                        }
-                      }}
-                      className="px-3 py-1.5 rounded-lg bg-[#0284c7] hover:bg-[#0369a1] text-white text-xs font-bold transition-colors cursor-pointer"
-                    >
-                      Connect
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Footer link */}
-          <div className="text-center pt-4 mt-auto">
-            <button
-              onClick={() => initiateDeviceSetup(activeModel)}
-              className="text-sm font-bold text-[#0284c7] hover:underline cursor-pointer"
-            >
-              Can't find your device?
+        <section className="mx-auto w-full max-w-md p-5 pb-12">
+          <button type="button" aria-label="Back" data-screen-back onClick={() => { leaveNearbySetup(); setCurrentView('main'); }}
+            className="mb-5 rounded-full bg-white p-2"><ChevronLeft /></button>
+          <h1 className="text-2xl font-bold">Scan nearby</h1>
+          <p className="mb-5 mt-2 text-sm">Put your device in setup mode, then choose its Wi-Fi network.</p>
+          {isNearbyScanning && <p role="status" className="py-3">Looking for devices…</p>}
+          {nearbyFoundDevices.map(device => (
+            <button key={device.ssid} type="button" onClick={() => void handleSetUpDevice(device.ssid)}
+              disabled={isJoiningHotspot} className="mb-2 flex w-full items-center justify-between rounded-2xl bg-white p-4 text-left shadow-sm disabled:opacity-50">
+              <span><strong className="block">{device.model.name}</strong><span className="text-sm">{device.ssid}</span></span><ChevronRight />
             </button>
-          </div>
-        </div>
+          ))}
+          {scanFeedbackMessage && <p role="status" className="py-3 text-sm">{scanFeedbackMessage}</p>}
+          {typeof window !== 'undefined' && (window as any).AndroidWifiBridge ? (
+            <button type="button" onClick={() => void runNearbyScan()} disabled={isNearbyScanning || isJoiningHotspot}
+              className="my-3 font-semibold text-sky-700 disabled:opacity-50">Scan again</button>
+          ) : <p className="py-3 text-sm">Find the device’s network name in Wi-Fi Settings or on its label. Enter it below while your phone is still online.</p>}
+          <form className="mt-4 space-y-2" onSubmit={event => { event.preventDefault(); if (isSetupSsid(manualSsidInput.trim())) void handleSetUpDevice(manualSsidInput.trim()); }}>
+            <label htmlFor="manual-setup-ssid" className="block text-sm font-medium">Enter device network instead</label>
+            <input id="manual-setup-ssid" value={manualSsidInput} onChange={event => setManualSsidInput(event.target.value)}
+              placeholder="NEURO-…" autoCapitalize="none" className="w-full rounded-xl border p-3" />
+            <button type="submit" disabled={isJoiningHotspot || !isSetupSsid(manualSsidInput.trim())}
+              className="font-semibold text-sky-700 disabled:opacity-50">Select network</button>
+          </form>
+        </section>
+      )}
+
+      {currentView === 'provision_form' && selectedHotspot && (
+        <section className="mx-auto w-full max-w-md p-5 pb-12">
+          <button type="button" aria-label="Back" data-screen-back disabled={isProvisioning} onClick={() => { leaveNearbySetup(); setCurrentView('scan_nearby'); }}
+            className="mb-5 rounded-full bg-white p-2"><ChevronLeft /></button>
+          <h1 className="text-2xl font-bold">Set up {activeModel.name}</h1>
+          <p role="status" className="mb-5 mt-2 text-sm">{isProvisioning ? setupProgress : isJoiningHotspot ? 'Approve the connection on your phone…' : confirmedPairing.current ? 'Setup sent. Checking whether your device is online.' : hotspotReady ? 'Device Wi-Fi connected.' : 'Join ' + selectedHotspot + ' to continue.'}</p>
+          {!confirmedPairing.current && !hotspotReady && !isJoiningHotspot && (
+            <div className="mb-5 flex flex-wrap gap-4">
+              {typeof window !== 'undefined' && (window as any).AndroidWifiBridge &&
+                <button type="button" className="font-semibold text-sky-700" onClick={() => void joinHotspot(selectedHotspot)}>Join device Wi-Fi</button>}
+              <button type="button" className="font-semibold text-sky-700" onClick={() => void checkHotspot()}>Check connection</button>
+            </div>
+          )}
+          {!confirmedPairing.current && (
+            <fieldset disabled={isProvisioning} className="mb-5 space-y-3">
+              <label className="block text-sm font-medium">Home Wi-Fi (2.4 GHz)
+                <input value={wifiSsid} onChange={event => { setWifiSsid(event.target.value); setWifiPassword(''); }} autoCapitalize="none"
+                  className="mt-1 w-full rounded-xl border p-3" />
+              </label>
+              <label className="block text-sm font-medium">Wi-Fi password
+                <input type="password" value={wifiPassword} onChange={event => setWifiPassword(event.target.value)} autoComplete="off"
+                  className="mt-1 w-full rounded-xl border p-3" />
+              </label>
+            </fieldset>
+          )}
+          {provisionError && <p role="alert" className="mb-4 rounded-xl bg-rose-50 p-3 text-sm text-rose-700">{provisionError}</p>}
+          <button type="button" onClick={() => void handleContinueProvisioning()}
+            disabled={isProvisioning || !wifiSsid.trim() || (!hotspotReady && !confirmedPairing.current)}
+            className="w-full rounded-full bg-sky-700 p-3.5 font-bold text-white disabled:opacity-50">
+            {isProvisioning ? 'Setting up…' : confirmedPairing.current ? 'Check again' : 'Allow and continue'}
+          </button>
+        </section>
       )}
 
       {/* ------------------- VIEW 5: ASSIGN ROOM & WI-FI PROVISIONING FORM ------------------- */}
-      {currentView === 'provision_form' && (
+      {currentView === 'provision_form' && !selectedHotspot && (
         <div className="w-full max-w-md mx-auto min-h-screen flex flex-col justify-between p-5 sm:p-6 pb-8 animate-in fade-in duration-200">
           <div>
             {/* Header */}
@@ -2279,10 +1823,10 @@ export const AddDeviceScreen = ({
               {isProvisioning ? (
                 <>
                   <Loader2 className="w-5 h-5 animate-spin" />
-                  <span>Configuring Hardware (192.168.4.1)...</span>
+                  <span>{setupProgress}</span>
                 </>
               ) : (
-                <span>Send Wi-Fi & MQTT Details to Hardware</span>
+                <span>{confirmedPairing.current ? 'Check again' : 'Allow and continue'}</span>
               )}
             </button>
           </div>
@@ -2361,80 +1905,8 @@ export const AddDeviceScreen = ({
               <Check className="w-10 h-10" strokeWidth={3} />
             </div>
 
-            <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight mb-2">
-              Device Added Successfully!
-            </h1>
-            <p className="text-xs sm:text-sm text-slate-500 max-w-xs leading-relaxed mb-6">
-              The device confirmed its Wi-Fi connection and was added to this location. Live controls become available after it sends its first update.
-            </p>
-
-            {/* Hardware Confirmation Card */}
-            <div className="w-full bg-white rounded-[28px] p-5 shadow-sm border border-slate-100/90 text-left space-y-3 mb-6">
-              <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-                <span className="text-xs text-slate-400 font-semibold">Device Name</span>
-                <span className="text-sm font-bold text-slate-900">{customDeviceName || activeModel.name}</span>
-              </div>
-
-              <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-                <span className="text-xs text-slate-400 font-semibold">Device ID</span>
-                <span className="text-xs font-mono font-bold text-[#0284c7]">{generatedDeviceId}</span>
-              </div>
-
-              <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-                <span className="text-xs text-slate-400 font-semibold">Hardware MAC</span>
-                <span className="text-xs font-mono font-semibold text-slate-700">{hardwareResponse?.deviceId || `246F281A${mac4}`}</span>
-              </div>
-
-              <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-                <span className="text-xs text-slate-400 font-semibold">Firmware Version</span>
-                <span className="text-xs font-mono font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-lg">
-                  {hardwareResponse?.firmwareVersion || 'v1.2.4-neuro'}
-                </span>
-              </div>
-
-              <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-                <span className="text-xs text-slate-400 font-semibold">MQTT Broker</span>
-                <span className="text-xs font-mono font-semibold text-[#0284c7] bg-sky-50 px-2 py-0.5 rounded-lg border border-sky-100">
-                  {hardwareResponse?.mqttHost || 'api.neurolinx.in'}:{hardwareResponse?.mqttPort || 1887}
-                </span>
-              </div>
-
-              <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-                <span className="text-xs text-slate-400 font-semibold">Telemetry Topic</span>
-                <span className="text-xs font-mono text-slate-600 truncate max-w-[200px]">
-                  nt/v1/{generatedDeviceId}/stat/telemetry
-                </span>
-              </div>
-
-              <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-                <span className="text-xs text-slate-400 font-semibold">Command Topic</span>
-                <span className="text-xs font-mono text-slate-600 truncate max-w-[200px]">
-                  devices/{generatedDeviceId}/set
-                </span>
-              </div>
-
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-slate-400 font-semibold">Assigned Room</span>
-                <span className="text-sm font-bold text-slate-800">{selectedRoomName}</span>
-              </div>
-            </div>
-
-            {/* Endpoints Created Badge */}
-            {hardwareResponse?.endpoints && hardwareResponse.endpoints.length > 0 && (
-              <div className="w-full bg-slate-50 rounded-2xl p-3 border border-slate-100 text-left">
-                <span className="text-xs font-bold text-slate-700 block mb-2 flex items-center gap-1.5">
-                  <Layers className="w-3.5 h-3.5 text-[#0284c7]" />
-                  <span>Configured Endpoints ({hardwareResponse.endpoints.length})</span>
-                </span>
-                <div className="flex flex-wrap gap-1.5">
-                  {hardwareResponse.endpoints.map((ep: any, i: number) => (
-                    <span key={i} className="text-[11px] font-semibold text-slate-700 bg-white px-2 py-1 rounded-lg border border-slate-200/80 shadow-xs">
-                      {ep.name}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
+            <h1 className="mb-2 text-2xl font-bold">Device setup is ready</h1>
+            <p className="text-sm">{customDeviceName || activeModel.name} is online and ready to use.</p>
           </div>
 
           {/* Finish & View Dashboard */}

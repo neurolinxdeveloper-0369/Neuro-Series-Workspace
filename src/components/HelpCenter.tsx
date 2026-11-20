@@ -8,7 +8,7 @@ const guides = {
     steps: [
       'Sign in with the same email, WhatsApp number, or Google account you used before.',
       'If a code does not arrive, check your address or number, wait for the resend countdown, and check your spam folder if you used email. Use the newest code.',
-      'To protect the installed Android or iOS app, enroll face or fingerprint authentication in system settings, then enable Biometric lock in Neuro Series Settings. If you cannot unlock it, sign out from the lock screen and use your account to sign in again.',
+      'To protect the installed Android or iOS app, enroll face or fingerprint authentication in system settings, then enable Biometric lock in Neuro Touch Settings. If you cannot unlock it, sign out from the lock screen and use your account to sign in again.',
     ],
   },
   pairing: {

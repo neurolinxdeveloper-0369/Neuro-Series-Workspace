@@ -29,7 +29,7 @@ export const deviceFeatures = {
   async showNotification() {
     if (isNativeDevice) await plugin.showNotification();
     else if (typeof Notification !== 'undefined' && Notification.permission === 'granted' && document.hidden) {
-      new Notification('Neuro Series', { body: 'New device activity. Open Neuro Series for details.', tag: 'device-alerts' });
+      new Notification('Neuro Touch', { body: 'New device activity. Open Neuro Touch for details.', tag: 'device-alerts' });
     }
   },
 };

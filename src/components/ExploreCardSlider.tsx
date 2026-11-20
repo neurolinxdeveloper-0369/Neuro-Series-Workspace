@@ -15,7 +15,7 @@ const exploreCards: ExploreCardItem[] = [
   {
     id: 1,
     heading: 'Explore devices',
-    text: 'Browse Neuro Series touch panels and switches for room-by-room control.',
+    text: 'Browse Neuro Touch touch panels and switches for room-by-room control.',
   },
   {
     id: 2,

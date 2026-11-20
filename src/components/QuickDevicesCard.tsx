@@ -82,7 +82,7 @@ export const QuickDevicesCard = ({ onAddDevice, onExplore, isLoggedIn = false }:
           </>
         ) : (
           <>
-            {/* Guest Row 1: Explore Neuro Series */}
+            {/* Guest Row 1: Explore Neuro Touch */}
             <div 
               onClick={onExplore}
               className="group flex items-center justify-between p-2.5 rounded-2xl hover:bg-slate-50 transition-colors cursor-pointer"
@@ -93,12 +93,12 @@ export const QuickDevicesCard = ({ onAddDevice, onExplore, isLoggedIn = false }:
                 <div className="w-6 h-6 flex items-center justify-center flex-shrink-0">
                   <img 
                     src={getAssetUrl('logo_black.png')} 
-                    alt="Neuro Series Logo" 
+                    alt="Neuro Touch Logo"
                     className="w-5 h-5 object-contain"
                   />
                 </div>
                 <span className="text-xs sm:text-sm font-medium text-slate-800 font-sans group-hover:text-[#0284c7] transition-colors">
-                  Explore Neuro Series
+                  Explore Neuro Touch
                 </span>
               </div>
               <div className="w-6 h-6 flex items-center justify-center flex-shrink-0">

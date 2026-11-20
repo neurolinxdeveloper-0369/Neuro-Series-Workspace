@@ -295,7 +295,7 @@ class DeviceService {
           custom_name = EXCLUDED.custom_name,
           icon = EXCLUDED.icon,
           wifi_ssid = EXCLUDED.wifi_ssid,
-          ip_address = EXCLUDED.ip_address,
+          ip_address = COALESCE(EXCLUDED.ip_address, devices.ip_address),
           updated_at = CURRENT_TIMESTAMP
         WHERE devices.home_id = EXCLUDED.home_id
         RETURNING *;
@@ -309,7 +309,7 @@ class DeviceService {
         dto.customName.trim(),
         dto.icon || null,
         dto.wifiSsid.trim(),
-        dto.ipAddress || '192.168.4.1',
+        dto.ipAddress || null,
         dto.firmwareVersion || 'v1.2.4-neuro',
       ];
 

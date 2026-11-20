@@ -156,7 +156,7 @@ export function InviteMemberModal({ home, onClose, rooms, devices }: { home: Hom
               {members.map(member => (
                 <li key={member.id} className="flex flex-wrap items-center justify-between gap-2">
                   <div className="min-w-0">
-                    <p>{member.full_name || 'Neuro Series member'}</p>
+                    <p>{member.full_name || 'Neuro Touch member'}</p>
                     <p className="text-xs text-slate-600">{member.role === 'view' ? 'View only' : 'Device control'} ? {member.room_ids || member.device_ids ? 'Selected rooms or devices' : 'Entire location'}</p>
                   </div>
                   <button type="button" className="min-h-11 font-semibold text-sky-800" disabled={busy}
