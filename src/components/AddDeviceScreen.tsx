@@ -169,7 +169,7 @@ interface AddDeviceScreenProps {
 
 const isSetupSsid = (ssid: unknown): ssid is string => typeof ssid === 'string' && /^(?:NEURO[-_]|(?:TP|GATE|EM|TNK)\d*[-_])[^\s]+$/i.test(ssid);
 
-type ScreenView = 'main' | 'catalog' | 'qr_scanner' | 'scan_nearby' | 'provision_form' | 'provision_success';
+type ScreenView = 'main' | 'catalog' | 'qr_scanner' | 'scan_nearby' | 'connect_device' | 'assign_room' | 'provision_form' | 'provision_success';
 
 export const AddDeviceScreen = ({
   isOpen,
@@ -204,9 +204,11 @@ export const AddDeviceScreen = ({
   // Scan Nearby States
   const [isNearbyScanning, setIsNearbyScanning] = useState(true);
   const [nearbyFoundDevices, setNearbyFoundDevices] = useState<Array<{ 
-    model: DeviceModelItem;
+    model?: DeviceModelItem;
     ssid: string;
+    level: number;
   }>>([]);
+  const scanGeneration = useRef(0);
   const [selectedHotspot, setSelectedHotspot] = useState('');
   const selectedHotspotRef = useRef('');
   const [isJoiningHotspot, setIsJoiningHotspot] = useState(false);
@@ -458,7 +460,7 @@ export const AddDeviceScreen = ({
       if (bridge?.getConnectedSsid?.() === selectedHotspot ||
           bridge?.getSetupConnectionState?.(selectedHotspot) === 'connected') {
         setHotspotReady(true);
-        return;
+        return true;
       }
       if (!bridge) {
         for (const path of ['/info', '/api/device', '/status']) {
@@ -476,7 +478,7 @@ export const AddDeviceScreen = ({
             const reported = info?.ssid || (info?.model && info?.mac && `NEURO-${info.model}-${info.mac}`);
             if (reported === selectedHotspot) {
               setHotspotReady(true);
-              return;
+              return true;
             }
           } catch { /* try the next identification path */ }
         }
@@ -484,6 +486,7 @@ export const AddDeviceScreen = ({
     } catch { /* show the same actionable retry message */ }
     setHotspotReady(false);
     setProvisionError('Not connected to ' + selectedHotspot + '. Join it in Wi-Fi Settings and try again.');
+    return false;
   };
 
   const handleSetUpDevice = async (ssid: string) => {
@@ -508,11 +511,16 @@ export const AddDeviceScreen = ({
       if (selectedHotspotRef.current !== ssid) return;
       pairingConfig.current = config;
       initiateDeviceFromSsid(ssid, false);
+      setCurrentView('connect_device');
       setWifiSsid(saved?.ssid || defaultWifiSsid);
       setWifiPassword(saved?.password || '');
       await joinHotspot(ssid);
     } catch {
-      setScanFeedbackMessage('Couldn’t prepare setup. Check your internet connection and tap the device again.');
+      if (selectedHotspotRef.current !== ssid) return;
+      setScanFeedbackMessage('Couldn’t prepare setup. Reconnect your phone to the internet, then select the device network again.');
+      setSelectedHotspot('');
+      selectedHotspotRef.current = '';
+      setCurrentView('scan_nearby');
     } finally {
       setupInFlight.current = false;
       setIsJoiningHotspot(false);
@@ -749,6 +757,7 @@ export const AddDeviceScreen = ({
   };
 
   const runNearbyScan = async () => {
+    const generation = ++scanGeneration.current;
     const bridge = (window as any).AndroidWifiBridge;
     setNearbyFoundDevices([]);
     setScanFeedbackMessage(null);
@@ -762,34 +771,37 @@ export const AddDeviceScreen = ({
       for (let attempt = 0; attempt < 3; attempt++) {
         const results = JSON.parse((bridge.getSetupScanResults ? bridge.getSetupScanResults(attempt === 0) : bridge.getScanResults()) || '[]');
         const valid = Array.isArray(results) ? results : [];
-        matches = valid.filter(({ ssid }) => isSetupSsid(ssid));
+        matches = valid.filter(item => typeof item?.ssid === 'string' && item.ssid.trim() && item.ssid !== '<unknown ssid>')
+          .map(item => ({ ssid: item.ssid, level: Number.isFinite(item.level) ? item.level : -100 }));
         const connected = bridge.getConnectedSsid?.();
         if (isSetupSsid(connected) && !matches.some(item => item.ssid === connected)) {
           matches.push({ ssid: connected, level: 0 });
         }
-        if (matches.length || attempt === 2) break;
+        if (attempt === 2) break;
         await new Promise(resolve => setTimeout(resolve, 1000));
+        if (generation !== scanGeneration.current) return;
       }
       const unique = new Map<string, typeof matches[number]>();
       for (const item of matches.sort((a, b) => b.level - a.level)) {
         if (!unique.has(item.ssid)) unique.set(item.ssid, item);
       }
-      setNearbyFoundDevices(Array.from(unique.values(), ({ ssid }) => {
-        const resolved = resolveDeviceFromSsid(ssid);
-        const model = DEVICE_CATALOG.find(d => d.modelCode.toUpperCase() === resolved.modelCode.toUpperCase()) || activeModel;
-        return { model, ssid };
+      setNearbyFoundDevices(Array.from(unique.values(), ({ ssid, level }) => {
+        const resolved = isSetupSsid(ssid) ? resolveDeviceFromSsid(ssid) : null;
+        const model = resolved ? DEVICE_CATALOG.find(d => d.modelCode.toUpperCase() === resolved.modelCode.toUpperCase()) : undefined;
+        return { model, ssid, level };
       }));
-      if (!unique.size) setScanFeedbackMessage('No devices found. Turn on Wi-Fi, allow the scan permission, and put the device in setup mode.');
+      if (!matches.some(item => isSetupSsid(item.ssid))) setScanFeedbackMessage('No device setup network found yet. Keep the device powered on in setup mode, turn on Wi-Fi and Location, and scan again.');
     } catch {
-      setScanFeedbackMessage('Couldn’t scan for devices. Check Wi-Fi permissions and try again.');
+      if (generation === scanGeneration.current) setScanFeedbackMessage('Couldn’t scan for devices. Check Wi-Fi permissions and try again.');
     } finally {
-      setIsNearbyScanning(false);
+      if (generation === scanGeneration.current) setIsNearbyScanning(false);
     }
   };
 
   useEffect(() => {
     if (isOpen && currentView === 'scan_nearby') void runNearbyScan();
     if (isOpen && currentView === 'provision_form' && !selectedHotspot) scanAll24GhzNetworks();
+    return () => { scanGeneration.current++; };
   }, [isOpen, currentView, refreshRevision]);
 
   const leaveNearbySetup = () => {
@@ -1309,33 +1321,127 @@ export const AddDeviceScreen = ({
         <section className="mx-auto w-full max-w-md p-5 pb-12">
           <button type="button" aria-label="Back" data-screen-back onClick={() => { leaveNearbySetup(); setCurrentView('main'); }}
             className="mb-5 rounded-full bg-white p-2"><ChevronLeft /></button>
-          <h1 className="text-2xl font-bold">Scan nearby</h1>
-          <p className="mb-5 mt-2 text-sm">Put your device in setup mode, then choose its Wi-Fi network.</p>
-          {isNearbyScanning && <p role="status" className="py-3">Looking for devices…</p>}
+          <div className="mb-6 text-center">
+            <Radar aria-hidden="true" className="mx-auto mb-3 size-10 text-sky-600" />
+            <h1 className="text-xl font-bold">
+              {isNearbyScanning ? 'Finding your device' : 'Choose your device'}
+              {isNearbyScanning && <span aria-hidden="true" className="ml-1 inline-flex gap-0.5">
+                {[0, 1, 2].map(index => <span key={index} className="motion-safe:animate-pulse"
+                  style={{ animationDelay: index * 250 + 'ms' }}>.</span>)}
+              </span>}
+            </h1>
+            <p className="mt-2 text-sm leading-relaxed text-slate-600">
+              Keep your phone close to the device. Turn on the device and put it in Wi-Fi setup mode.
+            </p>
+            {isNearbyScanning && <p role="status" className="sr-only">Scanning nearby Wi-Fi networks</p>}
+          </div>
+          {!!nearbyFoundDevices.length && <h2 className="mb-3 text-sm font-semibold">Nearby Wi-Fi networks</h2>}
           {nearbyFoundDevices.map(device => (
-            <button key={device.ssid} type="button" onClick={() => void handleSetUpDevice(device.ssid)}
-              disabled={isJoiningHotspot} className="mb-2 flex w-full items-center justify-between rounded-2xl bg-white p-4 text-left shadow-sm disabled:opacity-50">
-              <span><strong className="block">{device.model.name}</strong><span className="text-sm">{device.ssid}</span></span><ChevronRight />
-            </button>
+            <div key={device.ssid} className="mb-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+              <div className="flex items-start gap-3">
+                <Wifi aria-hidden="true" className="mt-1 size-5 shrink-0 text-sky-700" />
+                <div className="min-w-0 flex-1">
+                  <h3 className="break-all font-semibold">{device.ssid}</h3>
+                  <p className="mt-1 text-xs text-slate-600">
+                    {device.model?.name || (isSetupSsid(device.ssid) ? 'Device setup network' : 'Wi-Fi network')}
+                  </p>
+                </div>
+              </div>
+              {isSetupSsid(device.ssid) && <button type="button" onClick={() => void handleSetUpDevice(device.ssid)}
+                disabled={isJoiningHotspot} className="mt-3 min-h-11 w-full rounded-xl bg-sky-700 px-3 text-sm font-semibold text-white disabled:opacity-50">
+                Connect to this network
+              </button>}
+            </div>
           ))}
           {scanFeedbackMessage && <p role="status" className="py-3 text-sm">{scanFeedbackMessage}</p>}
           {typeof window !== 'undefined' && (window as any).AndroidWifiBridge ? (
             <button type="button" onClick={() => void runNearbyScan()} disabled={isNearbyScanning || isJoiningHotspot}
               className="my-3 font-semibold text-sky-700 disabled:opacity-50">Scan again</button>
-          ) : <p className="py-3 text-sm">Find the device’s network name in Wi-Fi Settings or on its label. Enter it below while your phone is still online.</p>}
+          ) : <p className="py-3 text-sm text-slate-600">Nearby Wi-Fi scanning is available in the Android app. On this device, find the setup network in Wi-Fi Settings or on the device label and enter its name below while your phone is online.</p>}
           <form className="mt-4 space-y-2" onSubmit={event => { event.preventDefault(); if (isSetupSsid(manualSsidInput.trim())) void handleSetUpDevice(manualSsidInput.trim()); }}>
             <label htmlFor="manual-setup-ssid" className="block text-sm font-medium">Enter device network instead</label>
             <input id="manual-setup-ssid" value={manualSsidInput} onChange={event => setManualSsidInput(event.target.value)}
               placeholder="NEURO-…" autoCapitalize="none" className="w-full rounded-xl border p-3" />
             <button type="submit" disabled={isJoiningHotspot || !isSetupSsid(manualSsidInput.trim())}
-              className="font-semibold text-sky-700 disabled:opacity-50">Select network</button>
+              className="min-h-11 font-semibold text-sky-700 disabled:opacity-50">Connect to this network</button>
           </form>
+        </section>
+      )}
+
+      {currentView === 'connect_device' && selectedHotspot && (
+        <section className="mx-auto w-full max-w-md p-5 pb-12">
+          <button type="button" aria-label="Back" data-screen-back
+            onClick={() => { leaveNearbySetup(); setCurrentView('scan_nearby'); }}
+            className="mb-5 rounded-full bg-white p-2"><ChevronLeft /></button>
+          <h1 className="text-center text-xl font-bold">Connect your device</h1>
+          <p className="mt-3 break-all text-center text-sm font-semibold text-sky-800">{selectedHotspot}</p>
+          <p role="status" className="my-4 rounded-2xl bg-white p-4 text-sm">
+            {isJoiningHotspot ? 'Approve the Wi-Fi connection request on your phone…' : hotspotReady
+              ? 'Device Wi-Fi connected. Tap Connect Device to continue.'
+              : 'Join this device’s Wi-Fi network, then check the connection.'}
+          </p>
+          <p className="mb-5 text-sm leading-relaxed text-slate-600">
+            This setup network may say “No internet.” Stay connected while setup runs. Keep mobile data on if available.
+            After setup, reconnect to your home Wi-Fi so we can confirm the device is online.
+          </p>
+          {provisionError && <p role="alert" className="mb-4 rounded-xl bg-rose-50 p-3 text-sm text-rose-700">{provisionError}</p>}
+          {!isJoiningHotspot && <div className="mb-4 flex flex-wrap gap-3">
+            {(window as any).AndroidWifiBridge &&
+              <button type="button" onClick={() => void joinHotspot(selectedHotspot)} className="min-h-11 rounded-xl bg-white px-3 font-semibold text-sky-700">Connect to network</button>}
+            {(window as any).AndroidWifiBridge?.openWifiSettings &&
+              <button type="button" onClick={() => (window as any).AndroidWifiBridge.openWifiSettings()}
+                className="min-h-11 rounded-xl bg-white px-3 font-semibold text-sky-700">Wi-Fi Settings</button>}
+            <button type="button" onClick={() => void checkHotspot()} className="min-h-11 rounded-xl bg-white px-3 font-semibold text-sky-700">Check connection</button>
+          </div>}
+          <button type="button" disabled={!hotspotReady || isJoiningHotspot} onClick={async () => {
+            if (await checkHotspot()) setCurrentView('assign_room');
+          }} className="min-h-12 w-full rounded-full bg-sky-700 px-4 font-bold text-white disabled:opacity-50">
+            Connect Device
+          </button>
+        </section>
+      )}
+
+      {currentView === 'assign_room' && selectedHotspot && (
+        <section className="mx-auto w-full max-w-md p-5 pb-12">
+          <button type="button" aria-label="Back" data-screen-back onClick={() => setCurrentView('connect_device')}
+            className="mb-5 rounded-full bg-white p-2"><ChevronLeft /></button>
+          <h1 className="mb-5 text-xl font-bold">Assign to a room</h1>
+          <label className="mb-4 block text-sm font-semibold">Device name
+            <input value={customDeviceName} onChange={event => setCustomDeviceName(event.target.value)}
+              className="mt-2 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3" />
+          </label>
+          <label className="block text-sm font-semibold">Room
+            <select value={isCreatingNewRoom ? '__new__' : selectedRoomId} onChange={event => {
+              const value = event.target.value;
+              setIsCreatingNewRoom(value === '__new__');
+              if (value !== '__new__') {
+                setSelectedRoomId(value);
+                setSelectedRoomName(rooms.find(room => room.id === value)?.name || '');
+              }
+            }} className="mt-2 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3">
+              <option value="">Choose a room</option>
+              {rooms.map(room => <option key={room.id} value={room.id}>{room.name}</option>)}
+              <option value="__new__">Create a new room</option>
+            </select>
+          </label>
+          {isCreatingNewRoom && <label className="mt-4 block text-sm font-semibold">New room name
+            <input value={newRoomName} onChange={event => setNewRoomName(event.target.value)}
+              className="mt-2 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3" />
+          </label>}
+          <button type="button" disabled={!customDeviceName.trim() || (isCreatingNewRoom ? !newRoomName.trim() : !selectedRoomId)}
+            onClick={() => setCurrentView('provision_form')}
+            className="mt-6 min-h-12 w-full rounded-full bg-sky-700 px-4 font-bold text-white disabled:opacity-50">
+            Continue to home Wi-Fi
+          </button>
         </section>
       )}
 
       {currentView === 'provision_form' && selectedHotspot && (
         <section className="mx-auto w-full max-w-md p-5 pb-12">
-          <button type="button" aria-label="Back" data-screen-back disabled={isProvisioning} onClick={() => { leaveNearbySetup(); setCurrentView('scan_nearby'); }}
+          <button type="button" aria-label="Back" data-screen-back disabled={isProvisioning} onClick={() => {
+            if (confirmedPairing.current) { leaveNearbySetup(); setCurrentView('scan_nearby'); }
+            else setCurrentView('assign_room');
+          }}
             className="mb-5 rounded-full bg-white p-2"><ChevronLeft /></button>
           <h1 className="text-2xl font-bold">Set up {activeModel.name}</h1>
           <p role="status" className="mb-5 mt-2 text-sm">{isProvisioning ? setupProgress : isJoiningHotspot ? 'Approve the connection on your phone…' : confirmedPairing.current ? 'Setup sent. Checking whether your device is online.' : hotspotReady ? 'Device Wi-Fi connected.' : 'Join ' + selectedHotspot + ' to continue.'}</p>
@@ -1362,7 +1468,7 @@ export const AddDeviceScreen = ({
           <button type="button" onClick={() => void handleContinueProvisioning()}
             disabled={isProvisioning || !wifiSsid.trim() || (!hotspotReady && !confirmedPairing.current)}
             className="w-full rounded-full bg-sky-700 p-3.5 font-bold text-white disabled:opacity-50">
-            {isProvisioning ? 'Setting up…' : confirmedPairing.current ? 'Check again' : 'Allow and continue'}
+            {isProvisioning ? 'Setting up…' : confirmedPairing.current ? 'Check again' : 'Save and connect device'}
           </button>
         </section>
       )}
