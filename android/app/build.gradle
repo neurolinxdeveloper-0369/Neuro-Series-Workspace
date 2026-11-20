@@ -1,5 +1,12 @@
 apply plugin: 'com.android.application'
 
+// Keep upload credentials outside the repository. CI may supply this path too.
+def uploadProperties = new Properties()
+def uploadPropertiesPath = System.getenv('NEURO_UPLOAD_PROPERTIES')
+if (uploadPropertiesPath) {
+    file(uploadPropertiesPath).withInputStream { uploadProperties.load(it) }
+}
+
 android {
     namespace = "in.neurolinx.neuroseries"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -7,8 +14,8 @@ android {
         applicationId "in.neurolinx.neuroseries"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        versionCode 2
+        versionName "1.0.1"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -16,11 +23,25 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        if (uploadPropertiesPath) {
+            upload {
+                storeFile file(uploadProperties.getProperty('storeFile'))
+                storePassword uploadProperties.getProperty('storePassword')
+                keyAlias uploadProperties.getProperty('keyAlias')
+                keyPassword uploadProperties.getProperty('keyPassword')
+            }
+        }
+    }
     buildTypes {
         release {
-            signingConfig signingConfigs.debug
-            minifyEnabled false
-            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            // Never silently sign a production release with the debug certificate.
+            if (uploadPropertiesPath) {
+                signingConfig signingConfigs.upload
+            }
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
 }

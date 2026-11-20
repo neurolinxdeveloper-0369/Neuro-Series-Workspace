@@ -57,6 +57,7 @@
     <uses-feature android:name="android.hardware.camera.flash" android:required="false" />
 
     <!-- Wi-Fi & AP Mode (192.168.4.1 Provisioning) -->
+    <uses-feature android:name="android.hardware.wifi" android:required="false" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
     <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
