@@ -1,3 +1,4 @@
+import { ROOM_PRESETS } from '../../server/src/config/room-presets';
 import { useState, useEffect, useRef } from 'react';
 import { 
   ChevronLeft, 
@@ -1583,20 +1584,24 @@ export const AddDeviceScreen = ({
           <label className="block text-sm font-semibold">Room
             <select value={isCreatingNewRoom ? '__new__' : selectedRoomId} onChange={event => {
               const value = event.target.value;
-              setIsCreatingNewRoom(value === '__new__');
-              if (value !== '__new__') {
+              const presetName = value.startsWith('__preset__') ? value.slice(10) : null;
+              setIsCreatingNewRoom(value === '__new__' || presetName !== null);
+              if (presetName !== null) setNewRoomName(presetName);
+              if (value !== '__new__' && presetName === null) {
                 setSelectedRoomId(value);
                 setSelectedRoomName(rooms.find(room => room.id === value)?.name || '');
               }
             }} className="mt-2 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3">
               <option value="">Choose a room</option>
               {rooms.map(room => <option key={room.id} value={room.id}>{room.name}</option>)}
+              {ROOM_PRESETS.filter(preset => !rooms.some(room => room.name.toLowerCase() === preset.name.toLowerCase())).map(preset => <option key={preset.name} value={'__preset__' + preset.name}>{preset.name} (new room)</option>)}
               <option value="__new__">Create a new room</option>
             </select>
           </label>
           {isCreatingNewRoom && <label className="mt-4 block text-sm font-semibold">New room name
             <input value={newRoomName} onChange={event => setNewRoomName(event.target.value)}
-              className="mt-2 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3" />
+              list="assign-room-presets" className="mt-2 min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3" />
+            <datalist id="assign-room-presets">{ROOM_PRESETS.map(room => <option key={room.name} value={room.name} />)}</datalist>
           </label>}
           <button type="button" disabled={!customDeviceName.trim() || (isCreatingNewRoom ? !newRoomName.trim() : !selectedRoomId)}
             onClick={() => setCurrentView('provision_form')}
@@ -1795,15 +1800,7 @@ export const AddDeviceScreen = ({
                   <div className="space-y-2">
                     {/* Room selection chips with icons */}
                     <div className="flex flex-wrap gap-1.5">
-                      {[
-                        { name: 'Living room', emoji: '🛋️' },
-                        { name: 'Bedroom', emoji: '🛏️' },
-                        { name: 'Kitchen', emoji: '🍳' },
-                        { name: 'Dining', emoji: '🍽️' },
-                        { name: 'Bathroom', emoji: '🚿' },
-                        { name: 'Balcony', emoji: '🌅' },
-                        { name: 'Office', emoji: '💼' },
-                      ].map((preset) => {
+                      {ROOM_PRESETS.map((preset) => {
                         const isSel = selectedRoomName.toLowerCase() === preset.name.toLowerCase();
                         return (
                           <button
@@ -1813,6 +1810,8 @@ export const AddDeviceScreen = ({
                               setSelectedRoomName(preset.name);
                               const found = rooms.find(r => r.name.toLowerCase() === preset.name.toLowerCase());
                               setSelectedRoomId(found ? found.id : '');
+                              setIsCreatingNewRoom(!found);
+                              setNewRoomName(found ? '' : preset.name);
                             }}
                             className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
                               isSel 
@@ -1820,7 +1819,7 @@ export const AddDeviceScreen = ({
                                 : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
                             }`}
                           >
-                            <span>{preset.emoji}</span>
+                            <span>{getRoomEmoji(preset.name)}</span>
                             <span>{preset.name}</span>
                           </button>
                         );

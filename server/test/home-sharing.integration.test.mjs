@@ -73,6 +73,8 @@ test('owner can invite, grant access to one home, and revoke membership', {
       [owner]
     )).rows[0].id;
     const room = await homeService.createRoom(sharedHome, 'Office');
+    assert.equal(room.image_path, 'Rooms Images/Office.png');
+    assert.equal((await homeService.getRoomsByHome(sharedHome, owner)).find(item => item.id === room.id).image_path, room.image_path);
     const provisionResponse = await request(owner, '/devices/provision', 'POST', {
       homeId: sharedHome, roomId: room.id, deviceId: 'test-' + suffix, modelCode: 'TP4',
       customName: 'Fixture panel', wifiSsid: 'Fixture Wi-Fi',

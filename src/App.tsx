@@ -1,3 +1,4 @@
+import { ROOM_PRESETS } from '../server/src/config/room-presets';
 import { HistoryPanel } from './components/HistoryPanel';
 import { DeviceRecovery } from './components/DeviceRecovery';
 import { HelpCenter, type HelpTopic } from './components/HelpCenter';
@@ -2096,7 +2097,7 @@ export function App() {
       {/* 14. Create Room Modal (Direct DB persistence via homeApi.createRoom) */}
       {isCreateRoomOpen && (
         <div className="fixed inset-0 z-50 bg-slate-300/55 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in select-none">
-          <div className="bg-white rounded-[32px] w-full max-w-sm p-5 sm:p-6 shadow-2xl border border-white/80 space-y-4">
+          <div className="bg-white rounded-[32px] w-full max-w-sm max-h-[85dvh] overflow-y-auto p-5 sm:p-6 shadow-2xl border border-white/80 space-y-4">
             <div className="flex items-center justify-between pb-2 border-b border-slate-100">
               <div className="flex items-center gap-2.5">
                 <div className="w-9 h-9 rounded-2xl bg-sky-50 text-[#0284c7] flex items-center justify-center border border-sky-100">
@@ -2138,7 +2139,7 @@ export function App() {
             <div>
               <span className="text-[11px] font-bold text-slate-400 block mb-1.5">Quick Suggestions:</span>
               <div className="flex flex-wrap gap-1.5">
-                {['Living Room', 'Master Bedroom', 'Kitchen', 'Office', 'Guest Room', 'Balcony', 'Dining Area', 'Kids Room'].map((suggestion) => (
+                {ROOM_PRESETS.map(({ name: suggestion }) => (
                   <button
                     key={suggestion}
                     type="button"

@@ -33,6 +33,7 @@ export interface CreateHomeInput {
 }
 
 export interface Room {
+  image_path?: string | null;
   id: string;
   home_id: string;
   name: string;

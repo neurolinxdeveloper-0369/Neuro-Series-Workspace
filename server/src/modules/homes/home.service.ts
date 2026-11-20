@@ -1,3 +1,4 @@
+import { getRoomImage } from '../../config/room-presets.js';
 import { db } from '../../config/database.js';
 import { encryptSecret, decryptSecret } from '../../utils/crypto.js';
 import { createHash, randomBytes } from 'node:crypto';
@@ -63,6 +64,7 @@ export const homeService = {
           updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       );
       CREATE INDEX IF NOT EXISTS idx_rooms_home_id ON rooms(home_id);
+      ALTER TABLE rooms ADD COLUMN IF NOT EXISTS image_path TEXT;
 
       CREATE TABLE IF NOT EXISTS home_invitations (
           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -93,6 +95,11 @@ export const homeService = {
     `;
     try {
       await db.query(query);
+      const existingRooms = await db.query('SELECT id, name FROM rooms WHERE image_path IS NULL');
+      for (const room of existingRooms.rows) {
+        const image = getRoomImage(room.name);
+        if (image) await db.query('UPDATE rooms SET image_path = $1 WHERE id = $2 AND image_path IS NULL', [image, room.id]);
+      }
       console.log('✅ Homes, Rooms & Invitations tables initialized in PostgreSQL');
     } catch (error) {
       console.error('❌ Failed to verify database tables in PostgreSQL:', error);
@@ -419,7 +426,7 @@ export const homeService = {
    */
   getRoomsByHome: async (homeId: string, userId?: string): Promise<Room[]> => {
     const result = await db.query(
-      `SELECT r.id, r.home_id, r.name, r.created_at, r.updated_at FROM rooms r
+      `SELECT r.id, r.home_id, r.name, r.image_path, r.created_at, r.updated_at FROM rooms r
        JOIN homes h ON h.id = r.home_id WHERE r.home_id = $1 AND ($2::uuid IS NULL OR h.owner_id = $2 OR EXISTS (
          SELECT 1 FROM home_members m WHERE m.home_id = r.home_id AND m.user_id = $2 AND (
            m.room_ids IS NULL AND m.device_ids IS NULL OR r.id = ANY(m.room_ids)
@@ -437,8 +444,8 @@ export const homeService = {
     const trimmed = name.trim();
     if (!trimmed) throw new Error('Room name is required');
     const result = await db.query(
-      'INSERT INTO rooms (home_id, name) VALUES ($1, $2) RETURNING id, home_id, name, created_at, updated_at',
-      [homeId, trimmed]
+      'INSERT INTO rooms (home_id, name, image_path) VALUES ($1, $2, $3) RETURNING id, home_id, name, image_path, created_at, updated_at',
+      [homeId, trimmed, getRoomImage(trimmed)]
     );
     return result.rows[0];
   },
