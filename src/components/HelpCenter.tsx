@@ -79,6 +79,7 @@ export function HelpCenter({ topic, onSelect, onClose }: { topic: HelpTopic; onS
             </div>
           )}
           {topic === 'privacy' && <a href="https://neurolinx.in/neuro-series/privacypolicy" target="_blank" rel="noopener noreferrer" className="mt-3 inline-flex min-h-11 items-center text-sm font-semibold text-sky-700">Read the full Privacy Policy</a>}
+          {(topic === 'privacy' || topic === 'account' || topic === 'contact') && <a href="https://neurolinx.in/neuro-series/deleteaccount" target="_blank" rel="noopener noreferrer" className="mt-3 flex min-h-11 items-center text-sm font-semibold text-sky-700">Request account deletion</a>}
           <button type="button" onClick={() => onSelect('index')} className="mt-3 min-h-11 text-sm font-semibold text-sky-700">All help topics</button>
         </>
       )}
