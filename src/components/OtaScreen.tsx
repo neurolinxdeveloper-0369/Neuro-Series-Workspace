@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { API_BASE_URL } from '../services/api';
+import { OTA_TOKEN, otaApi } from '../services/ota';
+import { OtaDatabasePanel } from './OtaDatabasePanel';
 import './OtaScreen.css';
 
 interface OtaDevice { id: string; device_id: string; custom_name: string; model_code: string; firmware_version: string | null; is_online: boolean; owner_email: string | null; owner_name: string | null; home_name: string; room_name: string | null }
@@ -7,24 +9,12 @@ interface Firmware { id: string; filename: string; model_code: string; version: 
 interface OtaJob { id: string; device_id: string; hardware_id: string; custom_name: string; status: string; progress: number; detail: string; filename: string; version: string; created_at: string; updated_at: string; is_online: boolean; last_seen_at: string | null }
 const active = (job: OtaJob) => job.status === 'queued' || job.status === 'downloading';
 const message = (error: unknown) => error instanceof Error ? error.message.replace(/^API Error \[\d+\]:\s*/, '') : 'The request failed. Try again.';
-const OTA_TOKEN = 'neuro_ota_session';
-const otaApi = {
-  async request<T>(path: string, body?: unknown): Promise<T> {
-    const response = await fetch(`${API_BASE_URL}${path}`, { method: body === undefined ? 'GET' : 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionStorage.getItem(OTA_TOKEN) || ''}` },
-      body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(45000) });
-    const result = await response.json();
-    if (!response.ok) {
-      if (response.status === 401 && path !== '/ota/session') { sessionStorage.removeItem(OTA_TOKEN); window.dispatchEvent(new Event('ota-session-expired')); }
-      throw new Error(result.error || 'OTA request failed.');
-    }
-    return result;
-  },
-};
 
 export default function OtaScreen() {
   const [token, setToken] = useState(sessionStorage.getItem(OTA_TOKEN));
   const [code, setCode] = useState('');
+  const [tab, setTab] = useState<'firmware' | 'database'>('firmware');
+  const [databaseVisited, setDatabaseVisited] = useState(false);
   const [devices, setDevices] = useState<OtaDevice[]>([]);
   const [jobs, setJobs] = useState<OtaJob[]>([]);
   const [allowed, setAllowed] = useState(false);
@@ -62,7 +52,7 @@ export default function OtaScreen() {
   }, [refresh]);
   useEffect(() => () => uploadController.current?.abort(), []);
   useEffect(() => {
-    const expire = () => { setToken(null); setAllowed(false); setDevices([]); setJobs([]); };
+    const expire = () => { setToken(null); setAllowed(false); setDevices([]); setJobs([]); setDatabaseVisited(false); setTab('firmware'); };
     window.addEventListener('ota-session-expired', expire);
     return () => window.removeEventListener('ota-session-expired', expire);
   }, []);
@@ -134,14 +124,28 @@ export default function OtaScreen() {
   const changing = () => { setFirmware(undefined); setConfirmed(false); setSelected([]); };
   const matching = devices.filter(device => [device.custom_name, device.device_id, device.home_name, device.room_name, device.owner_email, device.owner_name].join(' ').toLowerCase().includes(query.toLowerCase()));
   const available = (device: OtaDevice) => device.is_online && device.model_code === model && !jobs.some(job => job.device_id === device.id && active(job));
+  const changeTab = (next: 'firmware' | 'database') => {
+    if (next === 'database') setDatabaseVisited(true);
+    setTab(next);
+  };
   return <div className="ota-page" tabIndex={0} role="region" aria-label="OTA firmware administration"><div className="ota-shell">
     <header className="ota-header"><div><a href="/neuro-series/">Neuro Touch</a><h1>OTA firmware updates</h1><p>Web administration · All users’ registered devices</p></div>
-      {token && <button onClick={() => { uploadController.current?.abort(); sessionStorage.removeItem(OTA_TOKEN); setToken(null); setDevices([]); setJobs([]); setAllowed(false); setSelected([]); setFirmware(undefined); }}>Lock OTA page</button>}</header>
+      {token && <button onClick={() => { uploadController.current?.abort(); sessionStorage.removeItem(OTA_TOKEN); setToken(null); setDevices([]); setJobs([]); setAllowed(false); setSelected([]); setFirmware(undefined); setDatabaseVisited(false); setTab('firmware'); }}>Lock OTA page</button>}</header>
     {!token ? <section className="ota-card"><h2>Administrator access</h2><p>Enter the OTA access code. No email address or phone number is needed. Sessions expire after 30 minutes.</p>{error && <p role="alert" className="ota-error">{error}</p>}<form onSubmit={event => { event.preventDefault(); void login(); }}><label>Access code<input type="password" autoComplete="current-password" value={code} minLength={8} maxLength={128} required disabled={busy} onChange={event => setCode(event.target.value)} /></label><button type="submit" className="ota-primary" disabled={busy || code.length < 8}>{busy ? 'Checking…' : 'Unlock OTA'}</button></form></section> : <>
       {error && <p role="alert" className="ota-error">{error}</p>}
       {notice && <p role="status" className="ota-notice">{notice}</p>}
       {!allowed && !error && <p role="status">Checking administrator access…</p>}
       {allowed && <>
+        <div className="ota-admin-tabs" role="tablist" aria-label="Administration sections" onKeyDown={event => {
+          if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+          event.preventDefault();
+          const next = event.key === 'Home' ? 'firmware' : event.key === 'End' ? 'database' : tab === 'firmware' ? 'database' : 'firmware';
+          changeTab(next); document.getElementById(`ota-${next}-tab`)?.focus();
+        }}>
+          <button type="button" role="tab" id="ota-firmware-tab" tabIndex={tab === 'firmware' ? 0 : -1} aria-selected={tab === 'firmware'} aria-controls="ota-firmware-panel" onClick={() => changeTab('firmware')}>Firmware updates</button>
+          <button type="button" role="tab" id="ota-database-tab" tabIndex={tab === 'database' ? 0 : -1} aria-selected={tab === 'database'} aria-controls="ota-database-panel" onClick={() => changeTab('database')}>Database</button>
+        </div>
+        <div id="ota-firmware-panel" className="ota-tab-panel" role="tabpanel" aria-labelledby="ota-firmware-tab" hidden={tab !== 'firmware'}>
         <div className="ota-grid"><section className="ota-card"><h2>1. Upload firmware</h2><p>Choose the exact ESP-12F firmware for the target model. Uploading alone does not update any device.</p>
           <label>Target model<select disabled={busy} value={model} onChange={event => { setModel(event.target.value); changing(); }}><option value="">Choose a model</option>{[...new Set(devices.map(device => device.model_code))].sort().map(code => <option key={code}>{code}</option>)}</select></label>
           <label>Firmware version<input disabled={busy} value={version} maxLength={30} placeholder="e.g. 1.1.0" onChange={event => { setVersion(event.target.value); changing(); }} /></label>
@@ -161,6 +165,10 @@ export default function OtaScreen() {
           {!jobs.length && <p>No firmware updates have been submitted.</p>}
           <div className="ota-jobs">{jobs.map(job => { const reconnected = job.status === 'success' && job.is_online && job.last_seen_at && new Date(job.last_seen_at).getTime() > new Date(job.updated_at).getTime(); return <article key={job.id} className="ota-job"><div className="ota-heading"><strong>{job.custom_name} · {job.hardware_id}</strong><span className={job.status === 'failed' || job.status === 'unconfirmed' ? 'ota-failed' : 'ota-online'}>{job.status === 'queued' ? 'Waiting for device' : job.status}</span></div><p>{job.filename} → {job.version}</p><progress aria-label={`Firmware progress for ${job.hardware_id}`} max={100} value={Math.max(0, job.progress)} /><p>{job.status === 'failed' ? 'Failed' : `${Math.max(0, job.progress)}%`} · {job.detail}</p>{job.status === 'success' && <p>{reconnected ? 'Device reconnected after flashing.' : 'Awaiting device reconnection after reboot.'}</p>}<small>{new Date(job.created_at).toLocaleString()}</small></article>; })}</div>
         </section>
+        </div>
+        <div id="ota-database-panel" className="ota-tab-panel" role="tabpanel" aria-labelledby="ota-database-tab" hidden={tab !== 'database'}>
+          {databaseVisited && <OtaDatabasePanel isActive={tab === 'database'} onDeleted={() => { setSelected([]); setConfirmed(false); void refresh(); }} />}
+        </div>
       </>}
     </>}
   </div></div>;

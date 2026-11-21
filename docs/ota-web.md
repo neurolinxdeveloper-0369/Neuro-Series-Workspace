@@ -16,6 +16,28 @@ The code grants access to every user's registered devices. The portal requires n
 Sessions have their own JWT audience and expire in 30 minutes. App account tokens cannot authorize OTA and OTA tokens cannot authorize normal app APIs.
 The API permits at most six code attempts per minute per API instance. It never logs the code.
 
+## Database administration
+
+The **Database** tab uses the same OTA access-code session; no email or mobile login is required.
+It provides searchable, paginated views of **Users**, **Rooms** and **Devices** through allowlisted API queries.
+It is not a SQL console and does not expose Wi-Fi passwords, verification codes, authentication identities, access-code hashes or firmware download capabilities.
+
+Select **Review deletion** beside a record to load its deletion preview. Review the affected records and warnings, type the exact record ID shown, then confirm.
+The server verifies a short-lived, signed preview and rechecks its impact before committing the deletion; a changed record requires a fresh preview.
+Deletion is permanent in the active database. It does not factory-reset physical equipment or erase credentials already stored on hardware.
+Deleting a room leaves its devices unassigned. Deleting a user also affects their owned homes and devices; the preview explains these cascades.
+Surviving routines that refer to removed records are disabled for review, and removed-device actions are pruned.
+Active firmware updates block affected deletions. An unconfirmed OTA job also blocks deletion while its download link remains valid.
+Keep this shared administration code restricted to trusted operators. Development and automated tests use disposable records, never production deletions.
+
+Database API routes (all below `/neuro-series/api/ota`):
+
+- `GET /database/:kind?search=&page=1&pageSize=25`
+- `POST /database/:kind/:id/preview`
+- `DELETE /database/:kind/:id` with JSON `{ "confirmation": "<record UUID>", "previewToken": "<signed preview>" }`
+
+`:kind` is restricted to `users`, `rooms` or `devices`.
+
 `OTA_PUBLIC_BASE_URL` defaults to `https://neurolinx.in/neuro-series/api/ota`.
 This address must be reachable by hardware, with TLS supported by the deployed firmware. Do not point it at a container-only hostname.
 Firmware and job state live in PostgreSQL; no extra container volume is required. Include them in database capacity/backup planning.

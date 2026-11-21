@@ -4,6 +4,7 @@ import { db } from '../../config/database.js';
 import { MAX_FIRMWARE_BYTES } from './ota.policy.js';
 import { issueOtaSession, verifyOtaCode, verifyOtaSession } from './ota.auth.js';
 import { otaService } from './ota.service.js';
+import { databaseRouter } from './database.controller.js';
 
 export const otaRouter = express.Router();
 const uuid = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
@@ -43,6 +44,8 @@ otaRouter.use((req, res, next) => {
     next();
   } catch { res.status(401).json({ error: 'OTA session expired. Enter the access code again.' }); }
 });
+
+otaRouter.use('/database', databaseRouter);
 
 otaRouter.get('/devices', async (_req, res) => {
   try {

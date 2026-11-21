@@ -254,6 +254,14 @@ export const routineService = {
     const results = [];
     for (const action of actions) {
       try {
+        if (scheduledAt) {
+          const current = await routineService.getRoutineById(routine.id, routine.user_id);
+          if (!current || !current.is_active || current.type !== 'schedule' ||
+              JSON.stringify(current.actions) !== JSON.stringify(routine.actions) ||
+              current.room_id !== routine.room_id) {
+            throw new Error('Schedule changed or was disabled before dispatch');
+          }
+        }
         await routineService.validateActions(routine.user_id, routine.home_id, [action]);
         const target = override ?? action.targetState;
         await deviceService.controlSwitch(action.deviceId, action.channel, target ? 'on' : 'off', runId);

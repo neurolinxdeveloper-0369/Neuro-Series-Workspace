@@ -1,6 +1,7 @@
 import type { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { ENV } from '../../config/env.js';
+import { db } from '../../config/database.js';
 
 export interface AuthenticatedRequest extends Request {
   user?: {
@@ -20,7 +21,7 @@ export function verifySessionToken(token: string) {
   return { id: decoded.id, email: decoded.email, phone_number: decoded.phone_number, expiresAt: decoded.exp * 1000 };
 }
 
-export const authenticateToken = (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+export const authenticateToken = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   const authHeader = req.headers.authorization;
   const token = authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null;
 
@@ -30,6 +31,9 @@ export const authenticateToken = (req: AuthenticatedRequest, res: Response, next
 
   try {
     req.user = verifySessionToken(token);
+    if (!(await db.query('SELECT 1 FROM users WHERE id=$1', [req.user.id])).rowCount) {
+      return res.status(403).json({ success: false, error: 'Account no longer exists. Sign in again.' });
+    }
     next();
   } catch {
     return res.status(403).json({ success: false, error: 'Invalid or expired token' });

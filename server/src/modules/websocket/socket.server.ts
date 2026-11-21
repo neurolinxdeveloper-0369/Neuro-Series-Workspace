@@ -21,7 +21,7 @@ class SocketManager {
     });
     wss.on('connection', ws => {
       const authTimeout = setTimeout(() => ws.close(1008, 'Authentication required'), 5000);
-      ws.once('message', message => {
+      ws.once('message', async message => {
         try {
           const data = JSON.parse(message.toString());
           if (data.type === 'OTA_AUTH' && typeof data.token === 'string') {
@@ -30,7 +30,9 @@ class SocketManager {
             return;
           }
           if (data.type !== 'AUTH' || typeof data.token !== 'string') throw new Error('Invalid authentication');
-          this.sessions.set(ws, verifySessionToken(data.token));
+          const session = verifySessionToken(data.token);
+          if (!(await db.query('SELECT 1 FROM users WHERE id=$1', [session.id])).rowCount || ws.readyState !== WebSocket.OPEN) throw new Error('Account no longer exists');
+          this.sessions.set(ws, session);
           ws.send(JSON.stringify({ type: 'CONNECTION_ACK' }));
         } catch {
           ws.close(1008, 'Invalid authentication');
@@ -45,6 +47,12 @@ class SocketManager {
         this.otaSessions.delete(ws);
       });
     });
+  }
+
+  public revokeUserSessions(userId: string) {
+    for (const [client, session] of this.sessions) {
+      if (session.id === userId) { this.sessions.delete(client); client.close(1008, 'Account deleted'); }
+    }
   }
 
   public broadcastOtaUpdate(job: Record<string, unknown>) {
